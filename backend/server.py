@@ -116,6 +116,8 @@ class KYCSubmit(BaseModel):
 class ExchangeRateUpdate(BaseModel):
     htg_to_usd: float
     usd_to_htg: float
+    swap_htg_to_usd: Optional[float] = None
+    swap_usd_to_htg: Optional[float] = None
 
 class FeeConfigUpdate(BaseModel):
     method: str
