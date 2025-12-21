@@ -318,6 +318,23 @@ class KayicomAPITester:
         if success and response:
             print(f"   Affiliate Code: {response.get('affiliate_code')}")
             print(f"   Earnings: {response.get('earnings', 0)}")
+            print(f"   Referrals with cards: {response.get('referrals_with_cards', 0)}")
+            print(f"   Affiliate link: {response.get('affiliate_link', 'N/A')[:50]}...")
+        return success
+
+    def test_virtual_card_endpoints(self):
+        """Test virtual card endpoints"""
+        print("\n=== VIRTUAL CARD TESTS ===")
+        
+        if not self.token:
+            print("❌ No user token available")
+            return False
+            
+        # Test get virtual cards
+        success, response = self.run_test("Get Virtual Cards", "GET", "virtual-cards", 200)
+        if success and response:
+            cards = response.get('cards', [])
+            print(f"   Virtual cards: {len(cards)}")
         return success
 
 def main():
