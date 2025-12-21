@@ -252,7 +252,8 @@ async def register(user: UserCreate):
     token = create_access_token({"sub": user_id})
     
     del user_doc["password_hash"]
-    del user_doc["_id"] if "_id" in user_doc else None
+    if "_id" in user_doc:
+        del user_doc["_id"]
     
     return {"token": token, "user": user_doc}
 
