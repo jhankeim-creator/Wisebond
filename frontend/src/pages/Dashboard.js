@@ -95,6 +95,7 @@ export default function Dashboard() {
   const quickActions = [
     { to: '/deposit', icon: ArrowDownCircle, label: t('deposit'), color: 'bg-emerald-500 hover:bg-emerald-600' },
     { to: '/withdraw', icon: ArrowUpCircle, label: t('withdraw'), color: 'bg-[#EA580C] hover:bg-[#C2410C]' },
+    { to: '/swap', icon: TrendingUp, label: 'Swap', color: 'bg-purple-500 hover:bg-purple-600' },
     { to: '/transfer', icon: Send, label: t('transfer'), color: 'bg-amber-500 hover:bg-amber-600' },
     { to: '/virtual-card', icon: CreditCard, label: getText('Kat', 'Carte', 'Card'), color: 'bg-stone-800 hover:bg-stone-900' }
   ];
