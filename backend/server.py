@@ -856,9 +856,10 @@ async def withdraw_affiliate_earnings(current_user: dict = Depends(get_current_u
     
     return {"message": "Earnings transferred to wallet", "amount": earnings}
 
-# ==================== VIRTUAL CARD ROUTES ====================
+# ==================== VIRTUAL CARD ROUTES (Manual Third-Party System) ====================
 
 CARD_FEE_HTG = 500  # Card order fee in HTG
+CARD_BONUS_USD = 5  # $5 USD bonus for approved cards
 
 @api_router.get("/virtual-cards")
 async def get_virtual_cards(current_user: dict = Depends(get_current_user)):
@@ -868,8 +869,27 @@ async def get_virtual_cards(current_user: dict = Depends(get_current_user)):
     ).to_list(10)
     return {"cards": cards}
 
+@api_router.get("/virtual-cards/orders")
+async def get_card_orders(current_user: dict = Depends(get_current_user)):
+    """Get user's virtual card orders"""
+    orders = await db.virtual_card_orders.find(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return {"orders": orders}
+
+@api_router.get("/virtual-cards/deposits")
+async def get_card_deposits(current_user: dict = Depends(get_current_user)):
+    """Get user's card deposit history (deposits made to their virtual card)"""
+    deposits = await db.virtual_card_deposits.find(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return {"deposits": deposits}
+
 @api_router.post("/virtual-cards/order")
 async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Depends(get_current_user)):
+    """Submit a manual card order request"""
     if current_user["kyc_status"] != "approved":
         raise HTTPException(status_code=403, detail="KYC verification required")
     
@@ -882,21 +902,21 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
         {"$inc": {"wallet_htg": -CARD_FEE_HTG}}
     )
     
-    # Create card
-    card = {
-        "card_id": str(uuid.uuid4()),
+    # Create card order (manual process - admin will approve/reject)
+    order = {
+        "order_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
         "client_id": current_user["client_id"],
-        "card_name": request.card_name.upper(),
-        "card_number": generate_card_number(),
-        "cvv": generate_cvv(),
-        "expiry_date": generate_expiry(),
-        "balance": 0,
-        "status": "active",
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "card_email": request.card_email.lower(),
+        "fee": CARD_FEE_HTG,
+        "status": "pending",  # pending, approved, rejected
+        "admin_notes": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": None,
+        "processed_by": None
     }
     
-    await db.virtual_cards.insert_one(card)
+    await db.virtual_card_orders.insert_one(order)
     
     # Create transaction for the fee
     await db.transactions.insert_one({
@@ -910,23 +930,108 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     
-    # Process affiliate reward if user was referred
-    if current_user.get("referred_by"):
-        await process_card_affiliate_reward(current_user["referred_by"])
+    await log_action(current_user["user_id"], "card_order", {"order_id": order["order_id"]})
     
-    await log_action(current_user["user_id"], "card_order", {"card_id": card["card_id"]})
+    if "_id" in order:
+        del order["_id"]
+    return {"order": order, "message": "Card order submitted successfully"}
+
+# Admin: Get all card orders
+@api_router.get("/admin/virtual-card-orders")
+async def admin_get_card_orders(
+    status: Optional[str] = None,
+    limit: int = Query(default=50, le=200),
+    admin: dict = Depends(get_admin_user)
+):
+    query = {}
+    if status:
+        query["status"] = status
     
-    if "_id" in card:
-        del card["_id"]
-    return {"card": card, "message": "Card ordered successfully"}
+    orders = await db.virtual_card_orders.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"orders": orders}
+
+# Admin: Process card order (approve/reject)
+@api_router.patch("/admin/virtual-card-orders/{order_id}")
+async def admin_process_card_order(
+    order_id: str,
+    action: str,
+    admin_notes: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if order["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Order already processed")
+    
+    if action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    
+    new_status = "approved" if action == "approve" else "rejected"
+    
+    await db.virtual_card_orders.update_one(
+        {"order_id": order_id},
+        {"$set": {
+            "status": new_status,
+            "admin_notes": admin_notes,
+            "processed_at": datetime.now(timezone.utc).isoformat(),
+            "processed_by": admin["user_id"]
+        }}
+    )
+    
+    if action == "approve":
+        # Add $5 USD bonus to user's wallet
+        await db.users.update_one(
+            {"user_id": order["user_id"]},
+            {"$inc": {"wallet_usd": CARD_BONUS_USD}}
+        )
+        
+        # Create bonus transaction
+        await db.transactions.insert_one({
+            "transaction_id": str(uuid.uuid4()),
+            "user_id": order["user_id"],
+            "type": "card_bonus",
+            "amount": CARD_BONUS_USD,
+            "currency": "USD",
+            "status": "completed",
+            "description": "Virtual card approval bonus",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        # Process affiliate reward if user was referred
+        user = await db.users.find_one({"user_id": order["user_id"]}, {"_id": 0})
+        if user and user.get("referred_by"):
+            await process_card_affiliate_reward(user["referred_by"])
+    else:
+        # Refund the fee if rejected
+        await db.users.update_one(
+            {"user_id": order["user_id"]},
+            {"$inc": {"wallet_htg": CARD_FEE_HTG}}
+        )
+        
+        await db.transactions.insert_one({
+            "transaction_id": str(uuid.uuid4()),
+            "user_id": order["user_id"],
+            "type": "card_order_refund",
+            "amount": CARD_FEE_HTG,
+            "currency": "HTG",
+            "status": "completed",
+            "description": "Virtual card order refund (rejected)",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    
+    await log_action(admin["user_id"], "card_order_process", {"order_id": order_id, "action": action})
+    
+    return {"message": f"Card order {action}d successfully"}
 
 async def process_card_affiliate_reward(affiliate_code: str):
-    """Process affiliate reward: 2000 HTG for every 5 referrals who order a card"""
+    """Process affiliate reward: 2000 HTG for every 5 referrals who get a card approved"""
     referrer = await db.users.find_one({"affiliate_code": affiliate_code}, {"_id": 0})
     if not referrer:
         return
     
-    # Count referrals with cards
+    # Count referrals with approved card orders
     referrals = await db.users.find(
         {"referred_by": affiliate_code},
         {"_id": 0, "user_id": 1}
@@ -934,8 +1039,11 @@ async def process_card_affiliate_reward(affiliate_code: str):
     
     cards_count = 0
     for ref in referrals:
-        has_card = await db.virtual_cards.find_one({"user_id": ref["user_id"]})
-        if has_card:
+        has_approved_card = await db.virtual_card_orders.find_one({
+            "user_id": ref["user_id"],
+            "status": "approved"
+        })
+        if has_approved_card:
             cards_count += 1
     
     # Check if we've hit a new milestone of 5
@@ -966,6 +1074,142 @@ async def process_card_affiliate_reward(affiliate_code: str):
         })
         
         await log_action(referrer["user_id"], "affiliate_card_reward", {"amount": reward_amount})
+
+# ==================== TOP-UP (International Minutes) ROUTES ====================
+
+@api_router.post("/topup/order")
+async def create_topup_order(request: TopUpOrder, current_user: dict = Depends(get_current_user)):
+    """Create a manual top-up order for international minutes"""
+    if current_user["kyc_status"] != "approved":
+        raise HTTPException(status_code=403, detail="KYC verification required")
+    
+    if current_user.get("wallet_usd", 0) < request.price:
+        raise HTTPException(status_code=400, detail="Insufficient USD balance")
+    
+    # Deduct from wallet
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {"$inc": {"wallet_usd": -request.price}}
+    )
+    
+    # Create order
+    order = {
+        "order_id": str(uuid.uuid4()),
+        "user_id": current_user["user_id"],
+        "client_id": current_user["client_id"],
+        "country": request.country,
+        "country_name": request.country_name,
+        "minutes": request.minutes,
+        "price": request.price,
+        "phone_number": request.phone_number,
+        "status": "pending",  # pending, completed, cancelled
+        "admin_notes": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": None,
+        "processed_by": None
+    }
+    
+    await db.topup_orders.insert_one(order)
+    
+    # Create transaction
+    await db.transactions.insert_one({
+        "transaction_id": str(uuid.uuid4()),
+        "user_id": current_user["user_id"],
+        "type": "topup_order",
+        "amount": -request.price,
+        "currency": "USD",
+        "status": "pending",
+        "description": f"Top-up order: {request.minutes} mins for {request.country_name}",
+        "reference_id": order["order_id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await log_action(current_user["user_id"], "topup_order", {"order_id": order["order_id"]})
+    
+    if "_id" in order:
+        del order["_id"]
+    return {"order": order, "message": "Top-up order submitted successfully"}
+
+@api_router.get("/topup/orders")
+async def get_topup_orders(current_user: dict = Depends(get_current_user)):
+    """Get user's top-up orders"""
+    orders = await db.topup_orders.find(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return {"orders": orders}
+
+# Admin: Get all top-up orders
+@api_router.get("/admin/topup-orders")
+async def admin_get_topup_orders(
+    status: Optional[str] = None,
+    limit: int = Query(default=50, le=200),
+    admin: dict = Depends(get_admin_user)
+):
+    query = {}
+    if status:
+        query["status"] = status
+    
+    orders = await db.topup_orders.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"orders": orders}
+
+# Admin: Process top-up order
+@api_router.patch("/admin/topup-orders/{order_id}")
+async def admin_process_topup_order(
+    order_id: str,
+    action: str,
+    admin_notes: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    order = await db.topup_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    if order["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Order already processed")
+    
+    if action not in ["complete", "cancel"]:
+        raise HTTPException(status_code=400, detail="Invalid action. Use 'complete' or 'cancel'")
+    
+    new_status = "completed" if action == "complete" else "cancelled"
+    
+    await db.topup_orders.update_one(
+        {"order_id": order_id},
+        {"$set": {
+            "status": new_status,
+            "admin_notes": admin_notes,
+            "processed_at": datetime.now(timezone.utc).isoformat(),
+            "processed_by": admin["user_id"]
+        }}
+    )
+    
+    # Update transaction status
+    await db.transactions.update_one(
+        {"reference_id": order_id, "type": "topup_order"},
+        {"$set": {"status": new_status}}
+    )
+    
+    if action == "cancel":
+        # Refund the amount
+        await db.users.update_one(
+            {"user_id": order["user_id"]},
+            {"$inc": {"wallet_usd": order["price"]}}
+        )
+        
+        await db.transactions.insert_one({
+            "transaction_id": str(uuid.uuid4()),
+            "user_id": order["user_id"],
+            "type": "topup_refund",
+            "amount": order["price"],
+            "currency": "USD",
+            "status": "completed",
+            "description": f"Top-up order refund (cancelled)",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    
+    await log_action(admin["user_id"], "topup_order_process", {"order_id": order_id, "action": action})
+    
+    return {"message": f"Top-up order {action}d successfully"}
 
 # ==================== EXCHANGE RATES ====================
 
