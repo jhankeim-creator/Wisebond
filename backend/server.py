@@ -1614,6 +1614,42 @@ async def admin_delete_fee(fee_id: str, admin: dict = Depends(get_admin_user)):
     
     return {"message": "Fee deleted"}
 
+# Card Withdrawal Fees (by limit range)
+class CardFeeConfig(BaseModel):
+    min_amount: float
+    max_amount: float
+    fee: float
+
+@api_router.get("/admin/card-fees")
+async def admin_get_card_fees(admin: dict = Depends(get_admin_user)):
+    fees = await db.card_fees.find({}, {"_id": 0}).sort("min_amount", 1).to_list(100)
+    return {"fees": fees}
+
+@api_router.post("/admin/card-fees")
+async def admin_create_card_fee(fee: CardFeeConfig, admin: dict = Depends(get_admin_user)):
+    fee_doc = {
+        "fee_id": str(uuid.uuid4()),
+        **fee.model_dump(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.card_fees.insert_one(fee_doc)
+    
+    await log_action(admin["user_id"], "card_fee_create", fee.model_dump())
+    
+    if "_id" in fee_doc:
+        del fee_doc["_id"]
+    return {"fee": fee_doc}
+
+@api_router.delete("/admin/card-fees/{fee_id}")
+async def admin_delete_card_fee(fee_id: str, admin: dict = Depends(get_admin_user)):
+    result = await db.card_fees.delete_one({"fee_id": fee_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Card fee not found")
+    
+    await log_action(admin["user_id"], "card_fee_delete", {"fee_id": fee_id})
+    
+    return {"message": "Card fee deleted"}
+
 # Withdrawal Limits Admin
 @api_router.get("/admin/withdrawal-limits")
 async def admin_get_withdrawal_limits(admin: dict = Depends(get_admin_user)):
