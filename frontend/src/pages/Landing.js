@@ -260,23 +260,25 @@ export default function Landing() {
             <div>
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full text-amber-400 text-sm font-semibold mb-6">
                 <CreditCard size={16} />
-                <span>{language === 'fr' ? 'Nouveau' : 'New'}</span>
+                <span>{getText('Nouvo', 'Nouveau', 'New')}</span>
               </div>
               
               <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-                {language === 'fr' ? 'Carte Virtuelle KAYICOM' : 'KAYICOM Virtual Card'}
+                {getText('Kat Vityèl KAYICOM', 'Carte Virtuelle KAYICOM', 'KAYICOM Virtual Card')}
               </h2>
               <p className="text-lg text-stone-400 mb-8">
-                {language === 'fr' 
-                  ? 'Commandez votre carte virtuelle et payez partout dans le monde. Compatible avec tous les sites et services en ligne.'
-                  : 'Order your virtual card and pay anywhere in the world. Compatible with all online sites and services.'}
+                {getText(
+                  'Komande kat vityèl ou epi peye toupatou nan mond lan. Konpatib ak tout sit ak sèvis sou entènèt.',
+                  'Commandez votre carte virtuelle et payez partout dans le monde. Compatible avec tous les sites et services en ligne.',
+                  'Order your virtual card and pay anywhere in the world. Compatible with all online sites and services.'
+                )}
               </p>
               
               <ul className="space-y-4 mb-8">
                 {[
-                  language === 'fr' ? 'Paiements en ligne sécurisés' : 'Secure online payments',
-                  language === 'fr' ? 'Compatible Netflix, Amazon, etc.' : 'Works with Netflix, Amazon, etc.',
-                  language === 'fr' ? 'Rechargeable depuis votre wallet' : 'Rechargeable from your wallet'
+                  getText('Peman sou entènèt sekirize', 'Paiements en ligne sécurisés', 'Secure online payments'),
+                  getText('Konpatib ak Netflix, Amazon, elatriye', 'Compatible Netflix, Amazon, etc.', 'Works with Netflix, Amazon, etc.'),
+                  getText('Rechajab depi nan wallet ou', 'Rechargeable depuis votre wallet', 'Rechargeable from your wallet')
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-3">
                     <CheckCircle className="text-emerald-400" size={20} />
@@ -287,7 +289,7 @@ export default function Landing() {
               
               <Link to="/register">
                 <Button className="btn-gold">
-                  {language === 'fr' ? 'Commander ma carte' : 'Order my card'}
+                  {getText('Komande kat mwen', 'Commander ma carte', 'Order my card')}
                   <ChevronRight className="ml-2" size={20} />
                 </Button>
               </Link>
