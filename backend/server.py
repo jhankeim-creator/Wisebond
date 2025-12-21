@@ -99,13 +99,19 @@ class SwapRequest(BaseModel):
     amount: float
 
 class KYCSubmit(BaseModel):
+    full_name: str
     date_of_birth: str
-    address: str
+    full_address: str
+    city: Optional[str] = None
+    country: Optional[str] = "Haiti"
     nationality: str
+    phone_number: str
+    whatsapp_number: Optional[str] = None
     id_type: str
+    id_number: Optional[str] = None
     id_front_image: str
     id_back_image: Optional[str] = None
-    selfie_image: str
+    selfie_with_id: str
 
 class ExchangeRateUpdate(BaseModel):
     htg_to_usd: float
