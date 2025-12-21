@@ -31,7 +31,7 @@ export const DashboardLayout = ({ children, title }) => {
               <h1 className="text-xl font-bold text-stone-900 dark:text-white">{title}</h1>
             </div>
             <div className="lg:hidden">
-              <Logo size="small" />
+              <Logo size="small" linkToHome={true} />
             </div>
             
             <div className="flex items-center gap-3">
