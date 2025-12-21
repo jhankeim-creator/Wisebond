@@ -378,7 +378,8 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
     await db.deposits.insert_one(deposit)
     await log_action(current_user["user_id"], "deposit_request", {"amount": request.amount, "method": request.method})
     
-    del deposit["_id"] if "_id" in deposit else None
+    if "_id" in deposit:
+        del deposit["_id"]
     return {"deposit": deposit}
 
 @api_router.get("/deposits")
