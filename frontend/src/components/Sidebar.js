@@ -16,7 +16,8 @@ import {
   Shield,
   X,
   CreditCard,
-  ArrowDownUp
+  ArrowDownUp,
+  Phone
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
