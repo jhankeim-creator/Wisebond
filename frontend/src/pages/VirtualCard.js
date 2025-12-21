@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
-import { Logo } from '@/components/Logo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,12 +13,13 @@ import {
   CreditCard, 
   Check, 
   AlertCircle,
-  Copy,
-  Eye,
-  EyeOff,
-  RefreshCw,
   ShoppingCart,
-  Shield
+  Shield,
+  Clock,
+  CheckCircle,
+  XCircle,
+  History,
+  Wallet
 } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -28,41 +28,51 @@ export default function VirtualCard() {
   const { language } = useLanguage();
   const { user, refreshUser } = useAuth();
   
-  const [cards, setCards] = useState([]);
+  const [cardOrders, setCardOrders] = useState([]);
+  const [cardDeposits, setCardDeposits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showOrderModal, setShowOrderModal] = useState(false);
-  const [showCardDetails, setShowCardDetails] = useState({});
   const [ordering, setOrdering] = useState(false);
-  const [cardName, setCardName] = useState('');
+  const [cardEmail, setCardEmail] = useState('');
+
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
 
   useEffect(() => {
-    fetchCards();
+    fetchData();
   }, []);
 
-  const fetchCards = async () => {
+  const fetchData = async () => {
     try {
-      const response = await axios.get(`${API}/virtual-cards`);
-      setCards(response.data.cards || []);
+      const [ordersRes, depositsRes] = await Promise.all([
+        axios.get(`${API}/virtual-cards/orders`),
+        axios.get(`${API}/virtual-cards/deposits`)
+      ]);
+      setCardOrders(ordersRes.data.orders || []);
+      setCardDeposits(depositsRes.data.deposits || []);
     } catch (error) {
-      console.error('Error fetching cards:', error);
+      console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const orderCard = async () => {
-    if (!cardName.trim()) {
-      toast.error(language === 'fr' ? 'Veuillez entrer un nom pour la carte' : 'Please enter a name for the card');
+    if (!cardEmail.trim()) {
+      toast.error(getText('Antre email pou kat la', 'Veuillez entrer un email pour la carte', 'Please enter an email for the card'));
       return;
     }
 
     setOrdering(true);
     try {
-      await axios.post(`${API}/virtual-cards/order`, { card_name: cardName });
-      toast.success(language === 'fr' ? 'Carte commandée avec succès!' : 'Card ordered successfully!');
+      await axios.post(`${API}/virtual-cards/order`, { card_email: cardEmail });
+      toast.success(getText('Komand kat soumèt siksè!', 'Commande de carte soumise avec succès!', 'Card order submitted successfully!'));
       setShowOrderModal(false);
-      setCardName('');
-      fetchCards();
+      setCardEmail('');
+      fetchData();
       refreshUser();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error');
@@ -71,24 +81,32 @@ export default function VirtualCard() {
     }
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    toast.success(language === 'fr' ? 'Copié!' : 'Copied!');
-  };
-
-  const toggleCardDetails = (cardId) => {
-    setShowCardDetails(prev => ({
-      ...prev,
-      [cardId]: !prev[cardId]
-    }));
-  };
-
   const cardFee = 500; // 500 HTG for card
 
-  const getText = (ht, fr, en) => {
-    if (language === 'ht') return ht;
-    if (language === 'fr') return fr;
-    return en;
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'approved':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
+            <CheckCircle size={12} />
+            {getText('Apwouve', 'Approuvé', 'Approved')}
+          </span>
+        );
+      case 'rejected':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+            <XCircle size={12} />
+            {getText('Rejte', 'Rejeté', 'Rejected')}
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
+            <Clock size={12} />
+            {getText('Ap tann', 'En attente', 'Pending')}
+          </span>
+        );
+    }
   };
 
   return (
@@ -116,14 +134,35 @@ export default function VirtualCard() {
           </Card>
         ) : (
           <>
+            {/* Info Banner */}
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-6 text-white">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <CreditCard size={24} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold mb-2">
+                    {getText('Kat Vityèl (Tyè Pati)', 'Carte Virtuelle (Tiers)', 'Virtual Card (Third Party)')}
+                  </h2>
+                  <p className="text-amber-100 text-sm">
+                    {getText(
+                      'Kat vityèl la jere pa yon tyè pati. Balans kat la pa afiche isit la. Ou ap wè sèlman istorik depo ou ki apwouve oswa rejte.',
+                      'La carte virtuelle est gérée par un tiers. Le solde de la carte n\'est pas affiché ici. Vous ne verrez que l\'historique de vos dépôts approuvés ou rejetés.',
+                      'The virtual card is managed by a third party. The card balance is not displayed here. You will only see your approved or rejected deposit history.'
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+
             {/* Order Card Button */}
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
                 <h2 className="text-2xl font-bold text-stone-900">
                   {getText('Kat Mwen Yo', 'Mes Cartes', 'My Cards')}
                 </h2>
                 <p className="text-stone-500">
-                  {getText('Jere kat vityèl KAYICOM ou yo', 'Gérez vos cartes virtuelles KAYICOM', 'Manage your KAYICOM virtual cards')}
+                  {getText('Jere kat vityèl ou yo', 'Gérez vos cartes virtuelles', 'Manage your virtual cards')}
                 </p>
               </div>
               <Button onClick={() => setShowOrderModal(true)} className="btn-primary">
@@ -132,208 +171,207 @@ export default function VirtualCard() {
               </Button>
             </div>
 
-            {/* Cards List */}
-            {loading ? (
-              <div className="grid md:grid-cols-2 gap-6">
-                {[1, 2].map(i => (
-                  <div key={i} className="skeleton h-64 rounded-2xl" />
-                ))}
-              </div>
-            ) : cards.length === 0 ? (
-              <Card className="bg-stone-50">
-                <CardContent className="p-12 text-center">
-                  <CreditCard className="mx-auto text-stone-400 mb-4" size={64} />
-                  <h3 className="text-xl font-bold text-stone-900 mb-2">
-                    {getText('Pa gen kat', 'Aucune carte', 'No cards')}
-                  </h3>
-                  <p className="text-stone-600 mb-6">
-                    {getText(
-                      'Komande premye kat vityèl ou pou peye toupatou!',
-                      'Commandez votre première carte virtuelle pour payer partout!',
-                      'Order your first virtual card to pay anywhere!'
-                    )}
-                  </p>
-                  <Button onClick={() => setShowOrderModal(true)} className="btn-gold">
-                    <ShoppingCart className="mr-2" size={18} />
-                    {getText('Komande kounye a', 'Commander maintenant', 'Order now')}
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid md:grid-cols-2 gap-6">
-                {cards.map((card) => (
-                  <div key={card.card_id} className="space-y-4">
-                    {/* Virtual Card Display */}
-                    <div className="virtual-card">
-                      <div className="relative z-10 h-full flex flex-col justify-between p-2">
-                        <div className="flex justify-between items-start">
-                          <Logo size="small" />
-                          <div className="flex items-center gap-2">
-                            <div className="w-10 h-6 bg-gradient-to-r from-amber-400 to-amber-600 rounded opacity-80" />
-                            <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                              card.status === 'active' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
-                            }`}>
-                              {card.status}
-                            </span>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-6">
-                          <p className="font-mono text-xl tracking-widest mb-4">
-                            {showCardDetails[card.card_id] 
-                              ? card.card_number 
-                              : `•••• •••• •••• ${card.card_number?.slice(-4)}`}
-                          </p>
-                          <div className="flex justify-between items-end">
-                            <div>
-                              <p className="text-stone-400 text-xs uppercase">Titulaire</p>
-                              <p className="font-medium">{card.card_name}</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-stone-400 text-xs uppercase">CVV</p>
-                              <p className="font-medium font-mono">
-                                {showCardDetails[card.card_id] ? card.cvv : '•••'}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-stone-400 text-xs uppercase">Expire</p>
-                              <p className="font-medium">{card.expiry_date}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Card Actions */}
-                    <div className="flex gap-2">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => toggleCardDetails(card.card_id)}
-                        className="flex-1"
-                      >
-                        {showCardDetails[card.card_id] ? <EyeOff size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />}
-                        {showCardDetails[card.card_id] 
-                          ? (language === 'fr' ? 'Masquer' : 'Hide') 
-                          : (language === 'fr' ? 'Afficher' : 'Show')}
-                      </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => copyToClipboard(card.card_number)}
-                        className="flex-1"
-                      >
-                        <Copy size={16} className="mr-2" />
-                        {language === 'fr' ? 'Copier' : 'Copy'}
-                      </Button>
-                    </div>
-
-                    {/* Card Balance */}
-                    <Card>
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className="text-sm text-stone-500">{language === 'fr' ? 'Solde de la carte' : 'Card balance'}</p>
-                            <p className="text-xl font-bold text-stone-900">G {card.balance?.toLocaleString() || 0}</p>
-                          </div>
-                          <Button size="sm" className="bg-[#EA580C] hover:bg-[#C2410C]">
-                            {language === 'fr' ? 'Recharger' : 'Top up'}
-                          </Button>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Card Features */}
+            {/* Card Orders History */}
             <Card>
               <CardHeader>
-                <CardTitle>{language === 'fr' ? 'Avantages de la carte' : 'Card benefits'}</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard size={20} className="text-[#EA580C]" />
+                  {getText('Komand Kat yo', 'Commandes de cartes', 'Card Orders')}
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid md:grid-cols-3 gap-6">
-                  {[
-                    { 
-                      icon: Shield, 
-                      title: language === 'fr' ? 'Sécurisée' : 'Secure',
-                      desc: language === 'fr' ? 'Transactions protégées' : 'Protected transactions'
-                    },
-                    { 
-                      icon: RefreshCw, 
-                      title: language === 'fr' ? 'Rechargeable' : 'Rechargeable',
-                      desc: language === 'fr' ? 'Depuis votre wallet' : 'From your wallet'
-                    },
-                    { 
-                      icon: CreditCard, 
-                      title: language === 'fr' ? 'Acceptée partout' : 'Accepted everywhere',
-                      desc: 'Netflix, Amazon, etc.'
-                    }
-                  ].map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <div key={item.title} className="flex items-start gap-4">
-                        <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-                          <Icon className="text-[#EA580C]" size={24} />
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="skeleton h-16 rounded-lg" />
+                    ))}
+                  </div>
+                ) : cardOrders.length === 0 ? (
+                  <div className="text-center py-8 text-stone-500">
+                    <CreditCard className="mx-auto mb-3 text-stone-400" size={48} />
+                    <p>{getText('Ou poko gen komand kat', 'Vous n\'avez pas encore de commande de carte', 'You have no card orders yet')}</p>
+                    <Button onClick={() => setShowOrderModal(true)} className="btn-gold mt-4">
+                      <ShoppingCart className="mr-2" size={18} />
+                      {getText('Komande premye kat ou', 'Commander votre première carte', 'Order your first card')}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-stone-100">
+                    {cardOrders.map((order) => (
+                      <div key={order.order_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-stone-100 rounded-lg flex items-center justify-center">
+                            <CreditCard className="text-stone-600" size={20} />
+                          </div>
+                          <div>
+                            <p className="font-medium text-stone-900">{order.card_email}</p>
+                            <p className="text-sm text-stone-500">
+                              {new Date(order.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-semibold text-stone-900">{item.title}</p>
-                          <p className="text-sm text-stone-500">{item.desc}</p>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-medium">G {order.fee}</span>
+                          {getStatusBadge(order.status)}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
+
+            {/* Deposit History for Cards */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <History size={20} className="text-amber-500" />
+                  {getText('Istorik Depo Kat', 'Historique des Dépôts Carte', 'Card Deposit History')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="skeleton h-16 rounded-lg" />
+                    ))}
+                  </div>
+                ) : cardDeposits.length === 0 ? (
+                  <div className="text-center py-8 text-stone-500">
+                    <Wallet className="mx-auto mb-3 text-stone-400" size={48} />
+                    <p>{getText('Pa gen istorik depo kat', 'Pas d\'historique de dépôt carte', 'No card deposit history')}</p>
+                    <p className="text-sm mt-1">{getText('Depo kat ou yo ap parèt isit la', 'Vos dépôts carte apparaîtront ici', 'Your card deposits will appear here')}</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-stone-100">
+                    {cardDeposits.map((deposit) => (
+                      <div key={deposit.deposit_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            deposit.status === 'approved' ? 'bg-emerald-100' : 
+                            deposit.status === 'rejected' ? 'bg-red-100' : 'bg-amber-100'
+                          }`}>
+                            <Wallet className={
+                              deposit.status === 'approved' ? 'text-emerald-600' : 
+                              deposit.status === 'rejected' ? 'text-red-600' : 'text-amber-600'
+                            } size={20} />
+                          </div>
+                          <div>
+                            <p className="font-medium text-stone-900">
+                              ${deposit.amount.toFixed(2)} USD
+                            </p>
+                            <p className="text-sm text-stone-500">
+                              {new Date(deposit.created_at).toLocaleDateString()} - {deposit.card_email}
+                            </p>
+                          </div>
+                        </div>
+                        {getStatusBadge(deposit.status)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Card Features */}
+            <div className="grid md:grid-cols-3 gap-6">
+              {[
+                { 
+                  icon: Shield, 
+                  title: getText('Sekirize', 'Sécurisé', 'Secure'),
+                  desc: getText('Pwoteksyon kont fwod', 'Protection contre la fraude', 'Fraud protection')
+                },
+                { 
+                  icon: CreditCard, 
+                  title: getText('Sèl USD', 'USD Uniquement', 'USD Only'),
+                  desc: getText('Retrè pa kat an USD sèlman', 'Retrait par carte en USD uniquement', 'Card withdrawal in USD only')
+                },
+                { 
+                  icon: Check, 
+                  title: getText('Aksepte toupatou', 'Accepté partout', 'Accepted everywhere'),
+                  desc: getText('Visa/Mastercard', 'Visa/Mastercard', 'Visa/Mastercard')
+                }
+              ].map((feature, i) => {
+                const Icon = feature.icon;
+                return (
+                  <div key={i} className="bg-stone-50 rounded-xl p-6 text-center">
+                    <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center mx-auto mb-4">
+                      <Icon className="text-[#EA580C]" size={24} />
+                    </div>
+                    <h3 className="font-semibold text-stone-900 mb-1">{feature.title}</h3>
+                    <p className="text-sm text-stone-500">{feature.desc}</p>
+                  </div>
+                );
+              })}
+            </div>
           </>
         )}
 
         {/* Order Modal */}
         <Dialog open={showOrderModal} onOpenChange={setShowOrderModal}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>{language === 'fr' ? 'Commander une carte virtuelle' : 'Order a virtual card'}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <CreditCard className="text-[#EA580C]" size={24} />
+                {getText('Komande Kat Vityèl', 'Commander une Carte Virtuelle', 'Order Virtual Card')}
+              </DialogTitle>
             </DialogHeader>
-            <div className="space-y-6">
+            
+            <div className="space-y-6 py-4">
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <p className="font-semibold text-amber-800 mb-2">
-                  {language === 'fr' ? 'Frais de commande' : 'Order fee'}
-                </p>
-                <p className="text-2xl font-bold text-amber-700">G {cardFee.toLocaleString()}</p>
-                <p className="text-sm text-amber-600 mt-1">
-                  {language === 'fr' ? 'Débité de votre wallet HTG' : 'Debited from your HTG wallet'}
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="text-amber-500 mt-0.5" size={20} />
+                  <div>
+                    <p className="font-medium text-amber-800">
+                      {getText('Kat Tyè Pati', 'Carte Tiers', 'Third Party Card')}
+                    </p>
+                    <p className="text-sm text-amber-700 mt-1">
+                      {getText(
+                        'Kat vityèl la jere pa yon konpayi tyè. Nou ap voye email konfirmasyon lè kat la pare.',
+                        'La carte virtuelle est gérée par une société tierce. Nous vous enverrons un email de confirmation quand la carte sera prête.',
+                        'The virtual card is managed by a third party company. We will send you a confirmation email when the card is ready.'
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label>{getText('Email pou kat la', 'Email pour la carte', 'Email for the card')}</Label>
+                <Input
+                  type="email"
+                  placeholder="votre@email.com"
+                  value={cardEmail}
+                  onChange={(e) => setCardEmail(e.target.value)}
+                  className="mt-2"
+                  data-testid="card-email-input"
+                />
+                <p className="text-sm text-stone-500 mt-2">
+                  {getText(
+                    'Email sa a ap itilize pou voye detay kat la ak pou retrè pa kat.',
+                    'Cet email sera utilisé pour envoyer les détails de la carte et pour les retraits par carte.',
+                    'This email will be used to send card details and for card withdrawals.'
+                  )}
                 </p>
               </div>
 
-              {user?.wallet_htg < cardFee && (
-                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                  <p className="text-red-700 text-sm">
-                    {language === 'fr' 
-                      ? `Solde insuffisant. Vous avez G ${user?.wallet_htg?.toLocaleString() || 0}`
-                      : `Insufficient balance. You have G ${user?.wallet_htg?.toLocaleString() || 0}`}
-                  </p>
+              <div className="bg-stone-50 rounded-xl p-4">
+                <div className="flex justify-between items-center">
+                  <span className="text-stone-600">{getText('Frè komand', 'Frais de commande', 'Order fee')}</span>
+                  <span className="font-bold text-stone-900">G {cardFee}</span>
                 </div>
-              )}
-
-              <div>
-                <Label>{language === 'fr' ? 'Nom sur la carte' : 'Name on card'}</Label>
-                <Input
-                  placeholder={user?.full_name?.toUpperCase()}
-                  value={cardName}
-                  onChange={(e) => setCardName(e.target.value.toUpperCase())}
-                  className="mt-2 uppercase"
-                  maxLength={25}
-                />
               </div>
 
               <Button 
                 onClick={orderCard}
-                disabled={ordering || user?.wallet_htg < cardFee || !cardName.trim()}
+                disabled={ordering || !cardEmail.trim()}
                 className="w-full btn-primary"
+                data-testid="order-card-submit"
               >
-                {ordering ? (language === 'fr' ? 'Commande en cours...' : 'Ordering...') : (language === 'fr' ? 'Commander' : 'Order')}
+                {ordering 
+                  ? getText('Komand ap fèt...', 'Commande en cours...', 'Ordering...')
+                  : getText('Konfime komand', 'Confirmer la commande', 'Confirm order')
+                }
               </Button>
             </div>
           </DialogContent>
