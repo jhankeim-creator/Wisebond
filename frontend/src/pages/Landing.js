@@ -123,7 +123,7 @@ export default function Landing() {
               
               <div className="flex flex-wrap gap-4">
                 <Link to="/register">
-                  <Button className="btn-primary text-lg px-8 py-4 h-auto" data-testid="get-started-btn">
+                  <Button className="bg-[#EA580C] hover:bg-[#C2410C] text-white font-bold text-lg px-8 py-4 h-auto rounded-full shadow-lg shadow-orange-500/20" data-testid="get-started-btn">
                     {t('getStarted')}
                     <ArrowRight className="ml-2" size={20} />
                   </Button>
