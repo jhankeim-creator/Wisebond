@@ -86,6 +86,7 @@ class WithdrawalRequest(BaseModel):
     currency: str
     method: str
     destination: str
+    source_currency: Optional[str] = None  # For cross-currency withdrawal
 
 class TransferRequest(BaseModel):
     recipient_client_id: str
