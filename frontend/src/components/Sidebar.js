@@ -123,7 +123,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
                 className={location.pathname.startsWith('/admin') ? 'sidebar-item-active' : 'sidebar-item'}
               >
                 <Shield size={20} />
-                <span>{t('admin')}</span>
+                <span>{getText('Administrasyon', 'Administration', 'Administration')}</span>
               </Link>
             </>
           )}
