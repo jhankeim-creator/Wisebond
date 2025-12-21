@@ -1560,18 +1560,26 @@ async def admin_process_withdrawal(
 # Exchange Rates Admin
 @api_router.put("/admin/exchange-rates")
 async def admin_update_exchange_rates(rates: ExchangeRateUpdate, admin: dict = Depends(get_admin_user)):
+    update_data = {
+        "htg_to_usd": rates.htg_to_usd,
+        "usd_to_htg": rates.usd_to_htg,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": admin["user_id"]
+    }
+    
+    # Add swap rates if provided
+    if rates.swap_htg_to_usd is not None:
+        update_data["swap_htg_to_usd"] = rates.swap_htg_to_usd
+    if rates.swap_usd_to_htg is not None:
+        update_data["swap_usd_to_htg"] = rates.swap_usd_to_htg
+    
     await db.exchange_rates.update_one(
         {"rate_id": "main"},
-        {"$set": {
-            "htg_to_usd": rates.htg_to_usd,
-            "usd_to_htg": rates.usd_to_htg,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "updated_by": admin["user_id"]
-        }},
+        {"$set": update_data},
         upsert=True
     )
     
-    await log_action(admin["user_id"], "exchange_rate_update", {"htg_to_usd": rates.htg_to_usd, "usd_to_htg": rates.usd_to_htg})
+    await log_action(admin["user_id"], "exchange_rate_update", update_data)
     
     return {"message": "Exchange rates updated"}
 
