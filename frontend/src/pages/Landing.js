@@ -114,18 +114,20 @@ export default function Landing() {
             >
               <div className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 rounded-full text-[#EA580C] text-sm font-semibold mb-6">
                 <Shield size={16} />
-                <span>{language === 'fr' ? 'Sécurisé & Fiable' : 'Secure & Reliable'}</span>
+                <span>{getText('Sekirize & Fyab', 'Sécurisé & Fiable', 'Secure & Reliable')}</span>
               </div>
               
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-stone-900 leading-tight mb-6">
-                {language === 'fr' ? 'Votre Portefeuille' : 'Your Wallet'}{' '}
-                <span className="gradient-text">{language === 'fr' ? 'Multi-Devises' : 'Multi-Currency'}</span>
+                {getText('Pòtfèy Ou', 'Votre Portefeuille', 'Your Wallet')}{' '}
+                <span className="gradient-text">{getText('Multi-Deviz', 'Multi-Devises', 'Multi-Currency')}</span>
               </h1>
               
               <p className="text-lg text-stone-600 mb-8 max-w-lg leading-relaxed">
-                {language === 'fr' 
-                  ? 'Gérez vos finances en HTG et USD, effectuez des transferts instantanés, commandez votre carte virtuelle et gagnez avec notre programme d\'affiliation.'
-                  : 'Manage your finances in HTG and USD, make instant transfers, order your virtual card and earn with our affiliate program.'}
+                {getText(
+                  'Jere finans ou an HTG ak USD, fè transfè enstantane, komande kat vityèl ou epi touche ak pwogram afilyasyon nou.',
+                  'Gérez vos finances en HTG et USD, effectuez des transferts instantanés, commandez votre carte virtuelle et gagnez avec notre programme d\'affiliation.',
+                  'Manage your finances in HTG and USD, make instant transfers, order your virtual card and earn with our affiliate program.'
+                )}
               </p>
               
               <div className="flex flex-wrap gap-4">
