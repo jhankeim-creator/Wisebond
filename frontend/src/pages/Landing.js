@@ -216,12 +216,14 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 mb-4">
-              {t('features')}
+              {getText('Karakteristik', 'Fonctionnalités', 'Features')}
             </h2>
             <p className="text-lg text-stone-600 max-w-2xl mx-auto">
-              {language === 'fr' 
-                ? 'Tout ce dont vous avez besoin pour gérer vos finances en toute simplicité.'
-                : 'Everything you need to manage your finances with ease.'}
+              {getText(
+                'Tout sa ou bezwen pou jere finans ou fasil.',
+                'Tout ce dont vous avez besoin pour gérer vos finances en toute simplicité.',
+                'Everything you need to manage your finances with ease.'
+              )}
             </p>
           </div>
           
