@@ -544,6 +544,95 @@ async def get_withdrawal_fees():
     limits = await db.withdrawal_limits.find({}, {"_id": 0}).to_list(100)
     return {"fees": fees, "limits": limits}
 
+# ==================== SWAP ROUTES ====================
+
+@api_router.post("/wallet/swap")
+async def swap_currency(request: SwapRequest, current_user: dict = Depends(get_current_user)):
+    """Swap currency between HTG and USD"""
+    
+    from_currency = request.from_currency.upper()
+    to_currency = request.to_currency.upper()
+    
+    if from_currency not in ['HTG', 'USD'] or to_currency not in ['HTG', 'USD']:
+        raise HTTPException(status_code=400, detail="Invalid currency")
+    
+    if from_currency == to_currency:
+        raise HTTPException(status_code=400, detail="Cannot swap same currency")
+    
+    # Check balance
+    from_key = f"wallet_{from_currency.lower()}"
+    to_key = f"wallet_{to_currency.lower()}"
+    
+    if current_user.get(from_key, 0) < request.amount:
+        raise HTTPException(status_code=400, detail="Insufficient balance")
+    
+    # Get exchange rates
+    rates = await db.exchange_rates.find_one({"rate_id": "main"}, {"_id": 0})
+    if not rates:
+        rates = {"htg_to_usd": 0.0075, "usd_to_htg": 133.0}
+    
+    # Calculate converted amount
+    if from_currency == "HTG":
+        converted_amount = request.amount * rates["htg_to_usd"]
+    else:
+        converted_amount = request.amount * rates["usd_to_htg"]
+    
+    swap_id = str(uuid.uuid4())
+    
+    # Update user balances
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {
+            "$inc": {
+                from_key: -request.amount,
+                to_key: converted_amount
+            }
+        }
+    )
+    
+    # Create transaction records
+    await db.transactions.insert_many([
+        {
+            "transaction_id": str(uuid.uuid4()),
+            "user_id": current_user["user_id"],
+            "type": "swap_out",
+            "amount": -request.amount,
+            "currency": from_currency,
+            "reference_id": swap_id,
+            "status": "completed",
+            "description": f"Swap {from_currency} to {to_currency}",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        },
+        {
+            "transaction_id": str(uuid.uuid4()),
+            "user_id": current_user["user_id"],
+            "type": "swap_in",
+            "amount": converted_amount,
+            "currency": to_currency,
+            "reference_id": swap_id,
+            "status": "completed",
+            "description": f"Swap from {from_currency} to {to_currency}",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+    ])
+    
+    await log_action(current_user["user_id"], "swap", {
+        "from_currency": from_currency,
+        "to_currency": to_currency,
+        "amount": request.amount,
+        "converted_amount": converted_amount,
+        "rate_used": rates["htg_to_usd"] if from_currency == "HTG" else rates["usd_to_htg"]
+    })
+    
+    return {
+        "swap_id": swap_id,
+        "from_amount": request.amount,
+        "from_currency": from_currency,
+        "to_amount": converted_amount,
+        "to_currency": to_currency,
+        "rate_used": rates["htg_to_usd"] if from_currency == "HTG" else rates["usd_to_htg"]
+    }
+
 # ==================== TRANSFER ROUTES ====================
 
 @api_router.post("/transfers/send")
