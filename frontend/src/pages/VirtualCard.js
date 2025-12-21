@@ -135,22 +135,36 @@ export default function VirtualCard() {
         ) : (
           <>
             {/* Info Banner */}
-            <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-6 text-white">
+            <div className="bg-gradient-to-r from-purple-600 to-purple-800 rounded-2xl p-6 text-white">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
                   <CreditCard size={24} />
                 </div>
                 <div>
                   <h2 className="text-xl font-bold mb-2">
-                    {getText('Kat Vityèl (Tyè Pati)', 'Carte Virtuelle (Tiers)', 'Virtual Card (Third Party)')}
+                    {getText('Kat Vityèl pou Acha an Liy', 'Carte Virtuelle pour Achats en Ligne', 'Virtual Card for Online Purchases')}
                   </h2>
-                  <p className="text-amber-100 text-sm">
+                  <p className="text-purple-100 text-sm mb-3">
                     {getText(
-                      'Kat vityèl la jere pa yon tyè pati. Balans kat la pa afiche isit la. Ou ap wè sèlman istorik depo ou ki apwouve oswa rejte.',
-                      'La carte virtuelle est gérée par un tiers. Le solde de la carte n\'est pas affiché ici. Vous ne verrez que l\'historique de vos dépôts approuvés ou rejetés.',
-                      'The virtual card is managed by a third party. The card balance is not displayed here. You will only see your approved or rejected deposit history.'
+                      'Kreye yon kat vityèl pou fè acha an liy (Netflix, Amazon, elatriye). Kat la jere pa yon tyè pati.',
+                      'Créez une carte virtuelle pour faire des achats en ligne (Netflix, Amazon, etc.). La carte est gérée par un tiers.',
+                      'Create a virtual card for online purchases (Netflix, Amazon, etc.). The card is managed by a third party.'
                     )}
                   </p>
+                  <div className="bg-white/10 rounded-lg p-3 mb-3">
+                    <p className="text-emerald-300 font-semibold flex items-center gap-2">
+                      🎁 {getText('Bonis: $5 USD sou premye kat ou!', 'Bonus: $5 USD sur votre première carte!', 'Bonus: $5 USD on your first card!')}
+                    </p>
+                  </div>
+                  <div className="bg-red-500/20 border border-red-300/30 rounded-lg p-3">
+                    <p className="text-red-100 text-xs font-medium flex items-center gap-2">
+                      ⚠️ {getText(
+                        'ENPÒTAN: Kat la PA pou peye sit paryaj oswa sit pokografik. Vyolasyon ap lakoz bloke kont ou.',
+                        'IMPORTANT: La carte n\'est PAS pour payer des sites de paris ou des sites pornographiques. Toute violation entraînera le blocage de votre compte.',
+                        'IMPORTANT: The card is NOT for paying gambling or pornographic sites. Violations will result in account blocking.'
+                      )}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
