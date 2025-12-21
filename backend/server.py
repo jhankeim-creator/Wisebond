@@ -794,19 +794,22 @@ async def get_affiliate_info(current_user: dict = Depends(get_current_user)):
         {"_id": 0, "user_id": 1, "client_id": 1, "full_name": 1, "created_at": 1}
     ).to_list(100)
     
-    # Check which referrals have ordered cards
+    # Check which referrals have approved card orders
     referrals_with_cards = 0
     enriched_referrals = []
     
     for ref in referrals:
-        has_card = await db.virtual_cards.find_one({"user_id": ref["user_id"]}) is not None
-        if has_card:
+        has_approved_card = await db.virtual_card_orders.find_one({
+            "user_id": ref["user_id"],
+            "status": "approved"
+        }) is not None
+        if has_approved_card:
             referrals_with_cards += 1
         enriched_referrals.append({
             "client_id": ref["client_id"],
             "full_name": ref["full_name"],
             "created_at": ref["created_at"],
-            "has_card": has_card
+            "has_card": has_approved_card
         })
     
     return {
