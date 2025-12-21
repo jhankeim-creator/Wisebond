@@ -465,7 +465,8 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
     
     await log_action(current_user["user_id"], "withdrawal_request", {"amount": request.amount, "method": request.method})
     
-    del withdrawal["_id"] if "_id" in withdrawal else None
+    if "_id" in withdrawal:
+        del withdrawal["_id"]
     return {"withdrawal": withdrawal}
 
 @api_router.get("/withdrawals")
