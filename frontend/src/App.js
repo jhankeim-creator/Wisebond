@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { LanguageProvider } from "@/context/LanguageContext";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { LiveChat } from "@/components/LiveChat";
 
 // Pages
 import Landing from "@/pages/Landing";
@@ -43,7 +44,7 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
   
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-stone-50">
+      <div className="min-h-screen flex items-center justify-center bg-stone-50 dark:bg-stone-900">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#EA580C]"></div>
       </div>
     );
