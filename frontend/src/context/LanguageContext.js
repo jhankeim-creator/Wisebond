@@ -1,6 +1,148 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const translations = {
+  ht: {
+    // Navigation
+    home: "Akèy",
+    dashboard: "Tablo bò",
+    deposit: "Depoze",
+    withdraw: "Retire",
+    transfer: "Voye",
+    transactions: "Tranzaksyon",
+    kyc: "Verifikasyon KYC",
+    affiliate: "Afilyasyon",
+    settings: "Paramèt",
+    logout: "Dekonekte",
+    admin: "Administrasyon",
+    
+    // Auth
+    login: "Konekte",
+    register: "Enskri",
+    email: "Imèl",
+    password: "Modpas",
+    confirmPassword: "Konfime modpas",
+    fullName: "Non konplè",
+    phone: "Telefòn",
+    forgotPassword: "Bliye modpas?",
+    resetPassword: "Reyinisyalize modpas",
+    newPassword: "Nouvo modpas",
+    alreadyHaveAccount: "Ou gen yon kont deja?",
+    dontHaveAccount: "Ou pa gen kont?",
+    
+    // Landing
+    heroTitle: "Pòtfèy Multi-Deviz Ou",
+    heroSubtitle: "Jere finans ou an HTG ak USD, fè transfè enstantane, epi benefisye nan sistèm afilyasyon nou.",
+    getStarted: "Kòmanse",
+    learnMore: "Aprann plis",
+    features: "Karakteristik",
+    secureWallet: "Pòtfèy Sekirize",
+    secureWalletDesc: "Lajan ou pwoteje ak sekirite nivo bank.",
+    instantTransfers: "Transfè Enstantane",
+    instantTransfersDesc: "Voye lajan bay nenpòt moun nan kèk segonn.",
+    multiCurrency: "Multi-Deviz",
+    multiCurrencyDesc: "Jere HTG ak USD nan yon sèl kont.",
+    affiliateProgram: "Pwogram Afilyasyon",
+    affiliateProgramDesc: "Touche G 2,000 pou chak 5 moun ou refere ki komande yon kat!",
+    
+    // Dashboard
+    welcomeBack: "Byenveni",
+    totalBalance: "Balans Total",
+    availableBalance: "Balans Disponib",
+    recentTransactions: "Tranzaksyon Resan",
+    noTransactions: "Pa gen tranzaksyon",
+    viewAll: "Wè tout",
+    
+    // Deposit
+    depositFunds: "Depoze lajan",
+    selectMethod: "Chwazi metòd",
+    amount: "Montan",
+    uploadProof: "Telechaje prèv peman",
+    submitDeposit: "Soumèt depo",
+    depositPending: "Depo ap tann validasyon",
+    
+    // Withdraw
+    withdrawFunds: "Retire lajan",
+    destination: "Destinasyon",
+    fee: "Frè",
+    netAmount: "Montan nèt",
+    submitWithdrawal: "Soumèt retrè",
+    
+    // Transfer
+    sendMoney: "Voye lajan",
+    recipientId: "ID Destinatè",
+    transferSuccess: "Transfè reyisi",
+    
+    // KYC
+    kycVerification: "Verifikasyon idantite",
+    kycRequired: "Verifikasyon KYC obligatwa pou fè tranzaksyon.",
+    dateOfBirth: "Dat nesans",
+    address: "Adrès",
+    nationality: "Nasyonalite",
+    idType: "Tip dokiman",
+    idCard: "Kat idantite",
+    passport: "Paspò",
+    frontPhoto: "Foto devan",
+    backPhoto: "Foto dèyè",
+    selfieWithId: "Selfie ak dokiman",
+    submitKyc: "Soumèt verifikasyon",
+    kycPending: "Ap tann verifikasyon",
+    kycApproved: "Verifye",
+    kycRejected: "Rejte",
+    
+    // Affiliate
+    yourAffiliateLink: "Lyen afilyasyon ou",
+    copyLink: "Kopye lyen",
+    linkCopied: "Lyen kopye!",
+    totalEarnings: "Tout sa ou touche",
+    totalReferrals: "Total moun ou refere",
+    affiliateRules: "Règ pwogram nan",
+    affiliateRule1: "Touche G 2,000 pou chak 5 moun ou refere ki komande yon kat",
+    
+    // Status
+    pending: "Ap tann",
+    approved: "Apwouve",
+    rejected: "Rejte",
+    completed: "Konplete",
+    
+    // Common
+    submit: "Soumèt",
+    cancel: "Anile",
+    save: "Anrejistre",
+    edit: "Modifye",
+    delete: "Efase",
+    search: "Chèche",
+    filter: "Filtre",
+    loading: "Chajman...",
+    error: "Erè",
+    success: "Siksè",
+    confirm: "Konfime",
+    back: "Retounen",
+    next: "Pwochen",
+    close: "Fèmen",
+    
+    // Admin
+    adminPanel: "Panèl Administrasyon",
+    users: "Itilizatè",
+    deposits: "Depo",
+    withdrawals: "Retrè",
+    exchangeRates: "To chanj",
+    fees: "Frè",
+    bulkEmail: "Imèl an mas",
+    logs: "Jounal",
+    approve: "Apwouve",
+    reject: "Rejte",
+    
+    // Virtual Card
+    virtualCard: "Kat Vityèl",
+    orderCard: "Komande kat",
+    cardBalance: "Balans kat",
+    
+    // Errors
+    invalidCredentials: "Idantifyan envalid",
+    insufficientBalance: "Balans ensifizan",
+    kycRequiredError: "Verifikasyon KYC obligatwa",
+    networkError: "Erè rezo",
+  },
   fr: {
     // Navigation
     home: "Accueil",
