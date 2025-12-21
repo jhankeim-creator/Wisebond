@@ -146,12 +146,12 @@ export default function Landing() {
               <div className="flex items-center gap-8 mt-12 pt-8 border-t border-stone-200">
                 <div>
                   <p className="text-3xl font-bold text-stone-900">10K+</p>
-                  <p className="text-sm text-stone-500">{language === 'fr' ? 'Utilisateurs' : 'Users'}</p>
+                  <p className="text-sm text-stone-500">{getText('Itilizatè', 'Utilisateurs', 'Users')}</p>
                 </div>
                 <div className="h-10 w-px bg-stone-200" />
                 <div>
                   <p className="text-3xl font-bold text-stone-900">$5M+</p>
-                  <p className="text-sm text-stone-500">{language === 'fr' ? 'Transactions' : 'Transactions'}</p>
+                  <p className="text-sm text-stone-500">{getText('Tranzaksyon', 'Transactions', 'Transactions')}</p>
                 </div>
                 <div className="h-10 w-px bg-stone-200" />
                 <div>
