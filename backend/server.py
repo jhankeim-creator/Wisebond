@@ -641,7 +641,7 @@ async def swap_currency(request: SwapRequest, current_user: dict = Depends(get_c
         "to_currency": to_currency,
         "amount": request.amount,
         "converted_amount": converted_amount,
-        "rate_used": rates["htg_to_usd"] if from_currency == "HTG" else rates["usd_to_htg"]
+        "rate_used": rate_used
     })
     
     return {
@@ -650,7 +650,7 @@ async def swap_currency(request: SwapRequest, current_user: dict = Depends(get_c
         "from_currency": from_currency,
         "to_amount": converted_amount,
         "to_currency": to_currency,
-        "rate_used": rates["htg_to_usd"] if from_currency == "HTG" else rates["usd_to_htg"]
+        "rate_used": rate_used
     }
 
 # ==================== TRANSFER ROUTES ====================
