@@ -193,7 +193,7 @@ class KayicomAPITester:
         return success1 and success2
 
     def test_admin_endpoints(self):
-        """Test admin endpoints"""
+        """Test admin endpoints including settings"""
         print("\n=== ADMIN TESTS ===")
         
         if not self.admin_token:
@@ -214,7 +214,33 @@ class KayicomAPITester:
         # Test get KYC submissions
         success3, _ = self.run_test("Admin Get KYC", "GET", "admin/kyc", 200, use_admin=True)
         
-        return success1 and success2 and success3
+        # Test admin settings endpoints
+        success4, response = self.run_test("Admin Get Settings", "GET", "admin/settings", 200, use_admin=True)
+        if success4 and response:
+            settings = response.get('settings', {})
+            print(f"   Settings configured: {len(settings)} fields")
+            print(f"   Resend API Key: {'✓' if settings.get('resend_api_key') else '✗'}")
+            print(f"   Crisp Website ID: {'✓' if settings.get('crisp_website_id') else '✗'}")
+            print(f"   WhatsApp Number: {'✓' if settings.get('whatsapp_number') else '✗'}")
+        
+        # Test admin settings update
+        settings_data = {
+            "resend_api_key": "test_key_123",
+            "sender_email": "test@kayicom.com",
+            "crisp_website_id": "test-crisp-id",
+            "whatsapp_number": "+509 1234 5678"
+        }
+        
+        success5, _ = self.run_test(
+            "Admin Update Settings",
+            "PUT",
+            "admin/settings",
+            200,
+            data=settings_data,
+            use_admin=True
+        )
+        
+        return success1 and success2 and success3 and success4 and success5
 
     def test_kyc_endpoints(self):
         """Test KYC endpoints"""
