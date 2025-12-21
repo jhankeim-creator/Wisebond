@@ -119,7 +119,7 @@ export default function Dashboard() {
           <div className="wallet-card-htg" data-testid="wallet-htg">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <p className="text-orange-200 text-sm uppercase tracking-wide">Balance HTG</p>
+                <p className="text-orange-200 text-sm uppercase tracking-wide">{getText('Balans HTG', 'Solde HTG', 'Balance HTG')}</p>
                 <p className="text-3xl font-bold mt-1">
                   {formatCurrency(user?.wallet_htg || 0, 'HTG')}
                 </p>
@@ -144,7 +144,7 @@ export default function Dashboard() {
           <div className="wallet-card-usd" data-testid="wallet-usd">
             <div className="flex justify-between items-start mb-6">
               <div>
-                <p className="text-amber-200 text-sm uppercase tracking-wide">Balance USD</p>
+                <p className="text-amber-200 text-sm uppercase tracking-wide">{getText('Balans USD', 'Solde USD', 'Balance USD')}</p>
                 <p className="text-3xl font-bold mt-1">
                   {formatCurrency(user?.wallet_usd || 0, 'USD')}
                 </p>
@@ -161,7 +161,7 @@ export default function Dashboard() {
                 <span className={`w-2 h-2 rounded-full ${
                   user?.kyc_status === 'approved' ? 'bg-white' : 'bg-white/50'
                 }`} />
-                <span className="text-sm text-amber-200 capitalize">{user?.kyc_status}</span>
+                <span className="text-sm text-amber-200 capitalize">{user?.kyc_status === 'approved' ? getText('Verifye', 'Vérifié', 'Verified') : user?.kyc_status}</span>
               </div>
               {rates && (
                 <div className="text-right">
