@@ -16,7 +16,8 @@ import {
   RefreshCw,
   CheckCircle,
   TrendingUp,
-  Smartphone
+  Smartphone,
+  DollarSign
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
