@@ -85,8 +85,14 @@ export default function VirtualCard() {
 
   const cardFee = 500; // 500 HTG for card
 
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
+
   return (
-    <DashboardLayout title={language === 'fr' ? 'Carte Virtuelle' : 'Virtual Card'}>
+    <DashboardLayout title={getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card')}>
       <div className="space-y-6" data-testid="virtual-card-page">
         {/* KYC Check */}
         {user?.kyc_status !== 'approved' ? (
@@ -94,15 +100,17 @@ export default function VirtualCard() {
             <CardContent className="p-8 text-center">
               <AlertCircle className="mx-auto text-amber-500 mb-4" size={48} />
               <h3 className="text-xl font-bold text-stone-900 mb-2">
-                {language === 'fr' ? 'Vérification KYC requise' : 'KYC verification required'}
+                {getText('Verifikasyon KYC obligatwa', 'Vérification KYC requise', 'KYC verification required')}
               </h3>
               <p className="text-stone-600 mb-6">
-                {language === 'fr' 
-                  ? 'Vous devez compléter votre vérification KYC pour commander une carte.'
-                  : 'You must complete KYC verification to order a card.'}
+                {getText(
+                  'Ou dwe konplete verifikasyon KYC ou pou komande yon kat.',
+                  'Vous devez compléter votre vérification KYC pour commander une carte.',
+                  'You must complete KYC verification to order a card.'
+                )}
               </p>
               <Button className="btn-primary" onClick={() => window.location.href = '/kyc'}>
-                {language === 'fr' ? 'Compléter KYC' : 'Complete KYC'}
+                {getText('Konplete KYC', 'Compléter KYC', 'Complete KYC')}
               </Button>
             </CardContent>
           </Card>
@@ -112,15 +120,15 @@ export default function VirtualCard() {
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-bold text-stone-900">
-                  {language === 'fr' ? 'Mes Cartes' : 'My Cards'}
+                  {getText('Kat Mwen Yo', 'Mes Cartes', 'My Cards')}
                 </h2>
                 <p className="text-stone-500">
-                  {language === 'fr' ? 'Gérez vos cartes virtuelles KAYICOM' : 'Manage your KAYICOM virtual cards'}
+                  {getText('Jere kat vityèl KAYICOM ou yo', 'Gérez vos cartes virtuelles KAYICOM', 'Manage your KAYICOM virtual cards')}
                 </p>
               </div>
               <Button onClick={() => setShowOrderModal(true)} className="btn-primary">
                 <ShoppingCart className="mr-2" size={18} />
-                {language === 'fr' ? 'Commander une carte' : 'Order a card'}
+                {getText('Komande yon kat', 'Commander une carte', 'Order a card')}
               </Button>
             </div>
 
@@ -136,16 +144,18 @@ export default function VirtualCard() {
                 <CardContent className="p-12 text-center">
                   <CreditCard className="mx-auto text-stone-400 mb-4" size={64} />
                   <h3 className="text-xl font-bold text-stone-900 mb-2">
-                    {language === 'fr' ? 'Aucune carte' : 'No cards'}
+                    {getText('Pa gen kat', 'Aucune carte', 'No cards')}
                   </h3>
                   <p className="text-stone-600 mb-6">
-                    {language === 'fr' 
-                      ? 'Commandez votre première carte virtuelle pour payer partout!'
-                      : 'Order your first virtual card to pay anywhere!'}
+                    {getText(
+                      'Komande premye kat vityèl ou pou peye toupatou!',
+                      'Commandez votre première carte virtuelle pour payer partout!',
+                      'Order your first virtual card to pay anywhere!'
+                    )}
                   </p>
                   <Button onClick={() => setShowOrderModal(true)} className="btn-gold">
                     <ShoppingCart className="mr-2" size={18} />
-                    {language === 'fr' ? 'Commander maintenant' : 'Order now'}
+                    {getText('Komande kounye a', 'Commander maintenant', 'Order now')}
                   </Button>
                 </CardContent>
               </Card>
