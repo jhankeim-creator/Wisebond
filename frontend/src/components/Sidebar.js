@@ -44,6 +44,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { path: '/swap', icon: ArrowDownUp, label: 'Swap' },
     { path: '/transfer', icon: Send, label: getText('Voye', 'Envoyer', 'Transfer') },
     { path: '/virtual-card', icon: CreditCard, label: getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card') },
+    { path: '/topup', icon: Phone, label: getText('Minit Entènasyonal', 'Minutes Internationales', 'International Minutes') },
     { path: '/transactions', icon: History, label: getText('Tranzaksyon', 'Transactions', 'Transactions') },
     { path: '/kyc', icon: UserCheck, label: getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification') },
     { path: '/affiliate', icon: Users, label: getText('Afilyasyon', 'Affiliation', 'Affiliate') },
