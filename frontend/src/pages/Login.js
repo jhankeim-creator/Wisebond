@@ -21,6 +21,12 @@ export default function Login() {
   });
   const [loading, setLoading] = useState(false);
 
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -50,7 +56,7 @@ export default function Login() {
             <div>
               <h1 className="text-3xl font-bold text-stone-900">{t('login')}</h1>
               <p className="text-stone-600 mt-1">
-                {language === 'fr' ? 'Bienvenue! Connectez-vous à votre compte.' : 'Welcome! Sign in to your account.'}
+                {getText('Byenveni! Konekte nan kont ou.', 'Bienvenue! Connectez-vous à votre compte.', 'Welcome! Sign in to your account.')}
               </p>
             </div>
             <LanguageSwitcher />
