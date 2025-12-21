@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
+import { Logo } from '@/components/Logo';
 import { 
   LayoutDashboard, 
   ArrowDownCircle, 
@@ -13,7 +14,8 @@ import {
   Settings,
   LogOut,
   Shield,
-  X
+  X,
+  CreditCard
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -32,6 +34,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { path: '/deposit', icon: ArrowDownCircle, label: t('deposit') },
     { path: '/withdraw', icon: ArrowUpCircle, label: t('withdraw') },
     { path: '/transfer', icon: Send, label: t('transfer') },
+    { path: '/virtual-card', icon: CreditCard, label: 'Carte Virtuelle' },
     { path: '/transactions', icon: History, label: t('transactions') },
     { path: '/kyc', icon: UserCheck, label: t('kyc') },
     { path: '/affiliate', icon: Users, label: t('affiliate') },
@@ -52,29 +55,26 @@ export const Sidebar = ({ isOpen, onClose }) => {
         {/* Close button for mobile */}
         <button 
           onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-white lg:hidden"
+          className="absolute top-4 right-4 text-stone-400 hover:text-stone-600 lg:hidden"
         >
           <X size={24} />
         </button>
         
         {/* Logo */}
-        <div className="sidebar-logo flex items-center gap-2">
-          <div className="w-10 h-10 bg-[#0047AB] rounded-xl flex items-center justify-center">
-            <span className="text-white font-bold text-xl">K</span>
-          </div>
-          <span>KAYICOM</span>
+        <div className="mb-8">
+          <Logo />
         </div>
 
         {/* User info */}
-        <div className="mb-6 p-4 bg-white/5 rounded-xl">
-          <p className="text-white font-medium truncate">{user?.full_name}</p>
-          <p className="text-slate-400 text-sm">{user?.client_id}</p>
+        <div className="mb-6 p-4 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl border border-orange-100">
+          <p className="text-stone-900 font-semibold truncate">{user?.full_name}</p>
+          <p className="text-stone-500 text-sm font-mono">{user?.client_id}</p>
           <div className="flex items-center gap-2 mt-2">
             <span className={`w-2 h-2 rounded-full ${
               user?.kyc_status === 'approved' ? 'bg-emerald-500' : 
               user?.kyc_status === 'pending' ? 'bg-amber-500 animate-pulse' : 'bg-red-500'
             }`} />
-            <span className="text-xs text-slate-400 capitalize">{user?.kyc_status}</span>
+            <span className="text-xs text-stone-500 capitalize">{user?.kyc_status}</span>
           </div>
         </div>
 
@@ -99,7 +99,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
           
           {isAdmin && (
             <>
-              <div className="h-px bg-white/10 my-4" />
+              <div className="h-px bg-stone-200 my-4" />
               <Link
                 to="/admin"
                 onClick={onClose}
@@ -115,7 +115,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
         {/* Logout */}
         <button
           onClick={handleLogout}
-          className="sidebar-item w-full text-left mt-4 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+          className="sidebar-item w-full text-left mt-4 text-red-500 hover:text-red-600 hover:bg-red-50"
         >
           <LogOut size={20} />
           <span>{t('logout')}</span>
