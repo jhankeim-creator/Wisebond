@@ -435,6 +435,13 @@ export const LanguageProvider = ({ children }) => {
     return translations[language]?.[key] || translations['en']?.[key] || key;
   };
 
+  // Helper function for inline translations
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
+
   const toggleLanguage = () => {
     // Cycle through: ht -> fr -> en -> ht
     setLanguage(prev => {
@@ -445,7 +452,7 @@ export const LanguageProvider = ({ children }) => {
   };
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, toggleLanguage, t }}>
+    <LanguageContext.Provider value={{ language, setLanguage, toggleLanguage, t, getText }}>
       {children}
     </LanguageContext.Provider>
   );
