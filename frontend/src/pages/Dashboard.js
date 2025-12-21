@@ -302,7 +302,7 @@ export default function Dashboard() {
             <Link to="/virtual-card">
               <Button className="bg-gradient-to-r from-[#EA580C] to-[#F59E0B] hover:opacity-90">
                 <CreditCard className="mr-2" size={18} />
-                {language === 'fr' ? 'Commander' : 'Order'}
+                {getText('Komande', 'Commander', 'Order')}
               </Button>
             </Link>
           </div>
