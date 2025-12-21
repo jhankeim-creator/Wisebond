@@ -30,6 +30,16 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState([]);
   const [rates, setRates] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  const copyClientId = () => {
+    if (user?.client_id) {
+      navigator.clipboard.writeText(user.client_id);
+      setCopied(true);
+      toast.success(getText('ID kopye!', 'ID copié!', 'ID copied!'));
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
