@@ -561,7 +561,7 @@ async def get_withdrawal_fees():
 
 @api_router.post("/wallet/swap")
 async def swap_currency(request: SwapRequest, current_user: dict = Depends(get_current_user)):
-    """Swap currency between HTG and USD"""
+    """Swap currency between HTG and USD with separate swap rates"""
     
     from_currency = request.from_currency.upper()
     to_currency = request.to_currency.upper()
@@ -579,16 +579,23 @@ async def swap_currency(request: SwapRequest, current_user: dict = Depends(get_c
     if current_user.get(from_key, 0) < request.amount:
         raise HTTPException(status_code=400, detail="Insufficient balance")
     
-    # Get exchange rates
+    # Get exchange rates (with separate swap rates)
     rates = await db.exchange_rates.find_one({"rate_id": "main"}, {"_id": 0})
     if not rates:
-        rates = {"htg_to_usd": 0.0075, "usd_to_htg": 133.0}
+        rates = {
+            "htg_to_usd": 0.0075, 
+            "usd_to_htg": 133.0,
+            "swap_htg_to_usd": 0.0074,  # Slightly worse for user
+            "swap_usd_to_htg": 132.0    # Slightly worse for user
+        }
     
-    # Calculate converted amount
+    # Use swap-specific rates if available, otherwise fall back to general rates
     if from_currency == "HTG":
-        converted_amount = request.amount * rates["htg_to_usd"]
+        rate_used = rates.get("swap_htg_to_usd", rates.get("htg_to_usd", 0.0075))
+        converted_amount = request.amount * rate_used
     else:
-        converted_amount = request.amount * rates["usd_to_htg"]
+        rate_used = rates.get("swap_usd_to_htg", rates.get("usd_to_htg", 133.0))
+        converted_amount = request.amount * rate_used
     
     swap_id = str(uuid.uuid4())
     
