@@ -123,14 +123,16 @@ function AppRoutes() {
 
 function App() {
   return (
-    <LanguageProvider>
-      <AuthProvider>
-        <BrowserRouter>
-          <AppRoutes />
-          <Toaster position="top-right" richColors />
-        </BrowserRouter>
-      </AuthProvider>
-    </LanguageProvider>
+    <ThemeProvider>
+      <LanguageProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <AppRoutes />
+            <Toaster position="top-right" richColors />
+          </BrowserRouter>
+        </AuthProvider>
+      </LanguageProvider>
+    </ThemeProvider>
   );
 }
 
