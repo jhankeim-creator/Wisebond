@@ -98,7 +98,7 @@ export default function Affiliate() {
   const completedSets = Math.floor(referralsWithCards / 5);
 
   return (
-    <DashboardLayout title={language === 'fr' ? 'Programme d\'Affiliation' : 'Affiliate Program'}>
+    <DashboardLayout title={getText('Pwogram Afilyasyon', 'Programme d\'Affiliation', 'Affiliate Program')}>
       <div className="space-y-6" data-testid="affiliate-page">
         {/* Main Stats */}
         <div className="grid md:grid-cols-3 gap-6">
@@ -108,7 +108,7 @@ export default function Affiliate() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-amber-100 text-sm uppercase tracking-wide">
-                    {language === 'fr' ? 'Gains disponibles' : 'Available earnings'}
+                    {getText('Lajan disponib', 'Gains disponibles', 'Available earnings')}
                   </p>
                   <p className="text-4xl font-bold mt-2">
                     G {(user?.affiliate_earnings || 0).toLocaleString()}
@@ -128,13 +128,13 @@ export default function Affiliate() {
                 className="mt-6 bg-white text-amber-600 hover:bg-amber-50 font-bold"
               >
                 {withdrawing 
-                  ? (language === 'fr' ? 'Transfert...' : 'Transferring...') 
-                  : (language === 'fr' ? 'Transférer vers wallet' : 'Transfer to wallet')}
+                  ? getText('Transfè...', 'Transfert...', 'Transferring...') 
+                  : getText('Transfere nan wallet', 'Transférer vers wallet', 'Transfer to wallet')}
                 <ArrowRight className="ml-2" size={18} />
               </Button>
               {(user?.affiliate_earnings || 0) < 2000 && (
                 <p className="text-amber-100 text-xs mt-2">
-                  {language === 'fr' ? 'Minimum: G 2,000' : 'Minimum: G 2,000'}
+                  {getText('Minimòm: G 2,000', 'Minimum: G 2,000', 'Minimum: G 2,000')}
                 </p>
               )}
             </CardContent>
@@ -147,7 +147,7 @@ export default function Affiliate() {
                 <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Users className="text-[#EA580C]" size={32} />
                 </div>
-                <p className="text-stone-500 text-sm">{language === 'fr' ? 'Total filleuls' : 'Total referrals'}</p>
+                <p className="text-stone-500 text-sm">{getText('Total moun refere', 'Total filleuls', 'Total referrals')}</p>
                 <p className="text-4xl font-bold text-stone-900 mt-1">
                   {affiliateData?.referrals?.length || 0}
                 </p>
