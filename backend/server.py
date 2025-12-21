@@ -1675,12 +1675,38 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
     if not settings:
         settings = {
             "setting_id": "main",
+            "resend_enabled": False,
             "resend_api_key": "",
             "sender_email": "",
+            "crisp_enabled": False,
             "crisp_website_id": "",
-            "whatsapp_number": ""
+            "whatsapp_enabled": False,
+            "whatsapp_number": "",
+            "plisio_enabled": False,
+            "plisio_api_key": "",
+            "plisio_secret_key": ""
         }
     return {"settings": settings}
+
+# Public endpoint for chat settings (no auth required)
+@api_router.get("/public/chat-settings")
+async def get_public_chat_settings():
+    """Get chat settings for public display (Crisp/WhatsApp)"""
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not settings:
+        return {
+            "crisp_enabled": False,
+            "crisp_website_id": None,
+            "whatsapp_enabled": False,
+            "whatsapp_number": None
+        }
+    
+    return {
+        "crisp_enabled": settings.get("crisp_enabled", False),
+        "crisp_website_id": settings.get("crisp_website_id") if settings.get("crisp_enabled") else None,
+        "whatsapp_enabled": settings.get("whatsapp_enabled", False),
+        "whatsapp_number": settings.get("whatsapp_number") if settings.get("whatsapp_enabled") else None
+    }
 
 @api_router.put("/admin/settings")
 async def admin_update_settings(settings: AdminSettingsUpdate, admin: dict = Depends(get_admin_user)):
