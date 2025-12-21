@@ -1006,7 +1006,8 @@ async def admin_create_fee(fee: FeeConfigUpdate, admin: dict = Depends(get_admin
     
     await log_action(admin["user_id"], "fee_create", fee.model_dump())
     
-    del fee_doc["_id"] if "_id" in fee_doc else None
+    if "_id" in fee_doc:
+        del fee_doc["_id"]
     return {"fee": fee_doc}
 
 @api_router.delete("/admin/fees/{fee_id}")
