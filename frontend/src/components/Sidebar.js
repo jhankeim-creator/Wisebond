@@ -72,18 +72,16 @@ export const Sidebar = ({ isOpen, onClose }) => {
           <X size={24} />
         </button>
         
-        {/* Logo - Clickable for admin */}
+        {/* Logo - Clickable to go home */}
         <div className="mb-8">
-          {isAdmin ? (
-            <Link to="/admin" className="block hover:opacity-80 transition-opacity">
-              <Logo />
-              <p className="text-xs text-stone-400 mt-1 text-center">{getText('Klike pou admin', 'Cliquez pour admin', 'Click for admin')}</p>
-            </Link>
-          ) : (
-            <Link to="/dashboard">
-              <Logo />
-            </Link>
-          )}
+          <Link to="/" className="block hover:opacity-80 transition-opacity">
+            <Logo linkToHome={false} />
+            {isAdmin && (
+              <p className="text-xs text-stone-400 mt-1 text-center">
+                <Link to="/admin" className="hover:text-[#EA580C]">{getText('Ale nan admin', 'Aller à admin', 'Go to admin')}</Link>
+              </p>
+            )}
+          </Link>
         </div>
 
         {/* User info */}
