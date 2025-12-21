@@ -1,25 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { useLanguage } from '@/context/LanguageContext';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Save, Key, Mail, MessageCircle, Wallet, CreditCard, DollarSign, Shield } from 'lucide-react';
+import { Save, Key, Mail, MessageCircle, Wallet, CreditCard, DollarSign, Shield, MessageSquare, Phone } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function AdminSettings() {
   const { language } = useLanguage();
   const [settings, setSettings] = useState({
+    // Email (Resend)
+    resend_enabled: false,
     resend_api_key: '',
     sender_email: '',
+    
+    // Live Chat (Crisp)
+    crisp_enabled: false,
     crisp_website_id: '',
+    
+    // WhatsApp
+    whatsapp_enabled: false,
     whatsapp_number: '',
+    
+    // USDT (Plisio)
+    plisio_enabled: false,
     plisio_api_key: '',
     plisio_secret_key: '',
+    
+    // Fees & Affiliate
     card_order_fee_htg: 500,
     affiliate_reward_htg: 2000,
     affiliate_cards_required: 5
@@ -67,125 +81,199 @@ export default function AdminSettings() {
         {/* Email Settings (Resend) */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Mail size={20} className="text-[#EA580C]" />
-              {getText('Konfigirasyon Imèl (Resend)', 'Configuration Email (Resend)', 'Email Configuration (Resend)')}
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Mail size={20} className="text-blue-500" />
+                  {getText('Imèl (Resend)', 'Email (Resend)', 'Email (Resend)')}
+                </CardTitle>
+                <CardDescription>
+                  {getText('Voye notifikasyon pa imèl', 'Envoyer des notifications par email', 'Send email notifications')}
+                </CardDescription>
+              </div>
+              <Switch
+                checked={settings.resend_enabled}
+                onCheckedChange={(checked) => setSettings({...settings, resend_enabled: checked})}
+              />
+            </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {loading ? (
-              <div className="text-center py-4">{getText('Chajman...', 'Chargement...', 'Loading...')}</div>
-            ) : (
-              <>
-                <div>
-                  <Label htmlFor="resend_key">
-                    <Key size={16} className="inline mr-2" />
-                    {getText('Kle API Resend', 'Clé API Resend', 'Resend API Key')}
-                  </Label>
-                  <Input
-                    id="resend_key"
-                    type="password"
-                    placeholder="re_xxxxxxxxxxxxx"
-                    value={settings.resend_api_key || ''}
-                    onChange={(e) => setSettings({...settings, resend_api_key: e.target.value})}
-                    className="mt-1 font-mono"
-                  />
-                  <p className="text-sm text-stone-500 mt-1">
-                    {getText('Jwenn kle ou sou', 'Obtenez votre clé sur', 'Get your key at')} <a href="https://resend.com" target="_blank" rel="noreferrer" className="text-[#EA580C] hover:underline">resend.com</a>
-                  </p>
-                </div>
-                <div>
-                  <Label htmlFor="sender_email">{getText('Imèl anvwa', "Email d'envoi", 'Sender Email')}</Label>
-                  <Input
-                    id="sender_email"
-                    type="email"
-                    placeholder="notifications@kayicom.com"
-                    value={settings.sender_email || ''}
-                    onChange={(e) => setSettings({...settings, sender_email: e.target.value})}
-                    className="mt-1"
-                  />
-                </div>
-              </>
-            )}
-          </CardContent>
+          {settings.resend_enabled && (
+            <CardContent className="space-y-4 border-t pt-4">
+              {loading ? (
+                <div className="text-center py-4">{getText('Chajman...', 'Chargement...', 'Loading...')}</div>
+              ) : (
+                <>
+                  <div>
+                    <Label htmlFor="resend_key">
+                      <Key size={16} className="inline mr-2" />
+                      {getText('Kle API Resend', 'Clé API Resend', 'Resend API Key')}
+                    </Label>
+                    <Input
+                      id="resend_key"
+                      type="password"
+                      placeholder="re_xxxxxxxxxxxxx"
+                      value={settings.resend_api_key || ''}
+                      onChange={(e) => setSettings({...settings, resend_api_key: e.target.value})}
+                      className="mt-1 font-mono"
+                    />
+                    <p className="text-sm text-stone-500 dark:text-stone-400 mt-1">
+                      {getText('Jwenn kle ou sou', 'Obtenez votre clé sur', 'Get your key at')}{' '}
+                      <a href="https://resend.com" target="_blank" rel="noreferrer" className="text-[#EA580C] hover:underline">resend.com</a>
+                    </p>
+                  </div>
+                  <div>
+                    <Label htmlFor="sender_email">{getText('Imèl anvwa', "Email d'envoi", 'Sender Email')}</Label>
+                    <Input
+                      id="sender_email"
+                      type="email"
+                      placeholder="notifications@kayicom.com"
+                      value={settings.sender_email || ''}
+                      onChange={(e) => setSettings({...settings, sender_email: e.target.value})}
+                      className="mt-1"
+                    />
+                  </div>
+                </>
+              )}
+            </CardContent>
+          )}
+        </Card>
+
+        {/* Live Chat Settings (Crisp) */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare size={20} className="text-purple-500" />
+                  {getText('Chat Dirèk (Crisp)', 'Chat en Direct (Crisp)', 'Live Chat (Crisp)')}
+                </CardTitle>
+                <CardDescription>
+                  {getText('Widget chat pou sipò kliyan', 'Widget chat pour support client', 'Chat widget for customer support')}
+                </CardDescription>
+              </div>
+              <Switch
+                checked={settings.crisp_enabled}
+                onCheckedChange={(checked) => setSettings({...settings, crisp_enabled: checked})}
+              />
+            </div>
+          </CardHeader>
+          {settings.crisp_enabled && (
+            <CardContent className="space-y-4 border-t pt-4">
+              <div>
+                <Label htmlFor="crisp_id">Crisp Website ID</Label>
+                <Input
+                  id="crisp_id"
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  value={settings.crisp_website_id || ''}
+                  onChange={(e) => setSettings({...settings, crisp_website_id: e.target.value})}
+                  className="mt-1 font-mono"
+                />
+                <p className="text-sm text-stone-500 dark:text-stone-400 mt-1">
+                  {getText(
+                    'Jwenn ID ou nan Crisp → Settings → Website Settings',
+                    'Trouvez votre ID dans Crisp → Settings → Website Settings',
+                    'Find your ID in Crisp → Settings → Website Settings'
+                  )}
+                  {' '}<a href="https://crisp.chat" target="_blank" rel="noreferrer" className="text-[#EA580C] hover:underline">crisp.chat</a>
+                </p>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
+        {/* WhatsApp Settings */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Phone size={20} className="text-emerald-500" />
+                  WhatsApp
+                </CardTitle>
+                <CardDescription>
+                  {getText('Bouton WhatsApp pou kontakte sipò', 'Bouton WhatsApp pour contacter le support', 'WhatsApp button to contact support')}
+                </CardDescription>
+              </div>
+              <Switch
+                checked={settings.whatsapp_enabled}
+                onCheckedChange={(checked) => setSettings({...settings, whatsapp_enabled: checked})}
+              />
+            </div>
+          </CardHeader>
+          {settings.whatsapp_enabled && (
+            <CardContent className="space-y-4 border-t pt-4">
+              <div>
+                <Label htmlFor="whatsapp">{getText('Nimewo WhatsApp Business', 'Numéro WhatsApp Business', 'WhatsApp Business Number')}</Label>
+                <Input
+                  id="whatsapp"
+                  placeholder="+50939308318"
+                  value={settings.whatsapp_number || ''}
+                  onChange={(e) => setSettings({...settings, whatsapp_number: e.target.value})}
+                  className="mt-1"
+                />
+                <p className="text-sm text-stone-500 dark:text-stone-400 mt-1">
+                  {getText('Format: +509XXXXXXXX', 'Format: +509XXXXXXXX', 'Format: +509XXXXXXXX')}
+                </p>
+              </div>
+            </CardContent>
+          )}
         </Card>
 
         {/* USDT/Plisio Settings */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Wallet size={20} className="text-amber-500" />
-              {getText('Konfigirasyon USDT (Plisio)', 'Configuration USDT (Plisio)', 'USDT Configuration (Plisio)')}
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Wallet size={20} className="text-amber-500" />
+                  USDT (Plisio)
+                </CardTitle>
+                <CardDescription>
+                  {getText('Peman kriptomone otomatik', 'Paiements crypto automatiques', 'Automatic crypto payments')}
+                </CardDescription>
+              </div>
+              <Switch
+                checked={settings.plisio_enabled}
+                onCheckedChange={(checked) => setSettings({...settings, plisio_enabled: checked})}
+              />
+            </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="plisio_key">
-                <Key size={16} className="inline mr-2" />
-                {getText('Kle API Plisio', 'Clé API Plisio', 'Plisio API Key')}
-              </Label>
-              <Input
-                id="plisio_key"
-                type="password"
-                placeholder="plisio_api_key"
-                value={settings.plisio_api_key || ''}
-                onChange={(e) => setSettings({...settings, plisio_api_key: e.target.value})}
-                className="mt-1 font-mono"
-              />
-            </div>
-            <div>
-              <Label htmlFor="plisio_secret">
-                <Shield size={16} className="inline mr-2" />
-                {getText('Sekrè Plisio', 'Secret Plisio', 'Plisio Secret')}
-              </Label>
-              <Input
-                id="plisio_secret"
-                type="password"
-                placeholder="plisio_secret_key"
-                value={settings.plisio_secret_key || ''}
-                onChange={(e) => setSettings({...settings, plisio_secret_key: e.target.value})}
-                className="mt-1 font-mono"
-              />
-              <p className="text-sm text-stone-500 mt-1">
-                {getText('Jwenn kle ou sou', 'Obtenez vos clés sur', 'Get your keys at')} <a href="https://plisio.net" target="_blank" rel="noreferrer" className="text-[#EA580C] hover:underline">plisio.net</a>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Live Chat Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageCircle size={20} className="text-emerald-500" />
-              {getText('Konfigirasyon Live Chat', 'Configuration Live Chat', 'Live Chat Configuration')}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="crisp_id">Crisp Website ID</Label>
-              <Input
-                id="crisp_id"
-                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                value={settings.crisp_website_id || ''}
-                onChange={(e) => setSettings({...settings, crisp_website_id: e.target.value})}
-                className="mt-1 font-mono"
-              />
-              <p className="text-sm text-stone-500 mt-1">
-                {getText('Jwenn ID ou nan Crisp → Settings → Website Settings', 'Trouvez votre ID dans Crisp → Settings → Website Settings', 'Find your ID in Crisp → Settings → Website Settings')}
-              </p>
-            </div>
-            <div>
-              <Label htmlFor="whatsapp">{getText('Nimewo WhatsApp Business', 'Numéro WhatsApp Business', 'WhatsApp Business Number')}</Label>
-              <Input
-                id="whatsapp"
-                placeholder="+509xxxxxxxx"
-                value={settings.whatsapp_number || ''}
-                onChange={(e) => setSettings({...settings, whatsapp_number: e.target.value})}
-                className="mt-1"
-              />
-            </div>
-          </CardContent>
+          {settings.plisio_enabled && (
+            <CardContent className="space-y-4 border-t pt-4">
+              <div>
+                <Label htmlFor="plisio_key">
+                  <Key size={16} className="inline mr-2" />
+                  {getText('Kle API Plisio', 'Clé API Plisio', 'Plisio API Key')}
+                </Label>
+                <Input
+                  id="plisio_key"
+                  type="password"
+                  placeholder="plisio_api_key"
+                  value={settings.plisio_api_key || ''}
+                  onChange={(e) => setSettings({...settings, plisio_api_key: e.target.value})}
+                  className="mt-1 font-mono"
+                />
+              </div>
+              <div>
+                <Label htmlFor="plisio_secret">
+                  <Shield size={16} className="inline mr-2" />
+                  {getText('Sekrè Plisio', 'Secret Plisio', 'Plisio Secret')}
+                </Label>
+                <Input
+                  id="plisio_secret"
+                  type="password"
+                  placeholder="plisio_secret_key"
+                  value={settings.plisio_secret_key || ''}
+                  onChange={(e) => setSettings({...settings, plisio_secret_key: e.target.value})}
+                  className="mt-1 font-mono"
+                />
+                <p className="text-sm text-stone-500 dark:text-stone-400 mt-1">
+                  {getText('Jwenn kle ou sou', 'Obtenez vos clés sur', 'Get your keys at')}{' '}
+                  <a href="https://plisio.net" target="_blank" rel="noreferrer" className="text-[#EA580C] hover:underline">plisio.net</a>
+                </p>
+              </div>
+            </CardContent>
+          )}
         </Card>
 
         {/* Fees & Affiliate Settings */}
@@ -235,7 +323,7 @@ export default function AdminSettings() {
                 onChange={(e) => setSettings({...settings, affiliate_cards_required: parseInt(e.target.value)})}
                 className="mt-1"
               />
-              <p className="text-sm text-stone-500 mt-1">
+              <p className="text-sm text-stone-500 dark:text-stone-400 mt-1">
                 {getText(
                   `Paren an ap touche G ${settings.affiliate_reward_htg || 2000} pou chak ${settings.affiliate_cards_required || 5} kat ki komande`,
                   `Le parrain gagne G ${settings.affiliate_reward_htg || 2000} pour chaque ${settings.affiliate_cards_required || 5} cartes commandées`,
