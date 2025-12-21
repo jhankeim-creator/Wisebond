@@ -147,7 +147,14 @@ class BalanceAdjustment(BaseModel):
     reason: str
 
 class VirtualCardOrder(BaseModel):
-    card_name: str
+    card_email: str
+
+class TopUpOrder(BaseModel):
+    country: str
+    country_name: str
+    minutes: int
+    price: float
+    phone_number: str
 
 # ==================== HELPERS ====================
 
