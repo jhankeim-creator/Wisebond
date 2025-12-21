@@ -33,6 +33,8 @@ import AdminRates from "@/pages/admin/AdminRates";
 import AdminFees from "@/pages/admin/AdminFees";
 import AdminSettings from "@/pages/admin/AdminSettings";
 import AdminBulkEmail from "@/pages/admin/AdminBulkEmail";
+import AdminVirtualCards from "@/pages/admin/AdminVirtualCards";
+import AdminTopUp from "@/pages/admin/AdminTopUp";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -109,6 +111,8 @@ function AppRoutes() {
       <Route path="/admin/fees" element={<ProtectedRoute adminOnly><AdminFees /></ProtectedRoute>} />
       <Route path="/admin/settings" element={<ProtectedRoute adminOnly><AdminSettings /></ProtectedRoute>} />
       <Route path="/admin/bulk-email" element={<ProtectedRoute adminOnly><AdminBulkEmail /></ProtectedRoute>} />
+      <Route path="/admin/virtual-cards" element={<ProtectedRoute adminOnly><AdminVirtualCards /></ProtectedRoute>} />
+      <Route path="/admin/topup" element={<ProtectedRoute adminOnly><AdminTopUp /></ProtectedRoute>} />
       
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
