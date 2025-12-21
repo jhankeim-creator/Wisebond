@@ -27,16 +27,22 @@ export default function Register() {
   });
   const [loading, setLoading] = useState(false);
 
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (formData.password !== formData.confirmPassword) {
-      toast.error(language === 'fr' ? 'Les mots de passe ne correspondent pas' : 'Passwords do not match');
+      toast.error(getText('Modpas yo pa matche', 'Les mots de passe ne correspondent pas', 'Passwords do not match'));
       return;
     }
     
     if (formData.password.length < 8) {
-      toast.error(language === 'fr' ? 'Le mot de passe doit contenir au moins 8 caractères' : 'Password must be at least 8 characters');
+      toast.error(getText('Modpas la dwe gen omwen 8 karaktè', 'Le mot de passe doit contenir au moins 8 caractères', 'Password must be at least 8 characters'));
       return;
     }
     
