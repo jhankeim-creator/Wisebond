@@ -119,13 +119,32 @@ class KayicomAPITester:
         """Test user login"""
         print("\n=== USER LOGIN TESTS ===")
         
+        # Test demo user login (as specified in requirements)
+        demo_data = {
+            "email": "demo@kayicom.com",
+            "password": "Demo1234!"
+        }
+        
+        success1, response = self.run_test(
+            "Demo User Login",
+            "POST",
+            "auth/login",
+            200,
+            data=demo_data
+        )
+        
+        demo_login_success = False
+        if success1 and response:
+            print(f"   Demo user logged in successfully")
+            demo_login_success = True
+        
         # Test admin login
         admin_data = {
             "email": "admin@kayicom.com",
             "password": "Admin123!"
         }
         
-        success, response = self.run_test(
+        success2, response = self.run_test(
             "Admin Login",
             "POST",
             "auth/login",
@@ -133,11 +152,11 @@ class KayicomAPITester:
             data=admin_data
         )
         
-        if success and response:
+        if success2 and response:
             self.admin_token = response.get('token')
             print(f"   Admin logged in successfully")
-            return True
-        return False
+            return demo_login_success and True
+        return demo_login_success
 
     def test_user_profile(self):
         """Test user profile endpoints"""
