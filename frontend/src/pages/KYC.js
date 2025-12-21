@@ -454,8 +454,8 @@ export default function KYC() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                <p className="text-sm text-blue-700">
+              <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 mb-4">
+                <p className="text-sm text-blue-700 dark:text-blue-300">
                   {getText(
                     'Pran yon foto de ou menm kote ou kenbe pyès idantite ou bò kote figi ou. Toude dwe parèt klè.',
                     'Prenez une photo de vous en tenant votre pièce d\'identité à côté de votre visage. Les deux doivent être clairement visibles.',
@@ -463,6 +463,46 @@ export default function KYC() {
                   )}
                 </p>
               </div>
+
+              {/* Example Images */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="text-center">
+                  <div className="border-2 border-emerald-300 rounded-xl p-4 bg-emerald-50 dark:bg-emerald-900/20">
+                    <div className="relative mx-auto w-24 h-24 mb-2">
+                      <div className="absolute inset-0 bg-gradient-to-br from-stone-300 to-stone-400 rounded-full flex items-center justify-center">
+                        <User size={32} className="text-white" />
+                      </div>
+                      <div className="absolute -right-2 bottom-0 w-8 h-10 bg-blue-100 border border-blue-300 rounded flex items-center justify-center text-xs">
+                        ID
+                      </div>
+                    </div>
+                    <Check className="mx-auto text-emerald-500 mb-1" size={20} />
+                    <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
+                      {getText('Bon egzanp', 'Bon exemple', 'Good example')}
+                    </p>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                      {getText('Figi ak ID klè', 'Visage et ID clairs', 'Face and ID clear')}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="border-2 border-red-300 rounded-xl p-4 bg-red-50 dark:bg-red-900/20">
+                    <div className="relative mx-auto w-24 h-24 mb-2 opacity-50 blur-[1px]">
+                      <div className="absolute inset-0 bg-gradient-to-br from-stone-300 to-stone-400 rounded-full flex items-center justify-center">
+                        <User size={32} className="text-white" />
+                      </div>
+                    </div>
+                    <X className="mx-auto text-red-500 mb-1" size={20} />
+                    <p className="text-xs text-red-700 dark:text-red-300 font-medium">
+                      {getText('Move egzanp', 'Mauvais exemple', 'Bad example')}
+                    </p>
+                    <p className="text-xs text-red-600 dark:text-red-400">
+                      {getText('Twò floute oswa san ID', 'Trop floue ou sans ID', 'Too blurry or no ID')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               <div 
                 className={`file-upload-zone cursor-pointer ${formData.selfie_with_id ? 'border-emerald-500 bg-emerald-50' : ''}`}
                 onClick={() => document.getElementById('selfie').click()}
