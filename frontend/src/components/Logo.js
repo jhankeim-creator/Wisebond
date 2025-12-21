@@ -1,22 +1,21 @@
 import React from 'react';
+import { Wallet } from 'lucide-react';
 
 export const Logo = ({ size = 'default', className = '' }) => {
-  const sizes = {
-    small: 'text-xl',
-    default: 'text-2xl',
-    large: 'text-3xl',
-    hero: 'text-4xl sm:text-5xl'
+  const sizeClasses = {
+    small: 'h-8',
+    default: 'h-10',
+    large: 'h-14'
   };
 
   return (
-    <div className={`flex items-center gap-2 ${className}`} data-testid="logo">
-      <div className="w-10 h-10 bg-gradient-to-br from-[#EA580C] to-[#C2410C] rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/20">
-        <span className="text-white font-bold text-xl">K</span>
-      </div>
-      <span className={`logo-text ${sizes[size]}`}>
-        <span className="logo-kayi">KAYI</span>
-        <span className="logo-com">COM</span>
-      </span>
+    <div className={`flex items-center gap-2 ${className}`}>
+      {/* Logo Image */}
+      <img 
+        src="https://customer-assets.emergentagent.com/job_24be30fd-73cd-41dd-9303-f4b522fea9ce/artifacts/0gcbodjz_%2B509%2039%2030%208318%2020251221_022043.jpg"
+        alt="KAYICOM"
+        className={`${sizeClasses[size]} object-contain`}
+      />
     </div>
   );
 };
