@@ -223,7 +223,7 @@ export default function Affiliate() {
             <div className="flex gap-3 mt-4">
               <Button onClick={shareLink} className="btn-primary flex-1">
                 <Share2 size={18} className="mr-2" />
-                {language === 'fr' ? 'Partager' : 'Share'}
+                {getText('Pataje', 'Partager', 'Share')}
               </Button>
             </div>
           </CardContent>
@@ -234,7 +234,7 @@ export default function Affiliate() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CreditCard size={20} />
-              {language === 'fr' ? 'Comment ça marche?' : 'How does it work?'}
+              {getText('Kijan li mache?', 'Comment ça marche?', 'How does it work?')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -243,20 +243,20 @@ export default function Affiliate() {
                 { 
                   step: '1', 
                   icon: Share2,
-                  title: language === 'fr' ? 'Partagez votre lien' : 'Share your link',
-                  desc: language === 'fr' ? 'Envoyez votre lien unique à vos amis et famille' : 'Send your unique link to friends and family'
+                  title: getText('Pataje lyen ou', 'Partagez votre lien', 'Share your link'),
+                  desc: getText('Voye lyen inik ou bay zanmi ak fanmi ou', 'Envoyez votre lien unique à vos amis et famille', 'Send your unique link to friends and family')
                 },
                 { 
                   step: '2', 
                   icon: CreditCard,
-                  title: language === 'fr' ? 'Ils commandent une carte' : 'They order a card',
-                  desc: language === 'fr' ? 'Vos filleuls s\'inscrivent et commandent une carte virtuelle' : 'Your referrals sign up and order a virtual card'
+                  title: getText('Yo komande yon kat', 'Ils commandent une carte', 'They order a card'),
+                  desc: getText('Moun ou refere yo enskri epi komande yon kat vityèl', 'Vos filleuls s\'inscrivent et commandent une carte virtuelle', 'Your referrals sign up and order a virtual card')
                 },
                 { 
                   step: '3', 
                   icon: Gift,
-                  title: language === 'fr' ? 'Vous gagnez!' : 'You earn!',
-                  desc: language === 'fr' ? 'Recevez G 2,000 pour chaque 5 cartes commandées' : 'Receive G 2,000 for every 5 cards ordered'
+                  title: getText('Ou touche!', 'Vous gagnez!', 'You earn!'),
+                  desc: getText('Resevwa G 2,000 pou chak 5 kat ki komande', 'Recevez G 2,000 pour chaque 5 cartes commandées', 'Receive G 2,000 for every 5 cards ordered')
                 }
               ].map((item) => {
                 const Icon = item.icon;
