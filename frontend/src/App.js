@@ -21,6 +21,7 @@ import KYC from "@/pages/KYC";
 import Affiliate from "@/pages/Affiliate";
 import Settings from "@/pages/Settings";
 import VirtualCard from "@/pages/VirtualCard";
+import TopUp from "@/pages/TopUp";
 
 // Admin Pages
 import AdminDashboard from "@/pages/admin/AdminDashboard";
@@ -95,6 +96,7 @@ function AppRoutes() {
       <Route path="/kyc" element={<ProtectedRoute><KYC /></ProtectedRoute>} />
       <Route path="/affiliate" element={<ProtectedRoute><Affiliate /></ProtectedRoute>} />
       <Route path="/virtual-card" element={<ProtectedRoute><VirtualCard /></ProtectedRoute>} />
+      <Route path="/topup" element={<ProtectedRoute><TopUp /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       
       {/* Admin Routes */}
