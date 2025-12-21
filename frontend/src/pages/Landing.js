@@ -331,12 +331,14 @@ export default function Landing() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
               <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 mb-4">
-                {language === 'fr' ? 'Multiples méthodes de dépôt' : 'Multiple deposit methods'}
+                {getText('Plizyè metòd depo', 'Multiples méthodes de dépôt', 'Multiple deposit methods')}
               </h2>
               <p className="text-lg text-stone-600 mb-8">
-                {language === 'fr' 
-                  ? 'Déposez facilement en HTG ou USD avec les méthodes de paiement les plus populaires.'
-                  : 'Easily deposit in HTG or USD with the most popular payment methods.'}
+                {getText(
+                  'Depoze fasil an HTG oswa USD ak metòd peman ki pi popilè yo.',
+                  'Déposez facilement en HTG ou USD avec les méthodes de paiement les plus populaires.',
+                  'Easily deposit in HTG or USD with the most popular payment methods.'
+                )}
               </p>
               
               <div className="space-y-4">
