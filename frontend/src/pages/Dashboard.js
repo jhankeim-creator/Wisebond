@@ -262,7 +262,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-center">
-                <p className="text-sm text-amber-700 mb-2">{language === 'fr' ? 'Gains d\'affiliation' : 'Affiliate Earnings'}</p>
+                <p className="text-sm text-amber-700 mb-2">{getText('Lajan afilyasyon', 'Gains d\'affiliation', 'Affiliate Earnings')}</p>
                 <p className="text-3xl font-bold text-amber-800">
                   G {(user?.affiliate_earnings || 0).toLocaleString()}
                 </p>
@@ -273,13 +273,13 @@ export default function Dashboard() {
               
               <div className="mt-6 p-4 bg-white rounded-xl">
                 <p className="text-sm text-stone-600 text-center">
-                  {language === 'fr' ? 'Gagnez 2,000 HTG pour chaque 5 filleuls qui commandent une carte!' : 'Earn 2,000 HTG for every 5 referrals who order a card!'}
+                  {getText('Touche G 2,000 pou chak 5 moun ou refere ki komande yon kat!', 'Gagnez 2,000 HTG pour chaque 5 filleuls qui commandent une carte!', 'Earn 2,000 HTG for every 5 referrals who order a card!')}
                 </p>
               </div>
               
               <Link to="/affiliate" className="block mt-4">
                 <Button className="w-full btn-gold">
-                  {language === 'fr' ? 'Voir programme' : 'View program'}
+                  {getText('Wè pwogram', 'Voir programme', 'View program')}
                   <ChevronRight className="ml-2" size={18} />
                 </Button>
               </Link>
@@ -293,10 +293,10 @@ export default function Dashboard() {
           <div className="relative flex items-center justify-between">
             <div>
               <h3 className="text-xl font-bold mb-2">
-                {language === 'fr' ? 'Commandez votre Carte Virtuelle' : 'Order your Virtual Card'}
+                {getText('Komande Kat Vityèl Ou', 'Commandez votre Carte Virtuelle', 'Order your Virtual Card')}
               </h3>
               <p className="text-stone-400">
-                {language === 'fr' ? 'Payez partout dans le monde avec votre carte KAYICOM' : 'Pay anywhere in the world with your KAYICOM card'}
+                {getText('Peye toupatou nan mond lan ak kat KAYICOM ou', 'Payez partout dans le monde avec votre carte KAYICOM', 'Pay anywhere in the world with your KAYICOM card')}
               </p>
             </div>
             <Link to="/virtual-card">
