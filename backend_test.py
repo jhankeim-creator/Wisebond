@@ -374,6 +374,9 @@ def main():
     # Affiliate tests
     test_results.append(tester.test_affiliate_endpoints())
     
+    # Virtual card tests
+    test_results.append(tester.test_virtual_card_endpoints())
+    
     # Admin tests
     test_results.append(tester.test_admin_endpoints())
     
