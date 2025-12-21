@@ -309,11 +309,11 @@ export default function Landing() {
                     </p>
                     <div className="flex justify-between items-end">
                       <div>
-                        <p className="text-stone-400 text-xs uppercase">Titulaire</p>
+                        <p className="text-stone-400 text-xs uppercase">{getText('Titilè', 'Titulaire', 'Holder')}</p>
                         <p className="font-medium">JEAN PIERRE</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-stone-400 text-xs uppercase">Expire</p>
+                        <p className="text-stone-400 text-xs uppercase">{getText('Ekspire', 'Expire', 'Expiry')}</p>
                         <p className="font-medium">12/28</p>
                       </div>
                     </div>
