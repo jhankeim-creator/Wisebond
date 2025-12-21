@@ -68,9 +68,18 @@ export const Sidebar = ({ isOpen, onClose }) => {
           <X size={24} />
         </button>
         
-        {/* Logo */}
+        {/* Logo - Clickable for admin */}
         <div className="mb-8">
-          <Logo />
+          {isAdmin ? (
+            <Link to="/admin" className="block hover:opacity-80 transition-opacity">
+              <Logo />
+              <p className="text-xs text-stone-400 mt-1 text-center">{getText('Klike pou admin', 'Cliquez pour admin', 'Click for admin')}</p>
+            </Link>
+          ) : (
+            <Link to="/dashboard">
+              <Logo />
+            </Link>
+          )}
         </div>
 
         {/* User info */}
