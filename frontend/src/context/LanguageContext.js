@@ -424,7 +424,7 @@ const LanguageContext = createContext();
 export const LanguageProvider = ({ children }) => {
   const [language, setLanguage] = useState(() => {
     const saved = localStorage.getItem('kayicom_language');
-    return saved || 'fr';
+    return saved || 'ht'; // Default to Haitian Creole
   });
 
   useEffect(() => {
@@ -436,7 +436,12 @@ export const LanguageProvider = ({ children }) => {
   };
 
   const toggleLanguage = () => {
-    setLanguage(prev => prev === 'fr' ? 'en' : 'fr');
+    // Cycle through: ht -> fr -> en -> ht
+    setLanguage(prev => {
+      if (prev === 'ht') return 'fr';
+      if (prev === 'fr') return 'en';
+      return 'ht';
+    });
   };
 
   return (
