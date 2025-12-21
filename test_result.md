@@ -5,33 +5,32 @@ Testing agent should verify the following flows:
 
 ### Backend Tests
 1. User registration/login
-2. GET /api/public/chat-settings (public endpoint)
-3. Admin settings with enable/disable toggles
-4. Exchange rates with separate swap rates
-5. Card fees by limit
+2. GET /api/public/chat-settings endpoint
+3. Admin settings with integration toggles
+4. All existing endpoints
 
 ### Frontend Tests
-1. Landing page shows **original KAYICOM logo** (purple/violet)
-2. **Home (Akèy)** link in sidebar navigates to landing page
-3. Dashboard has **5 quick action buttons** including **Swap (purple)**
-4. **Copy Client ID button** shows toast
-5. Admin Settings page with **toggle switches** for:
-   - Imèl (Resend)
-   - Chat Dirèk (Crisp)
-   - WhatsApp
-   - USDT (Plisio)
-6. Logo is **clickable** and goes to landing page
+1. Landing page shows **professional black woman image**
+2. **Logo only in header** (not in sidebar)
+3. **Scroll to top** works when navigating between pages
+4. **Admin page** opens similar to Dashboard layout
+5. **"Akèy"** (Home) link in sidebar
+6. **"Ale nan Admin"** link for admin users
+7. Dashboard has **5 quick action buttons**
+8. Admin Settings has **toggle switches** for integrations
 
 ## Test User Credentials
 - Admin: admin@kayicom.com / Admin123!
 
 ## Key Features to Verify
-- Original KAYICOM logo (purple/violet image)
-- Home link "Akèy" in sidebar
-- Integration toggle switches work
-- LiveChat component loads based on settings
+- Professional black woman image on landing page
+- Logo only at top of site (header), not in sidebar
+- Scroll to top when navigating
+- Admin page layout similar to other pages
+- Integration toggles work
 
 ## Incorporate User Feedback
-- Logo must be the user's original (not text-based)
-- Easy navigation to home page
-- Admin can enable/disable integrations
+- Logo ONLY in header/top
+- Professional black woman image
+- Easy navigation to home
+- Admin page opens properly like other pages
