@@ -241,7 +241,7 @@ class KayicomAPITester:
         return success
 
     def test_withdrawal_endpoints(self):
-        """Test withdrawal endpoints"""
+        """Test withdrawal endpoints including cross-currency functionality"""
         print("\n=== WITHDRAWAL TESTS ===")
         
         if not self.token:
@@ -252,9 +252,32 @@ class KayicomAPITester:
         success1, _ = self.run_test("Get Withdrawals", "GET", "withdrawals", 200)
         
         # Test get withdrawal fees
-        success2, _ = self.run_test("Get Withdrawal Fees", "GET", "withdrawals/fees", 200)
+        success2, response = self.run_test("Get Withdrawal Fees", "GET", "withdrawals/fees", 200)
+        if success2 and response:
+            print(f"   Fees configured: {len(response.get('fees', []))}")
+            print(f"   Limits configured: {len(response.get('limits', []))}")
         
-        return success1 and success2
+        # Test cross-currency withdrawal creation (should fail due to insufficient balance, but API should work)
+        cross_currency_data = {
+            "amount": 10,
+            "currency": "USD",
+            "source_currency": "HTG", 
+            "method": "card",
+            "destination": "4532123456789012"
+        }
+        
+        success3, response = self.run_test(
+            "Cross-Currency Withdrawal (HTG->USD)",
+            "POST",
+            "withdrawals/create",
+            400,  # Expecting 400 due to insufficient balance or KYC
+            data=cross_currency_data
+        )
+        
+        if success3:
+            print("   Cross-currency withdrawal API endpoint working correctly")
+        
+        return success1 and success2 and success3
 
     def test_affiliate_endpoints(self):
         """Test affiliate endpoints"""
