@@ -641,16 +641,33 @@ async def get_kyc_status(current_user: dict = Depends(get_current_user)):
 
 @api_router.get("/affiliate/info")
 async def get_affiliate_info(current_user: dict = Depends(get_current_user)):
+    # Get all referrals
     referrals = await db.users.find(
         {"referred_by": current_user["affiliate_code"]},
-        {"_id": 0, "client_id": 1, "full_name": 1, "created_at": 1}
+        {"_id": 0, "user_id": 1, "client_id": 1, "full_name": 1, "created_at": 1}
     ).to_list(100)
+    
+    # Check which referrals have ordered cards
+    referrals_with_cards = 0
+    enriched_referrals = []
+    
+    for ref in referrals:
+        has_card = await db.virtual_cards.find_one({"user_id": ref["user_id"]}) is not None
+        if has_card:
+            referrals_with_cards += 1
+        enriched_referrals.append({
+            "client_id": ref["client_id"],
+            "full_name": ref["full_name"],
+            "created_at": ref["created_at"],
+            "has_card": has_card
+        })
     
     return {
         "affiliate_code": current_user["affiliate_code"],
         "affiliate_link": f"{os.environ.get('FRONTEND_URL', 'http://localhost:3000')}/register?ref={current_user['affiliate_code']}",
-        "earnings": current_user["affiliate_earnings"],
-        "referrals": referrals
+        "earnings": current_user.get("affiliate_earnings", 0),
+        "referrals": enriched_referrals,
+        "referrals_with_cards": referrals_with_cards
     }
 
 @api_router.post("/affiliate/apply-code")
@@ -671,6 +688,149 @@ async def apply_affiliate_code(code: str, current_user: dict = Depends(get_curre
     )
     
     return {"message": "Affiliate code applied successfully"}
+
+@api_router.post("/affiliate/withdraw")
+async def withdraw_affiliate_earnings(current_user: dict = Depends(get_current_user)):
+    earnings = current_user.get("affiliate_earnings", 0)
+    
+    if earnings < 2000:
+        raise HTTPException(status_code=400, detail="Minimum withdrawal is 2,000 HTG")
+    
+    # Transfer earnings to wallet
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {
+            "$inc": {"wallet_htg": earnings},
+            "$set": {"affiliate_earnings": 0}
+        }
+    )
+    
+    # Create transaction
+    await db.transactions.insert_one({
+        "transaction_id": str(uuid.uuid4()),
+        "user_id": current_user["user_id"],
+        "type": "affiliate_withdrawal",
+        "amount": earnings,
+        "currency": "HTG",
+        "status": "completed",
+        "description": "Affiliate earnings withdrawal to wallet",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await log_action(current_user["user_id"], "affiliate_withdrawal", {"amount": earnings})
+    
+    return {"message": "Earnings transferred to wallet", "amount": earnings}
+
+# ==================== VIRTUAL CARD ROUTES ====================
+
+CARD_FEE_HTG = 500  # Card order fee in HTG
+
+@api_router.get("/virtual-cards")
+async def get_virtual_cards(current_user: dict = Depends(get_current_user)):
+    cards = await db.virtual_cards.find(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0}
+    ).to_list(10)
+    return {"cards": cards}
+
+@api_router.post("/virtual-cards/order")
+async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Depends(get_current_user)):
+    if current_user["kyc_status"] != "approved":
+        raise HTTPException(status_code=403, detail="KYC verification required")
+    
+    if current_user.get("wallet_htg", 0) < CARD_FEE_HTG:
+        raise HTTPException(status_code=400, detail=f"Insufficient balance. Card fee is {CARD_FEE_HTG} HTG")
+    
+    # Deduct fee
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {"$inc": {"wallet_htg": -CARD_FEE_HTG}}
+    )
+    
+    # Create card
+    card = {
+        "card_id": str(uuid.uuid4()),
+        "user_id": current_user["user_id"],
+        "client_id": current_user["client_id"],
+        "card_name": request.card_name.upper(),
+        "card_number": generate_card_number(),
+        "cvv": generate_cvv(),
+        "expiry_date": generate_expiry(),
+        "balance": 0,
+        "status": "active",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.virtual_cards.insert_one(card)
+    
+    # Create transaction for the fee
+    await db.transactions.insert_one({
+        "transaction_id": str(uuid.uuid4()),
+        "user_id": current_user["user_id"],
+        "type": "card_order",
+        "amount": -CARD_FEE_HTG,
+        "currency": "HTG",
+        "status": "completed",
+        "description": "Virtual card order fee",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    # Process affiliate reward if user was referred
+    if current_user.get("referred_by"):
+        await process_card_affiliate_reward(current_user["referred_by"])
+    
+    await log_action(current_user["user_id"], "card_order", {"card_id": card["card_id"]})
+    
+    if "_id" in card:
+        del card["_id"]
+    return {"card": card, "message": "Card ordered successfully"}
+
+async def process_card_affiliate_reward(affiliate_code: str):
+    """Process affiliate reward: 2000 HTG for every 5 referrals who order a card"""
+    referrer = await db.users.find_one({"affiliate_code": affiliate_code}, {"_id": 0})
+    if not referrer:
+        return
+    
+    # Count referrals with cards
+    referrals = await db.users.find(
+        {"referred_by": affiliate_code},
+        {"_id": 0, "user_id": 1}
+    ).to_list(1000)
+    
+    cards_count = 0
+    for ref in referrals:
+        has_card = await db.virtual_cards.find_one({"user_id": ref["user_id"]})
+        if has_card:
+            cards_count += 1
+    
+    # Check if we've hit a new milestone of 5
+    rewarded_count = referrer.get("affiliate_cards_rewarded", 0)
+    new_rewards = (cards_count // 5) - rewarded_count
+    
+    if new_rewards > 0:
+        reward_amount = new_rewards * 2000  # 2000 HTG per 5 cards
+        
+        await db.users.update_one(
+            {"user_id": referrer["user_id"]},
+            {
+                "$inc": {"affiliate_earnings": reward_amount},
+                "$set": {"affiliate_cards_rewarded": cards_count // 5}
+            }
+        )
+        
+        # Create transaction record
+        await db.transactions.insert_one({
+            "transaction_id": str(uuid.uuid4()),
+            "user_id": referrer["user_id"],
+            "type": "affiliate_card_reward",
+            "amount": reward_amount,
+            "currency": "HTG",
+            "status": "completed",
+            "description": f"Affiliate reward for {new_rewards * 5} card orders",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        await log_action(referrer["user_id"], "affiliate_card_reward", {"amount": reward_amount})
 
 # ==================== EXCHANGE RATES ====================
 
