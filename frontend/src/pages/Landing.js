@@ -167,42 +167,35 @@ export default function Landing() {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="relative"
             >
-              {/* Wallet Cards Preview */}
-              <div className="relative">
-                <div className="wallet-card-htg mb-4 transform rotate-2 hover:rotate-0 transition-transform duration-300 glow-orange">
-                  <div className="flex justify-between items-start mb-8">
-                    <div>
-                      <p className="text-orange-200 text-sm uppercase tracking-wide">Balance HTG</p>
-                      <p className="text-3xl font-bold mt-1">G 125,450.00</p>
-                      <p className="text-orange-200 text-sm mt-1">≈ $940.60 USD</p>
+              {/* Professional Black Woman Image */}
+              <div className="relative rounded-3xl overflow-hidden shadow-2xl">
+                <img 
+                  src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                  alt="Professional woman using KAYICOM"
+                  className="w-full h-auto object-cover rounded-3xl"
+                />
+                {/* Overlay Card */}
+                <div className="absolute bottom-6 left-6 right-6">
+                  <div className="bg-white/95 backdrop-blur-lg rounded-2xl p-5 shadow-xl">
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="w-12 h-12 bg-gradient-to-br from-[#EA580C] to-amber-500 rounded-full flex items-center justify-center">
+                        <DollarSign className="text-white" size={24} />
+                      </div>
+                      <div>
+                        <p className="text-stone-500 text-sm">{getText('Balans Total', 'Solde Total', 'Total Balance')}</p>
+                        <p className="text-2xl font-bold text-stone-900">$3,245.00</p>
+                      </div>
                     </div>
-                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                      <span className="text-2xl font-bold">G</span>
+                    <div className="flex gap-2">
+                      <div className="flex-1 bg-emerald-50 rounded-lg p-2 text-center">
+                        <p className="text-emerald-600 font-semibold text-sm">+12.5%</p>
+                        <p className="text-xs text-stone-500">{getText('Mwa sa', 'Ce mois', 'This month')}</p>
+                      </div>
+                      <div className="flex-1 bg-orange-50 rounded-lg p-2 text-center">
+                        <p className="text-[#EA580C] font-semibold text-sm">G 431K</p>
+                        <p className="text-xs text-stone-500">HTG</p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-orange-200 text-xs">Client ID</p>
-                      <p className="font-mono text-lg">KC8A4F2B1E</p>
-                    </div>
-                    <Logo size="small" className="opacity-70" />
-                  </div>
-                </div>
-                
-                <div className="wallet-card-usd transform -rotate-2 hover:rotate-0 transition-transform duration-300 ml-8 glow-gold">
-                  <div className="flex justify-between items-start mb-8">
-                    <div>
-                      <p className="text-amber-200 text-sm uppercase tracking-wide">Balance USD</p>
-                      <p className="text-3xl font-bold mt-1">$3,245.00</p>
-                      <p className="text-amber-200 text-sm mt-1">≈ G 431,585 HTG</p>
-                    </div>
-                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
-                      <span className="text-2xl font-bold">$</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle size={16} className="text-amber-200" />
-                    <span className="text-sm text-amber-200">KYC {language === 'fr' ? 'Vérifié' : 'Verified'}</span>
                   </div>
                 </div>
               </div>
