@@ -129,6 +129,7 @@ function App() {
       <LanguageProvider>
         <AuthProvider>
           <BrowserRouter>
+            <ScrollToTop />
             <AppRoutes />
             <LiveChat />
             <Toaster position="top-right" richColors />
