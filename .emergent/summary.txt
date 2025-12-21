@@ -1,154 +1,178 @@
 <analysis>**original_problem_statement:**
 LÒD OFISYÈL – DEVLOPMAN PLATFÒM WALLET MULTI-DEVIZ li ap rele KAYICOM WALLET
 
-🌍 Lang Sit la
-Sit la dwe 100% biling:
-🇫🇷 Français
-🇬🇧 English
-Kliyan ka chwazi lang li
-Admin panel an biling tou
-
-🎯 Objektif Jeneral
-Kreye yon platfòm wallet finansye an liy, sekirize, modilè, ki sipòte 2 deviz (HTG & USD), ak KYC obligatwa, depo, retrè, tranzaksyon entèn, frè konfigirab, sistèm afilyasyon, admin panel avanse, ak sèvis finansye adisyonèl.
-
-1️⃣ Deviz & To Chanj
-Deviz sipòte: HTG (Gourde), USD (Dollar)
-Admin ap fikse to manyèlman.
-
-2️⃣ Sistèm Depo
-Depo HTG: MonCash, NatCash
-Depo USD: Zelle, PayPal, USDT (Crypto)
-Tout depo MANUEL (ak prèv peman), sof USDT ki otomatik (via Plisio).
-
-3️⃣ Sistèm Retrè
-Retrè USD vers: Zelle, PayPal, USDT, Bank Meksik. Admin fikse frè, limit, ak tan atant.
-
-4️⃣ Frè & Limit
-Frè separe pou chak metòd retrè ak nivo montan.
-
-5️⃣ Tranzaksyon Entèn
-Transfè instant ant kliyan.
-
-6️⃣ KYC – Verifikasyon Idantite (OBLIGATWA)
-Manyèl, mande dokiman (ID + selfie). San KYC, pa gen retrè.
-
-7️⃣ Kontwòl & Sekirite Kliyan
-Admin ka bloke/debloke kont, modifye balans, elatriye.
-
-8️⃣ Dashboard Kliyan
-Balans HTG & USD, istorik, status KYC, link afilyasyon, notifikasyon.
-
-9️⃣ Admin Panel Avanse
-Jesyon konplè: kliyan, KYC, depo/retrè, to, frè, bulk email, ekip, pèmisyon, logs.
-
-🔟 Affiliate / Parenaj (Updated)
-- **Règleman 1 (Original):** Pou chak 00 retrè yon afilye fè, paren an touche .
-- **Règleman 2 (Nouvo):** Paren an touche 2000 HTG pou chak 5 afilye ki komande yon kat vityèl. Balans sa a separe epi li ka transfere sou balans prensipal la.
-
-1️⃣1️⃣ Fonksyon Avanse
-Live Chat (Crisp, WhatsApp), Vant minit mobil, Kreyasyon kat vityèl.
-
-**PRODUCT REQUIREMENTS (based on latest user feedback):**
-1.  **Design Pwofesyonèl:** Koulè cho, logo vizib toupatou.
-2.  **Balans Ekivalan:** Montre balans nan yon deviz ak ekivalan li nan lòt deviz la.
-3.  **Konvèsyon nan Retrè:** Pèmèt depo an USD pou retire an HTG, e vis vèsa.
-4.  **Komand Kat Vityèl:** Fonksyonalite pou kliyan komande yon kat vityèl.
-5.  **Nouvo Sistèm Afilyasyon:** Aplike nouvo règleman afilyasyon an (gade #10).
-6.  **Entegrasyon:** Plisio pou USDT, Resend pou notifikasyon/bulk email.
+**PRODUCT REQUIREMENTS (based on all user feedback):**
+1.  **Lang:** Sit la dwe biling (Français, English) ak Kreyòl Ayisyen kòm lang prensipal.
+2.  **Deviz:** Sipòte HTG ak USD, ak yon to chanj admin ap fikse manyèlman.
+3.  **Depo:**
+    *   HTG: MonCash, NatCash (Manyèl).
+    *   USD: Zelle, PayPal, USDT, Bank USA (Manyèl, sof USDT ki ka otomatik via Plisio).
+4.  **Retrè:**
+    *   HTG: MonCash, NatCash.
+    *   USD: Zelle, PayPal, USDT, Bank Meksik, Bank USA, Kat Vityèl.
+    *   Pèmèt retrè cross-currency (depo USD, retire HTG e vis vèsa).
+5.  **Swap:** Fonksyon pou chanje deviz (HTG ↔ USD) andedan platfòm nan.
+6.  **Kat Vityèl:**
+    *   Se yon kat tyè (third-party), non pa KAYICOM Card.
+    *   Admin ap jere komand yo manyèlman.
+    *   Retrè pa kat se an USD sèlman, epi itilizatè a bay sèlman imèl ki asosye ak kat la.
+    *   Gen yon nòt ki di kat la pa pou sit paryaj/pònografik epi li vini ak yon bonis .
+    *   Pati kat la montre sèlman istorik depo sou kat la (aprouve/rejete).
+7.  **KYC (Obligatwa):** Fòmilè konplè (non, adrès, telefòn, WhatsApp, pyès idantite, selfie ak pyès idantite nan men) anvan nenpòt sèvis.
+8.  **Afilyasyon:** Paren an touche 2000 HTG pou chak 5 afilye ki komande yon kat vityèl.
+9.  **Admin Panel:**
+    *   Dwe pwofesyonèl, san bug, epi responsive (adaptab sou mobil).
+    *   Jesyon konplè: itilizatè, KYC, depo, retrè, to, frè, API keys (Plisio, Resend), elatriye.
+    *   Logo a dwe klikab pou mennen nan dashboard admin an.
+10. **UI/UX:**
+    *   Design pwofesyonèl ak nouvo logo mov/vyolèt la.
+    *   Sit la dwe totalman responsive (web ak mobil).
+    *   Bouton pou kopye ID kliyan an.
+11. **Lòt Fonksyon:**
+    *   Istorik detaye ak stati pou tout tranzaksyon (kliyan & admin).
+    *   Live Chat (Crisp, WhatsApp).
+    *   Achte minit telefòn entènasyonal (manyèl).
 
 **User's preferred language**: Haitian Creole (Kreyòl ayisyen). The next agent MUST respond in this language.
 
 **what currently exists?**
-A full-stack application (FastAPI backend, React frontend) for a multi-currency wallet. An initial MVP was built, but after user feedback, a major redesign was executed. The new UI features a warm color theme (orange, amber, green), a visible logo on all pages, and a redesigned dashboard that displays wallet balances in both HTG and USD, along with their equivalents based on the current exchange rate.
-
-The backend has foundational API endpoints for user authentication, wallet operations (deposit, withdraw, transfer), KYC, and admin functions. Stubs and partial logic for the new virtual card ordering and the updated affiliate system have been added to . The frontend includes pages for all major features, including a new Virtual Card page.
+The application is a full-stack multi-currency wallet (React/FastAPI/MongoDB). The previous agent successfully completed a massive set of tasks, including:
+- **Full Internationalization (i18n):** The entire user-facing application now supports Haitian Creole, French, and English, with Haitian Creole as the default.
+- **UI Bug Fixes:** Fixed critical visibility issues with buttons across the site (Login, Register, etc.).
+- **Core Feature Implementation:**
+    - The backend and frontend logic for **cross-currency withdrawals** has been implemented.
+    - A new **Swap** page () has been created with a corresponding backend route stub.
+    - Payment methods for deposit and withdrawal are now correctly filtered based on the selected currency (HTG or USD).
+- **New Feature Stubs:**
+    - A new **TopUp** page () for ordering international minutes has been created.
+    - The **KYC** page has been completely redesigned to include all newly requested fields (WhatsApp, Selfie with ID, etc.).
+    - The **Virtual Card** page was updated to remove KAYICOM branding and add user notes.
+- **Design & Layout:**
+    - The new **purple/violet logo** has been implemented.
+    - The **Admin Layout** and **Sidebar** have been updated to be more responsive and include a link to the new Swap page.
 
 **Last working item**:
-The agent was in the process of verifying the new user interface after a major redesign based on user feedback. It had successfully verified the redesigned Landing, Login, Dashboard, and Virtual Card pages via screenshots.
+The agent was in the middle of implementing a large batch of new requirements provided by the user in messages 173 and 218. After creating the new logo and KYC/TopUp pages, the agent overwrote the  page to align with new instructions. It was about to add backend logic for the new virtual card system.
 
-*   **Last item agent was working:** The agent's last thought was to verify the  page to ensure it reflects the new design and affiliate rules.
+*   **Last item agent was working:** Implementing the new requirements related to the Virtual Card system, specifically overwriting the  file and preparing to add the corresponding backend logic.
 *   **Status:** IN PROGRESS
-*   **Agent Testing Done:** Y (Screenshots were used to visually verify several redesigned pages)
-*   **Which testing method agent to use?** Frontend testing agent (or screenshot tool) to verify the  page. Afterwards, a full run with the  is required to test the new backend logic for virtual cards and the affiliate system.
+*   **Agent Testing Done:** N (The latest batch of changes has not been tested).
+*   **Which testing method agent to use?** Both. The frontend testing agent is needed to verify all the new pages (, ), updated pages (, , ), and overall site responsiveness. The backend testing agent is needed to test the new endpoints (, ).
 *   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
-*   **Issue 1 (P0): Implement Cross-Currency Withdrawals:** The user explicitly requested the ability to deposit in one currency and withdraw in another (e.g., deposit USD, withdraw HTG). The UI now *displays* the equivalent balance, but the backend logic in  to perform the actual currency conversion and transaction during withdrawal is completely missing.
-*   **Issue 2 (P1): Incomplete Virtual Card Logic:** The frontend has a page to order a card, and the backend has placeholder routes. However, the core logic for processing a card order, linking it to a user, managing its status, and deducting fees is not implemented in .
-*   **Issue 3 (P2): Incomplete Affiliate System Logic:** The backend was updated to reflect the new affiliate rule (2000 HTG for 5 referred card orders), but the logic to track referred users who order cards and automatically credit the referrer is not fully implemented or tested.
+*   **Issue 1 (P0): Unprofessional and Buggy Admin Panel**
+*   **Issue 2 (P1): Implement Full Transaction History & Status View**
+*   **Issue 3 (P2): Incomplete Virtual Card Manual System**
+*   **Issue 4 (P3): Implement Backend for Swap Functionality**
+*   **Issue 5 (P4): Implement Backend for Top-Up (International Minutes) Page**
+*   **Issue 6 (P5): Incomplete Affiliate System Logic**
 
 **Issues Detail:**
-*   **Issue 1: Implement Cross-Currency Withdrawals**
-    *   **Attempted fixes:** None. The agent only implemented the UI display of equivalent balances.
+*   **Issue 1: Unprofessional and Buggy Admin Panel**
+    *   **Attempted fixes:** The agent made the main  responsive ().
     *   **Next debug checklist:**
-        *   Modify the withdrawal endpoint in .
-        *   When a user requests a withdrawal, allow them to specify the withdrawal currency (HTG or USD), even if it's different from their deposit currency.
-        *   Use the exchange rate stored in the database ( collection) to calculate the correct amount.
-        *   Update the user's respective wallet balance (e.g., deduct from USD balance, process HTG withdrawal).
-        *   Create a transaction record showing the conversion.
-    *   **Why fix this issue and what will be achieved with the fix?** This is a critical feature requested by the user to provide financial flexibility.
+        1.  Thoroughly review all admin pages in  for visual bugs and layout issues on mobile screens.
+        2.  Test all management functions (viewing users, KYC, deposits, etc.) to identify and fix the bugs mentioned by the user.
+        3.  Improve the overall design to look more professional as requested.
+        4.  Ensure the logo in  navigates to the admin dashboard.
+    *   **Why fix this issue and what will be achieved with the fix?** This is a direct and high-priority request from the user, critical for platform management.
+    *   **Status:** IN PROGRESS
+    *   **Is recurring issue?** N
+    *   **Should Test frontend/backend/both after fix?** Both.
+
+*   **Issue 2: Implement Full Transaction History & Status View**
+    *   **Attempted fixes:** None.
+    *   **Next debug checklist:**
+        1.  Create UI components to list transactions on the client-side (, ) and admin-side (, ).
+        2.  The list must show type, amount, status (Pending, Approved, Rejected), and date.
+        3.  Create/update backend endpoints to fetch transaction history for a specific user and for all users (admin).
+        4.  Ensure the database schema for transactions includes a  field.
+    *   **Why fix this issue and what will be achieved with the fix?** Provides essential financial transparency for both users and administrators.
     *   **Status:** NOT STARTED
     *   **Is recurring issue?** N
     *   **Should Test frontend/backend/both after fix?** Both.
-    *   **Blocked on other issue:** None.
 
-*   **Issue 2: Incomplete Virtual Card Logic**
-    *   **Attempted fixes:** The agent created a route stub in .
+*   **Issue 3: Incomplete Virtual Card Manual System**
+    *   **Attempted fixes:** Agent overwrote  with new UI/text and created stubs in .
     *   **Next debug checklist:**
-        *   In , flesh out the  endpoint.
-        *   Implement logic to check if the user is eligible (e.g., KYC verified).
-        *   Create a new collection, , to store order details (user_id, status, timestamp).
-        *   Implement admin endpoints to view and manage these orders.
-        *   Connect this logic to the new affiliate system.
-    *   **Why fix this issue and what will be achieved with the fix?** This is a core feature for the user and is tied to the new affiliate system.
+        1.  Solidify the  endpoint in  to simply create a request record in a new  collection.
+        2.  Create admin endpoints to list these orders and allow an admin to manually mark them as Approved or Rejected and add notes/card details.
+        3.  When an order is approved, trigger logic to add the  bonus to the user's USD wallet.
+        4.  The  page should display the order status and, if approved, the card history.
+    *   **Why fix this issue and what will be achieved with the fix?** It's a core feature and a prerequisite for the affiliate system.
     *   **Status:** IN PROGRESS
     *   **Is recurring issue?** N
     *   **Should Test frontend/backend/both after fix?** Both.
-    *   **Blocked on other issue:** None.
 
-*   **Issue 3: Incomplete Affiliate System Logic**
-    *   **Attempted fixes:** The agent updated the affiliate endpoint stub.
+*   **Issue 4: Implement Backend for Swap Functionality**
+    *   **Attempted fixes:** Created  page and added a placeholder  route in .
     *   **Next debug checklist:**
-        *   In , create logic that triggers when a virtual card order is completed.
-        *   This trigger should check who referred the user that ordered the card.
-        *   Increment a counter for the referrer ().
-        *   When the counter for a referrer hits a multiple of 5, automatically credit their  with 2000 HTG.
-    *   **Why fix this issue and what will be achieved with the fix?** This implements the user's new revenue-generating affiliate model.
+        1.  Implement the full logic for the  endpoint.
+        2.  It should validate the user has enough balance, perform the conversion using the stored exchange rate, debit the from wallet, and credit the to wallet.
+        3.  Create a new transaction record for the swap.
+    *   **Why fix this issue and what will be achieved with the fix?** Completes a newly requested core feature.
     *   **Status:** IN PROGRESS
+    *   **Is recurring issue?** N
+    *   **Should Test frontend/backend/both after fix?** Both.
+
+*   **Issue 5: Implement Backend for Top-Up (International Minutes) Page**
+    *   **Attempted fixes:** Created the  frontend page.
+    *   **Next debug checklist:**
+        1.  Create a  endpoint in .
+        2.  This endpoint should save the request (user_id, country, phone_number, amount) to a new  collection with a pending status.
+        3.  Create admin endpoints to view and manage these manual top-up requests.
+    *   **Why fix this issue and what will be achieved with the fix?** Implements a new manual service requested by the user.
+    *   **Status:** NOT STARTED
+    *   **Is recurring issue?** N
+    *   **Should Test frontend/backend/both after fix?** Both.
+
+*   **Issue 6: Incomplete Affiliate System Logic**
+    *   **Attempted fixes:** Endpoint stub exists in .
+    *   **Next debug checklist:**
+        1.  Modify the admin logic for approving a virtual card.
+        2.  When a card is approved, check if the user was referred.
+        3.  If so, increment a counter () for the referrer.
+        4.  If the counter is a multiple of 5, credit the referrer's  with the reward amount from settings.
+    *   **Why fix this issue and what will be achieved with the fix?** Implements the user's affiliate revenue model.
+    *   **Status:** NOT STARTED
     *   **Is recurring issue?** N
     *   **Should Test frontend/backend/both after fix?** Backend.
-    *   **Blocked on other issue:** Issue 2: Incomplete Virtual Card Logic.
+    *   **Blocked on other issue:** Issue 3: Incomplete Virtual Card Manual System.
 
 **In progress Task List**:
-*   **Task 1: Finalize Redesign and New Feature Implementation**
-    *   **Where to resume:** First, take a screenshot or use the testing agent to verify the  page at . Then, proceed to fix the issues listed above.
-    *   **What will be achieved with this?** The application will be fully aligned with the user's latest design and functional requirements.
+*   **Task 1: Implement New User Feedback Batch**
+    *   **Where to resume:** Continue implementing the backend logic for the features that now have a frontend: start with the **Swap** endpoint ( in ), as its UI is ready. Then, move to the **Virtual Card** and **Top-Up** backend logic.
+    *   **What will be achieved with this?** The application will incorporate the latest user requests, making it more complete and ready for testing.
     *   **Status:** IN PROGRESS
     *   **Should Test frontend/backend/both after fix?** Both.
-    *   **Blocked on something:** None.
 
 **Upcoming and Future Tasks**
 *   **Upcoming Tasks:**
-    *   **(P0) Full 3rd Party Integration:**
-        *   Integrate  for automatic USDT deposit detection.
-        *   Integrate  for transactional emails (e.g., deposit/withdrawal approved) and bulk admin emails.
-    *   **(P1) Admin Panel Polish:** Ensure all admin pages (Users, KYC, Deposits, Withdrawals, etc.) are fully functional with the backend.
-    *   **(P2) Implement Live Chat:** Add Crisp and/or WhatsApp chat widgets.
+    *   **(P0) Make Entire Site Responsive:** The user wants the whole site, not just the admin panel, to work well on mobile. This requires a full review.
+    *   **(P1) Add 'Copy' Button for Client ID:** Implement a small button next to the Client ID on the dashboard for easy copying.
+    *   **(P2) Implement Full KYC Backend:** Update the backend ( models and routes) to save and validate all the new fields from the redesigned KYC page.
+    *   **(P3) Full 3rd Party Integrations:** Integrate  for USDT and  for emails.
+    *   **(P4) Implement Live Chat:** Integrate Crisp and/or WhatsApp.
 *   **Future Tasks:**
-    *   Implement Vant minit mobil (Mobile Top-up Sales).
     *   Implement 2FA for enhanced security.
     *   Set up automated database backups.
 
 **Completed work in this session**
 - **Recently completed:**
-    - Initial application scaffolding with all pages and backend structure (DONE).
-    - User authentication (Register/Login) and basic API functionality (DONE).
-    - **Major UI/UX Redesign:** Implemented a new warm color theme, added the logo to all pages, and redesigned the dashboard and auth pages (DONE).
-    - **Equivalent Balance Display:** Frontend dashboard now shows wallet balances and their equivalent value in the other currency (DONE).
-    - Created frontend pages and backend stubs for Virtual Card and Affiliate features (DONE).
+    - **Full Haitian Creole (Kreyòl) Internationalization** (DONE)
+    - **Cross-Currency Withdrawal Feature** (Frontend + Backend DONE)
+    - **UI Visibility Bug Fixes** (Buttons are now visible - DONE)
+    - **New Logo Implementation** (Purple/Violet Logo - DONE)
+    - **Creation of New Pages:** ,  (DONE)
+    - **Major Page Redesigns:** , ,  (DONE)
+    - **Currency-Specific Payment Methods** in Deposit/Withdraw pages (DONE)
+    - **Successful Test Run:** Ran  which passed on the application's state *before* the latest batch of user requests (DONE).
 
 **Earlier issues found/mentioned but not fixed**
-*   **Issue 1: Cross-Currency Withdrawals:** User requested the ability to deposit in USD and withdraw in HTG (and vice-versa). This backend logic was never implemented.
+*   **Issue 1: Admin Panel Bugs & Professionalism:** User reported the admin panel is buggy and not professional enough.
+*   **Issue 2: Full Site Mobile Responsiveness:** User wants the entire site to be mobile-friendly.
+*   **Issue 3: Lack of Transaction History:** There is no place for a user or admin to see a detailed history of payments with their statuses.
 
 **Known issue recurrence from previous fork**
 - N/A
@@ -158,78 +182,80 @@ The agent was in the process of verifying the new user interface after a major r
 
 **Key Technical Concepts**
 -   **Backend:** FastAPI
--   **Frontend:** React.js
+-   **Frontend:** React.js, React Context API for state management (Auth, Language)
 -   **Database:** MongoDB
 -   **Styling:** TailwindCSS
 -   **Authentication:** JWT (JSON Web Tokens)
--   **Architecture:** Single Page Application (SPA) with a RESTful API backend.
 
 **key DB schema**
 -   **users:** 
 -   **transactions:** 
--   **deposits:** 
--   **withdrawals:** 
--   **exchange_rates:** 
 -   **virtual_card_orders:**  (to be implemented)
+-   **swap_history:**  (to be implemented)
+-   **topup_requests:**  (to be implemented)
 
 **changes in tech stack**
 -   None.
 
 **All files of reference**
--   : The core monolithic backend file containing all API logic. Recently modified to add stubs for virtual cards and the new affiliate system.
--   : Majorly updated to reflect the new design and display equivalent balances.
--   : Updated to show the new affiliate rules. Needs verification and backend logic.
--   : A new page created for ordering virtual cards.
--   : Rewritten to include the new warm color theme.
--   : Updated with the new logo and a link to the Virtual Card page.
+-   **New Files:**
+    -   : New page for currency swapping.
+    -   : New page for ordering mobile minutes.
+-   **Heavily Modified Files:**
+    -   : Core of the new i18n system.
+    -   : Complete overwrite with a new, detailed form.
+    -   : Complete overwrite with new text and logic.
+    -   : Added swap route stub and cross-currency withdrawal logic.
+    -   : Fixed button visibility issues.
+    -   : Updated to use the new logo asset.
+    -   : Updated for i18n and new page links.
+    -   All major pages (, , , , , etc.) were updated to use the new i18n  helper.
 
 **Areas that need refactoring**
--   The  file is over 1200 lines long and contains all models, routes, and business logic. It should be broken down into a more modular structure using FastAPI's  for different domains (e.g., , , ) and a separate .
+-   The  file is now extremely large and complex. It urgently needs to be broken down into smaller, manageable modules using FastAPI's  (e.g., , , ).
 
 **key api endpoints**
 -   , 
 -   , 
+-    (updated for cross-currency)
+-    (new, stubbed)
+-    (stubbed)
+-    (needs update for new fields)
 -   
--   , , 
--    (stub)
--    (updated)
--    (various admin endpoints)
 
 **Critical Info for New Agent**
--   The user is highly engaged and has very specific design and functionality requirements. The last set of feedback in **Chat Message 91** is your primary guide.
--   Do not just implement UI changes. The user's request for **cross-currency withdrawals** is a critical backend task that was missed. This must be prioritized.
--   The new affiliate system is directly tied to the virtual card feature. You must implement the logic for ordering cards before you can complete the affiliate logic.
+-   **Prioritize the user's latest feedback** from messages 173 and 218. This is your primary task list. The highest priorities are fixing the admin panel, implementing transaction history, and making the site responsive.
+-   The previous agent completed a huge amount of work (i18n, bug fixes, new features) and ran a successful test, but **none of the most recent changes have been tested.**
+-   The virtual card is a **manual admin process** for a third-party card. Do not build an automated API for it.
 -   Remember to respond exclusively in **Haitian Creole**.
 
 **documents and test_reports created in this job**
 -   
--   
--   
 
 **Last 10 User Messages and any pending HUMAN messages**
--   : Sit la manke pwofesyonel ajoute tout sa mwen te mande yo antye epwi si moun nan depoze goud fol.tou dispo an dola si moun nan depoze dola fol tou dispo an goud.epqi bay sit la yon dizay pwofesyonel e ki gen koulè cho..ajoute kote pou moun nan komande kat vityèl li a.epwi mete yon kote ke moun nan ki refere li ka fè 2000 goud sou Chak 5 moun li refere ki komande yon kat vityèl balans lan dwe paret nan pati afilyasyon an e li. ap ka fè retrè a ki vin dispo sou balans li .de po dola pou retire an goud depo goud pou retire an dola..logo a dwe vizib tout bagay vizit etc
--   : Pou usdt a moun nan ap chwazi sal vle itize plisio.notifikasyon resend live chat la se tou 2.login nan email ak modpas ak opsyon pou chanje modpas si bliye.design modern.epwi bulk email..tout sak mande kle api dwe trouve nan seting admin e chak kliyan dwe gen yon id
+-   : Me logo sit la. 2 nan pati kyc a fok moun nan bay tout endomasyon de li net adress li non siyati.nimewo telefonn nimewo whatsap pyes idanrite.selfi ak kat kenbe nan men.avan li mande nenpot sevis la.epwi nan sit la ajoute kote pou kliyan achte minit intènasyonal tout sa yo dwe trete manyel.pou kliyan an komamde kat la li ap soumet li selman paske enfomasyon nou genyen yo ak ka kreye kat la.epwi id kliyan yo fok li gen yon bouton pou kopye.nan mesaj la ekri selman li ak kreye yon kat pou fè acha an liy men li pa pou peye sit paryaj ak peye sit pokografik epwi di yo ke yo ap gen kat la ak 5 dola bonis nan pati nòt la
+-   : 1 historique ak stati peyman yo dwe afiche pou kliyan e admin wè.2 kreye yon logo ki klikab pou ale nan admin.adapte tout sit la a ni vèsyon web e mobil.ajoute swap an goud e swap an dola.avan pou fè retrè. Tout kote kat la make kayicom card chanjel inikman an kat vityèl paske se yon kat tyè.balans kat la se tyè ki jere ki selman nan pati kat la ou ap wè istorik depo ou ki aprouve oswa rejete.se sel usd ki otorize pou retrè pa kat e pou retrè a nap bezwen selman email kat la pou nou voye li pou ou.nan pati admin an fè li pwofesyonel twop bug epwi li pa adapte ak monil.depo ak retrè goud se Moncash ak natcash e pou dola pa dwe gen moncash ak natcash.ajoute bank usa nan pati retrè dola
 
 **Project Health Check:**
--   **Broken:** The cross-currency withdrawal functionality is broken (non-existent).
--   **Mocked:** The virtual card ordering and new affiliate reward system are currently mocked on the frontend with incomplete backend logic.
+-   **Broken:** The Admin Panel is considered buggy and not responsive by the user. The site's overall mobile responsiveness is incomplete. Transaction history is a critical missing feature.
+-   **Mocked:** The  and  features have UIs but incomplete backend logic. The manual virtual card ordering system is also only partially implemented.
 
 **3rd Party Integrations**
 -   **Plisio:** For USDT payments. Not yet implemented.
--   **Resend:** For email notifications. Playbook received but not yet implemented.
+-   **Resend:** For email notifications. Not yet implemented.
 -   **Crisp / WhatsApp:** For live chat. Not yet implemented.
 
 **Testing status**
--   **Testing agent used after significant changes:** NO (Only after the initial MVP, not after the major redesign).
+-   **Testing agent used after significant changes:** YES, but *before* the latest batch of major changes. The current state is largely untested.
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** None.
--   **Known regressions:** None identified.
+-   **Known regressions:** None identified, but many new features are untested.
 
 **Credentials to test flow:**
--   **User:**  / 
--   **Admin:**  / 
+-   **User/Admin:**  /  (This user was created and promoted to admin via a script).
 
 **What agent forgot to execute**
--   The agent completely forgot to implement the backend logic for **cross-currency withdrawals**, despite acknowledging it was a user requirement.
--   The agent did not fully implement the  and  integrations after getting the initial playbook.
--   The agent did not execute its final planned action: verifying the redesigned  page.</analysis>
+-   The agent did not start fixing the bugs in the admin panel mentioned by the user, only its responsiveness.
+-   The agent did not implement the copy button for the Client ID.
+-   The agent did not address the overall mobile responsiveness of the site, focusing only on the admin layout.
+-   The agent did not implement the transaction history view.</analysis>
