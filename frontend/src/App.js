@@ -6,6 +6,7 @@ import { LanguageProvider } from "@/context/LanguageContext";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { LiveChat } from "@/components/LiveChat";
+import { ScrollToTop } from "@/components/ScrollToTop";
 
 // Pages
 import Landing from "@/pages/Landing";
