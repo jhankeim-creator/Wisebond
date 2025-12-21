@@ -14,20 +14,24 @@ import {
   DollarSign,
   CreditCard,
   Building,
-  Wallet
+  Wallet,
+  ArrowLeftRight
 } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const withdrawalMethods = [
-  { id: 'zelle', name: 'Zelle', icon: DollarSign, placeholder: 'Email ou téléphone Zelle' },
+  { id: 'card', name: 'Kat / Card', icon: CreditCard, placeholder: 'Nimewo kat / Card number' },
+  { id: 'zelle', name: 'Zelle', icon: DollarSign, placeholder: 'Email ou telefòn Zelle' },
   { id: 'paypal', name: 'PayPal', icon: DollarSign, placeholder: 'Email PayPal' },
-  { id: 'usdt', name: 'USDT', icon: Wallet, placeholder: 'Adresse USDT (TRC-20 ou ERC-20)' },
-  { id: 'bank_mexico', name: 'Bank Mexico', icon: Building, placeholder: 'CLABE bancaire' }
+  { id: 'usdt', name: 'USDT', icon: Wallet, placeholder: 'Adrès USDT (TRC-20 ou ERC-20)' },
+  { id: 'bank_mexico', name: 'Bank Meksik', icon: Building, placeholder: 'CLABE bankè' },
+  { id: 'moncash', name: 'MonCash', icon: Wallet, placeholder: 'Nimewo telefòn MonCash' },
+  { id: 'natcash', name: 'NatCash', icon: Wallet, placeholder: 'Nimewo telefòn NatCash' }
 ];
 
 export default function Withdraw() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user, refreshUser } = useAuth();
   
   const [step, setStep] = useState(1);
@@ -36,10 +40,16 @@ export default function Withdraw() {
   const [destination, setDestination] = useState('');
   const [fees, setFees] = useState([]);
   const [limits, setLimits] = useState([]);
+  const [rates, setRates] = useState(null);
   const [loading, setLoading] = useState(false);
+  
+  // Currency selection for cross-currency withdrawal
+  const [sourceCurrency, setSourceCurrency] = useState('HTG');
+  const [targetCurrency, setTargetCurrency] = useState('HTG');
 
   useEffect(() => {
     fetchFeesAndLimits();
+    fetchRates();
   }, []);
 
   const fetchFeesAndLimits = async () => {
@@ -49,6 +59,15 @@ export default function Withdraw() {
       setLimits(response.data.limits);
     } catch (error) {
       console.error('Error fetching fees:', error);
+    }
+  };
+
+  const fetchRates = async () => {
+    try {
+      const response = await axios.get(`${API}/exchange-rates`);
+      setRates(response.data);
+    } catch (error) {
+      console.error('Error fetching rates:', error);
     }
   };
 
@@ -73,21 +92,35 @@ export default function Withdraw() {
     return limits.find(l => l.method === method) || { min_amount: 10, max_amount: 10000 };
   };
 
+  const getSourceBalance = () => {
+    if (sourceCurrency === 'USD') return user?.wallet_usd || 0;
+    return user?.wallet_htg || 0;
+  };
+
+  const convertAmount = (amt, from, to) => {
+    if (!rates || from === to) return amt;
+    if (from === 'HTG' && to === 'USD') return amt * rates.htg_to_usd;
+    if (from === 'USD' && to === 'HTG') return amt * rates.usd_to_htg;
+    return amt;
+  };
+
   const handleSubmit = async () => {
     const limit = getLimit();
     const amt = parseFloat(amount);
     
     if (amt < limit.min_amount) {
-      toast.error(`Montant minimum: $${limit.min_amount}`);
+      toast.error(`Montan minimòm: ${targetCurrency === 'USD' ? '$' : 'G '}${limit.min_amount}`);
       return;
     }
     
     if (amt > limit.max_amount) {
-      toast.error(`Montant maximum: $${limit.max_amount}`);
+      toast.error(`Montan maksimòm: ${targetCurrency === 'USD' ? '$' : 'G '}${limit.max_amount}`);
       return;
     }
-    
-    if (amt > user.wallet_usd) {
+
+    // Check if user has enough balance in source currency
+    const amountInSourceCurrency = convertAmount(amt, targetCurrency, sourceCurrency);
+    if (amountInSourceCurrency > getSourceBalance()) {
       toast.error(t('insufficientBalance'));
       return;
     }
@@ -97,16 +130,17 @@ export default function Withdraw() {
     try {
       await axios.post(`${API}/withdrawals/create`, {
         amount: amt,
-        currency: 'USD',
+        currency: targetCurrency,
+        source_currency: sourceCurrency,
         method,
         destination
       });
       
       await refreshUser();
-      toast.success('Demande de retrait soumise avec succès!');
+      toast.success(language === 'ht' ? 'Demann retrè soumèt avèk siksè!' : 'Demande de retrait soumise avec succès!');
       setStep(3);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Erreur lors de la soumission');
+      toast.error(error.response?.data?.detail || 'Erè nan soumisyon');
     } finally {
       setLoading(false);
     }
@@ -115,17 +149,101 @@ export default function Withdraw() {
   const fee = calculateFee();
   const netAmount = parseFloat(amount || 0) - fee;
 
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
+
   const renderStep1 = () => (
     <div className="space-y-6">
-      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-6">
-        <p className="text-sm text-emerald-700">Solde disponible</p>
-        <p className="text-2xl font-bold text-emerald-800">
-          ${user?.wallet_usd?.toFixed(2) || '0.00'} USD
+      {/* Balance Cards */}
+      <div className="grid grid-cols-2 gap-4">
+        <div 
+          className={`p-4 rounded-xl cursor-pointer transition-all ${
+            sourceCurrency === 'HTG' 
+              ? 'bg-[#EA580C] text-white ring-2 ring-[#EA580C] ring-offset-2' 
+              : 'bg-orange-50 border border-orange-200 hover:border-[#EA580C]'
+          }`}
+          onClick={() => setSourceCurrency('HTG')}
+        >
+          <p className={`text-sm ${sourceCurrency === 'HTG' ? 'text-orange-100' : 'text-stone-500'}`}>
+            {getText('Balans HTG', 'Solde HTG', 'HTG Balance')}
+          </p>
+          <p className={`text-xl font-bold ${sourceCurrency === 'HTG' ? 'text-white' : 'text-stone-900'}`}>
+            G {(user?.wallet_htg || 0).toLocaleString()}
+          </p>
+          {rates && (
+            <p className={`text-xs ${sourceCurrency === 'HTG' ? 'text-orange-200' : 'text-stone-400'}`}>
+              ≈ ${((user?.wallet_htg || 0) * rates.htg_to_usd).toFixed(2)} USD
+            </p>
+          )}
+        </div>
+        
+        <div 
+          className={`p-4 rounded-xl cursor-pointer transition-all ${
+            sourceCurrency === 'USD' 
+              ? 'bg-amber-500 text-white ring-2 ring-amber-500 ring-offset-2' 
+              : 'bg-amber-50 border border-amber-200 hover:border-amber-500'
+          }`}
+          onClick={() => setSourceCurrency('USD')}
+        >
+          <p className={`text-sm ${sourceCurrency === 'USD' ? 'text-amber-100' : 'text-stone-500'}`}>
+            {getText('Balans USD', 'Solde USD', 'USD Balance')}
+          </p>
+          <p className={`text-xl font-bold ${sourceCurrency === 'USD' ? 'text-white' : 'text-stone-900'}`}>
+            ${(user?.wallet_usd || 0).toFixed(2)}
+          </p>
+          {rates && (
+            <p className={`text-xs ${sourceCurrency === 'USD' ? 'text-amber-200' : 'text-stone-400'}`}>
+              ≈ G {Math.round((user?.wallet_usd || 0) * rates.usd_to_htg).toLocaleString()} HTG
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Target Currency Selection */}
+      <div className="bg-stone-50 rounded-xl p-4">
+        <p className="text-sm font-medium text-stone-700 mb-3">
+          {getText('Chwazi deviz pou retire', 'Choisir la devise à retirer', 'Choose withdrawal currency')}
         </p>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setTargetCurrency('HTG')}
+            className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
+              targetCurrency === 'HTG' 
+                ? 'bg-[#EA580C] text-white' 
+                : 'bg-white border border-stone-200 text-stone-600 hover:border-[#EA580C]'
+            }`}
+          >
+            HTG (Goud)
+          </button>
+          <button
+            onClick={() => setTargetCurrency('USD')}
+            className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
+              targetCurrency === 'USD' 
+                ? 'bg-amber-500 text-white' 
+                : 'bg-white border border-stone-200 text-stone-600 hover:border-amber-500'
+            }`}
+          >
+            USD (Dola)
+          </button>
+        </div>
+        
+        {sourceCurrency !== targetCurrency && rates && (
+          <div className="mt-3 p-3 bg-blue-50 rounded-lg flex items-center gap-2">
+            <ArrowLeftRight size={18} className="text-blue-600" />
+            <p className="text-sm text-blue-700">
+              {getText('Konvèsyon otomatik', 'Conversion automatique', 'Auto conversion')}: 1 {sourceCurrency} = {sourceCurrency === 'HTG' ? rates.htg_to_usd.toFixed(4) : rates.usd_to_htg} {targetCurrency}
+            </p>
+          </div>
+        )}
       </div>
 
       <div>
-        <h3 className="font-semibold text-slate-900 mb-4">Choisir la méthode de retrait</h3>
+        <h3 className="font-semibold text-stone-900 mb-4">
+          {getText('Chwazi metòd retrè', 'Choisir la méthode de retrait', 'Choose withdrawal method')}
+        </h3>
         <div className="space-y-3">
           {withdrawalMethods.map((m) => {
             const Icon = m.icon;
@@ -135,16 +253,16 @@ export default function Withdraw() {
                 onClick={() => setMethod(m.id)}
                 className={`w-full p-4 rounded-xl border-2 flex items-center gap-4 transition-all ${
                   method === m.id 
-                    ? 'border-[#0047AB] bg-blue-50' 
-                    : 'border-slate-200 hover:border-slate-300'
+                    ? 'border-[#EA580C] bg-orange-50' 
+                    : 'border-stone-200 hover:border-stone-300'
                 }`}
               >
-                <div className="w-12 h-12 bg-slate-100 rounded-lg flex items-center justify-center">
-                  <Icon size={24} className="text-slate-600" />
+                <div className="w-12 h-12 bg-stone-100 rounded-lg flex items-center justify-center">
+                  <Icon size={24} className="text-stone-600" />
                 </div>
-                <span className="font-medium text-slate-900">{m.name}</span>
+                <span className="font-medium text-stone-900">{m.name}</span>
                 {method === m.id && (
-                  <Check className="ml-auto text-[#0047AB]" size={20} />
+                  <Check className="ml-auto text-[#EA580C]" size={20} />
                 )}
               </button>
             );
@@ -158,7 +276,7 @@ export default function Withdraw() {
         className="btn-primary w-full"
         data-testid="withdraw-continue"
       >
-        Continuer
+        {getText('Kontinye', 'Continuer', 'Continue')}
       </Button>
     </div>
   );
@@ -181,44 +299,53 @@ export default function Withdraw() {
         </div>
 
         <div className="text-center">
-          <Label className="text-slate-600">{t('amount')} (USD)</Label>
+          <Label className="text-stone-600">{t('amount')} ({targetCurrency})</Label>
           <div className="relative mt-2">
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-3xl text-slate-400">$</span>
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-3xl text-stone-400">
+              {targetCurrency === 'USD' ? '$' : 'G'}
+            </span>
             <input
               type="number"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="amount-input py-4 pl-12"
               placeholder="0.00"
-              max={user?.wallet_usd}
               data-testid="withdraw-amount"
             />
           </div>
-          <p className="text-sm text-slate-500 mt-2">
-            Min: ${limit.min_amount} | Max: ${limit.max_amount}
+          <p className="text-sm text-stone-500 mt-2">
+            Min: {targetCurrency === 'USD' ? '$' : 'G '}{limit.min_amount} | Max: {targetCurrency === 'USD' ? '$' : 'G '}{limit.max_amount}
           </p>
         </div>
 
         {amount && parseFloat(amount) > 0 && (
-          <div className="bg-slate-50 rounded-xl p-4 space-y-2">
-            <div className="flex justify-between text-slate-600">
+          <div className="bg-stone-50 rounded-xl p-4 space-y-2">
+            <div className="flex justify-between text-stone-600">
               <span>{t('amount')}</span>
-              <span>${parseFloat(amount).toFixed(2)}</span>
+              <span>{targetCurrency === 'USD' ? '$' : 'G '}{parseFloat(amount).toLocaleString()}</span>
             </div>
-            <div className="flex justify-between text-slate-600">
+            {sourceCurrency !== targetCurrency && rates && (
+              <div className="flex justify-between text-blue-600">
+                <span>{getText('Konvèsyon', 'Conversion', 'Conversion')}</span>
+                <span>
+                  {sourceCurrency === 'USD' ? '$' : 'G '}{convertAmount(parseFloat(amount), targetCurrency, sourceCurrency).toLocaleString(undefined, {maximumFractionDigits: 2})} {sourceCurrency}
+                </span>
+              </div>
+            )}
+            <div className="flex justify-between text-stone-600">
               <span>{t('fee')}</span>
-              <span className="text-red-500">-${fee.toFixed(2)}</span>
+              <span className="text-red-500">-{targetCurrency === 'USD' ? '$' : 'G '}{fee.toFixed(2)}</span>
             </div>
-            <div className="border-t border-slate-200 pt-2 flex justify-between font-semibold text-slate-900">
+            <div className="border-t border-stone-200 pt-2 flex justify-between font-semibold text-stone-900">
               <span>{t('netAmount')}</span>
-              <span className="text-emerald-600">${netAmount.toFixed(2)}</span>
+              <span className="text-emerald-600">{targetCurrency === 'USD' ? '$' : 'G '}{netAmount.toFixed(2)}</span>
             </div>
           </div>
         )}
 
         <div className="flex gap-4">
           <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
-            Retour
+            {t('back')}
           </Button>
           <Button 
             onClick={handleSubmit}
@@ -238,12 +365,18 @@ export default function Withdraw() {
       <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
         <Check className="text-emerald-500" size={40} />
       </div>
-      <h3 className="text-2xl font-bold text-slate-900 mb-2">Demande soumise!</h3>
-      <p className="text-slate-600 mb-6">
-        Votre demande de retrait de ${amount} USD est en cours de traitement.
+      <h3 className="text-2xl font-bold text-stone-900 mb-2">
+        {getText('Demann soumèt!', 'Demande soumise!', 'Request submitted!')}
+      </h3>
+      <p className="text-stone-600 mb-6">
+        {getText(
+          `Demann retrè ${targetCurrency === 'USD' ? '$' : 'G '}${amount} ${targetCurrency} ap trete.`,
+          `Votre demande de retrait de ${targetCurrency === 'USD' ? '$' : 'G '}${amount} ${targetCurrency} est en cours de traitement.`,
+          `Your withdrawal request of ${targetCurrency === 'USD' ? '$' : 'G '}${amount} ${targetCurrency} is being processed.`
+        )}
       </p>
       <Button onClick={() => { setStep(1); setAmount(''); setDestination(''); setMethod(''); }} className="btn-primary">
-        Nouveau retrait
+        {getText('Nouvo retrè', 'Nouveau retrait', 'New withdrawal')}
       </Button>
     </div>
   );
@@ -254,19 +387,23 @@ export default function Withdraw() {
         <Card>
           <CardContent className="p-8 text-center">
             <AlertCircle className="mx-auto text-amber-500 mb-4" size={48} />
-            <h3 className="text-xl font-bold text-slate-900 mb-2">{t('kycRequired')}</h3>
-            <p className="text-slate-600 mb-6">
-              Vous devez compléter votre vérification KYC pour effectuer des retraits.
+            <h3 className="text-xl font-bold text-stone-900 mb-2">{t('kycRequired')}</h3>
+            <p className="text-stone-600 mb-6">
+              {getText(
+                'Ou dwe konplete verifikasyon KYC pou fè retrè.',
+                'Vous devez compléter votre vérification KYC pour effectuer des retraits.',
+                'You must complete KYC verification to make withdrawals.'
+              )}
             </p>
             <Button className="btn-primary" onClick={() => window.location.href = '/kyc'}>
-              Compléter KYC
+              {getText('Konplete KYC', 'Compléter KYC', 'Complete KYC')}
             </Button>
           </CardContent>
         </Card>
       ) : (
         <Card className="max-w-xl mx-auto">
           <CardHeader>
-            <CardTitle>{step < 3 ? `Étape ${step}/2` : 'Succès'}</CardTitle>
+            <CardTitle>{step < 3 ? `${getText('Etap', 'Étape', 'Step')} ${step}/2` : getText('Siksè', 'Succès', 'Success')}</CardTitle>
           </CardHeader>
           <CardContent>
             {step === 1 && renderStep1()}
