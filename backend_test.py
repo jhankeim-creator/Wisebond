@@ -240,6 +240,8 @@ def main():
     
     # Test new features
     tests = [
+        ("Public Chat Settings Endpoint", tester.test_chat_settings_endpoint),
+        ("Admin Settings with Toggles", tester.test_admin_settings_toggles),
         ("Exchange Rates with Swap", tester.test_exchange_rates_with_swap),
         ("Admin Update Swap Rates", tester.test_admin_update_swap_rates),
         ("Admin Card Fees Management", tester.test_admin_card_fees_endpoints),
