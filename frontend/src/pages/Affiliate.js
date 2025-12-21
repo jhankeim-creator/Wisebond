@@ -29,6 +29,12 @@ export default function Affiliate() {
   const [loading, setLoading] = useState(true);
   const [withdrawing, setWithdrawing] = useState(false);
 
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
+
   useEffect(() => {
     fetchAffiliateInfo();
   }, []);
@@ -47,7 +53,7 @@ export default function Affiliate() {
   const copyLink = () => {
     navigator.clipboard.writeText(affiliateData?.affiliate_link);
     setCopied(true);
-    toast.success(language === 'fr' ? 'Lien copié!' : 'Link copied!');
+    toast.success(getText('Lyen kopye!', 'Lien copié!', 'Link copied!'));
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -55,9 +61,11 @@ export default function Affiliate() {
     if (navigator.share) {
       navigator.share({
         title: 'KAYICOM Wallet',
-        text: language === 'fr' 
-          ? 'Rejoignez KAYICOM Wallet et gérez vos finances en HTG et USD!'
-          : 'Join KAYICOM Wallet and manage your finances in HTG and USD!',
+        text: getText(
+          'Antre nan KAYICOM Wallet epi jere finans ou an HTG ak USD!',
+          'Rejoignez KAYICOM Wallet et gérez vos finances en HTG et USD!',
+          'Join KAYICOM Wallet and manage your finances in HTG and USD!'
+        ),
         url: affiliateData?.affiliate_link
       });
     } else {
@@ -67,14 +75,14 @@ export default function Affiliate() {
 
   const withdrawEarnings = async () => {
     if (user?.affiliate_earnings < 2000) {
-      toast.error(language === 'fr' ? 'Minimum de retrait: G 2,000' : 'Minimum withdrawal: G 2,000');
+      toast.error(getText('Minimòm pou transfere: G 2,000', 'Minimum de retrait: G 2,000', 'Minimum withdrawal: G 2,000'));
       return;
     }
 
     setWithdrawing(true);
     try {
       await axios.post(`${API}/affiliate/withdraw`);
-      toast.success(language === 'fr' ? 'Gains transférés vers votre wallet!' : 'Earnings transferred to your wallet!');
+      toast.success(getText('Lajan transfere nan wallet ou!', 'Gains transférés vers votre wallet!', 'Earnings transferred to your wallet!'));
       refreshUser();
       fetchAffiliateInfo();
     } catch (error) {
