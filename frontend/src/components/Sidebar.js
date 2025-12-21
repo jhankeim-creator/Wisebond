@@ -72,29 +72,22 @@ export const Sidebar = ({ isOpen, onClose }) => {
           <X size={24} />
         </button>
         
-        {/* Logo - Clickable to go home */}
-        <div className="mb-8">
-          <Link to="/" className="block hover:opacity-80 transition-opacity">
-            <Logo linkToHome={false} />
-            {isAdmin && (
-              <p className="text-xs text-stone-400 mt-1 text-center">
-                <Link to="/admin" className="hover:text-[#EA580C]">{getText('Ale nan admin', 'Aller à admin', 'Go to admin')}</Link>
-              </p>
-            )}
-          </Link>
-        </div>
-
-        {/* User info */}
-        <div className="mb-6 p-4 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl border border-orange-100">
-          <p className="text-stone-900 font-semibold truncate">{user?.full_name}</p>
-          <p className="text-stone-500 text-sm font-mono">{user?.client_id}</p>
+        {/* User info - No logo here, logo only in header */}
+        <div className="mb-6 p-4 bg-gradient-to-r from-orange-50 to-amber-50 dark:from-stone-800 dark:to-stone-700 rounded-xl border border-orange-100 dark:border-stone-600 mt-2">
+          <p className="text-stone-900 dark:text-white font-semibold truncate">{user?.full_name}</p>
+          <p className="text-stone-500 dark:text-stone-400 text-sm font-mono">{user?.client_id}</p>
           <div className="flex items-center gap-2 mt-2">
             <span className={`w-2 h-2 rounded-full ${
               user?.kyc_status === 'approved' ? 'bg-emerald-500' : 
               user?.kyc_status === 'pending' ? 'bg-amber-500 animate-pulse' : 'bg-red-500'
             }`} />
-            <span className="text-xs text-stone-500 capitalize">{user?.kyc_status}</span>
+            <span className="text-xs text-stone-500 dark:text-stone-400 capitalize">{user?.kyc_status}</span>
           </div>
+          {isAdmin && (
+            <Link to="/admin" className="mt-2 inline-block text-xs text-[#EA580C] hover:underline">
+              {getText('Ale nan Admin', 'Aller à Admin', 'Go to Admin')} →
+            </Link>
+          )}
         </div>
 
         {/* Navigation */}
