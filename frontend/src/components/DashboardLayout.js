@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Sidebar } from '@/components/Sidebar';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
@@ -27,11 +28,13 @@ export const DashboardLayout = ({ children, title }) => {
         {/* Header */}
         <header className="sticky top-0 z-20 glass-effect border-b border-stone-200 dark:border-stone-700 dark:bg-stone-900/80">
           <div className="flex items-center justify-between px-6 py-4">
-            <div className="hidden lg:block">
-              <h1 className="text-xl font-bold text-stone-900 dark:text-white">{title}</h1>
-            </div>
-            <div className="lg:hidden">
-              <Logo size="small" linkToHome={true} />
+            <div className="flex items-center gap-4">
+              <Link to="/" className="hover:opacity-80 transition-opacity">
+                <Logo size="small" />
+              </Link>
+              <div className="hidden lg:block">
+                <h1 className="text-xl font-bold text-stone-900 dark:text-white">{title}</h1>
+              </div>
             </div>
             
             <div className="flex items-center gap-3">
