@@ -83,7 +83,7 @@ export default function Dashboard() {
     { to: '/deposit', icon: ArrowDownCircle, label: t('deposit'), color: 'bg-emerald-500 hover:bg-emerald-600' },
     { to: '/withdraw', icon: ArrowUpCircle, label: t('withdraw'), color: 'bg-[#EA580C] hover:bg-[#C2410C]' },
     { to: '/transfer', icon: Send, label: t('transfer'), color: 'bg-amber-500 hover:bg-amber-600' },
-    { to: '/virtual-card', icon: CreditCard, label: 'Carte', color: 'bg-stone-800 hover:bg-stone-900' }
+    { to: '/virtual-card', icon: CreditCard, label: getText('Kat', 'Carte', 'Card'), color: 'bg-stone-800 hover:bg-stone-900' }
   ];
 
   return (
@@ -97,17 +97,17 @@ export default function Dashboard() {
               <div>
                 <p className="font-semibold text-amber-800">
                   {user?.kyc_status === 'pending' 
-                    ? (language === 'fr' ? 'Vérification KYC en cours' : 'KYC verification in progress')
-                    : (language === 'fr' ? 'Vérification KYC requise' : 'KYC verification required')}
+                    ? getText('Verifikasyon KYC an kou', 'Vérification KYC en cours', 'KYC verification in progress')
+                    : getText('Verifikasyon KYC obligatwa', 'Vérification KYC requise', 'KYC verification required')}
                 </p>
                 <p className="text-sm text-amber-600">
-                  {language === 'fr' ? 'Complétez votre KYC pour accéder à toutes les fonctionnalités' : 'Complete KYC to access all features'}
+                  {getText('Konplete KYC pou aksè nan tout fonksyonalite yo', 'Complétez votre KYC pour accéder à toutes les fonctionnalités', 'Complete KYC to access all features')}
                 </p>
               </div>
             </div>
             <Link to="/kyc">
               <Button variant="outline" className="border-amber-500 text-amber-700 hover:bg-amber-100">
-                {user?.kyc_status === 'pending' ? (language === 'fr' ? 'Voir statut' : 'View status') : (language === 'fr' ? 'Compléter' : 'Complete')}
+                {user?.kyc_status === 'pending' ? getText('Wè statis', 'Voir statut', 'View status') : getText('Konplete', 'Compléter', 'Complete')}
               </Button>
             </Link>
           </div>
