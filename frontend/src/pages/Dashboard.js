@@ -145,9 +145,18 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="flex items-center justify-between pt-4 border-t border-white/20">
-              <div>
-                <p className="text-orange-200 text-xs">Client ID</p>
-                <p className="font-mono">{user?.client_id}</p>
+              <div className="flex items-center gap-2">
+                <div>
+                  <p className="text-orange-200 text-xs">Client ID</p>
+                  <p className="font-mono">{user?.client_id}</p>
+                </div>
+                <button 
+                  onClick={copyClientId}
+                  className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                  title={getText('Kopye ID', 'Copier ID', 'Copy ID')}
+                >
+                  {copied ? <Check size={16} className="text-emerald-300" /> : <Copy size={16} />}
+                </button>
               </div>
               <Logo size="small" className="opacity-70" />
             </div>
