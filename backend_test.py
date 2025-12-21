@@ -156,6 +156,62 @@ class KayicomWalletTester:
         
         return success1 and success2 and success3
 
+    def test_chat_settings_endpoint(self):
+        """Test public chat settings endpoint"""
+        success, response = self.run_test(
+            "GET Public Chat Settings",
+            "GET",
+            "public/chat-settings",
+            200
+        )
+        if success:
+            expected_keys = ['crisp_enabled', 'crisp_website_id', 'whatsapp_enabled', 'whatsapp_number']
+            has_all_keys = all(key in response for key in expected_keys)
+            print(f"   Has all expected keys: {has_all_keys}")
+            print(f"   Response keys: {list(response.keys())}")
+        return success
+
+    def test_admin_settings_toggles(self):
+        """Test admin settings with toggle functionality"""
+        if not self.admin_token:
+            print("❌ Admin token required")
+            return False
+            
+        headers = {'Authorization': f'Bearer {self.admin_token}'}
+        
+        # Test GET admin settings
+        success1, response1 = self.run_test(
+            "GET Admin Settings",
+            "GET",
+            "admin/settings",
+            200,
+            headers=headers
+        )
+        
+        if success1:
+            settings = response1.get('settings', {})
+            toggle_keys = ['resend_enabled', 'crisp_enabled', 'whatsapp_enabled', 'plisio_enabled']
+            has_toggles = all(key in settings for key in toggle_keys)
+            print(f"   Has toggle keys: {has_toggles}")
+            print(f"   Toggle states: {[(k, settings.get(k)) for k in toggle_keys]}")
+        
+        # Test PUT admin settings (update toggles)
+        success2, response2 = self.run_test(
+            "PUT Admin Settings Update",
+            "PUT",
+            "admin/settings",
+            200,
+            data={
+                "resend_api_key": "test_key",
+                "sender_email": "test@kayicom.com",
+                "crisp_website_id": "test-crisp-id",
+                "whatsapp_number": "+50939308318"
+            },
+            headers=headers
+        )
+        
+        return success1 and success2
+
     def test_dashboard_features(self):
         """Test dashboard related features"""
         # Test basic dashboard data endpoints
