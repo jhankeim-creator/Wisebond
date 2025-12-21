@@ -197,14 +197,14 @@ export default function Dashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-5 gap-3 md:gap-4">
           {quickActions.map((action) => {
             const Icon = action.icon;
             return (
               <Link key={action.to} to={action.to}>
-                <div className={`${action.color} text-white rounded-xl p-4 text-center transition-all hover:scale-105 shadow-lg`}>
-                  <Icon className="mx-auto mb-2" size={24} />
-                  <span className="font-semibold text-sm">{action.label}</span>
+                <div className={`${action.color} text-white rounded-xl p-3 md:p-4 text-center transition-all hover:scale-105 shadow-lg`}>
+                  <Icon className="mx-auto mb-1 md:mb-2" size={20} />
+                  <span className="font-semibold text-xs md:text-sm">{action.label}</span>
                 </div>
               </Link>
             );
