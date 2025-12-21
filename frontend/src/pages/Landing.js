@@ -171,7 +171,7 @@ export default function Landing() {
               {/* Professional Black Woman Image */}
               <div className="relative rounded-3xl overflow-hidden shadow-2xl">
                 <img 
-                  src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
+                  src="https://images.unsplash.com/photo-1589156280159-27698a70f29e?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
                   alt="Professional woman using KAYICOM"
                   className="w-full h-auto object-cover rounded-3xl"
                 />
