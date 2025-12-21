@@ -134,16 +134,16 @@ export default function Login() {
         <div className="relative z-10 flex flex-col justify-center items-center h-full p-12 text-white">
           <div className="max-w-md text-center">
             <h2 className="text-4xl font-bold mb-4">
-              {language === 'fr' ? 'Gérez vos finances' : 'Manage your finances'}
+              {getText('Jere finans ou', 'Gérez vos finances', 'Manage your finances')}
             </h2>
             <p className="text-xl text-orange-100 mb-8">
-              HTG & USD {language === 'fr' ? 'dans un seul portefeuille sécurisé' : 'in one secure wallet'}
+              HTG & USD {getText('nan yon sèl pòtfèy sekirize', 'dans un seul portefeuille sécurisé', 'in one secure wallet')}
             </p>
             
             <div className="wallet-card-htg text-left glow-orange">
               <div className="flex justify-between items-start mb-6">
                 <div>
-                  <p className="text-orange-200 text-sm">{language === 'fr' ? 'Balance totale' : 'Total balance'}</p>
+                  <p className="text-orange-200 text-sm">{getText('Balans total', 'Balance totale', 'Total balance')}</p>
                   <p className="text-2xl font-bold">G 125,450</p>
                   <p className="text-orange-200 text-sm">≈ $940.60 USD</p>
                 </div>
