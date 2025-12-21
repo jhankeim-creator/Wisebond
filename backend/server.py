@@ -140,6 +140,9 @@ class BalanceAdjustment(BaseModel):
     amount: float
     reason: str
 
+class VirtualCardOrder(BaseModel):
+    card_name: str
+
 # ==================== HELPERS ====================
 
 def generate_client_id():
@@ -147,6 +150,21 @@ def generate_client_id():
 
 def generate_affiliate_code():
     return secrets.token_urlsafe(8)
+
+def generate_card_number():
+    """Generate a virtual card number (Visa-like)"""
+    prefix = "4532"  # Visa prefix
+    remaining = ''.join([str(secrets.randbelow(10)) for _ in range(12)])
+    return prefix + remaining
+
+def generate_cvv():
+    """Generate 3-digit CVV"""
+    return ''.join([str(secrets.randbelow(10)) for _ in range(3)])
+
+def generate_expiry():
+    """Generate expiry date (3 years from now)"""
+    future = datetime.now() + timedelta(days=365*3)
+    return future.strftime("%m/%y")
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
