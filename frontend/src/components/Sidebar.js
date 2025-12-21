@@ -17,7 +17,8 @@ import {
   X,
   CreditCard,
   ArrowDownUp,
-  Phone
+  Phone,
+  Home
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -38,6 +39,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
   };
 
   const menuItems = [
+    { path: '/', icon: Home, label: getText('Akèy', 'Accueil', 'Home') },
     { path: '/dashboard', icon: LayoutDashboard, label: getText('Tablo bò', 'Tableau de bord', 'Dashboard') },
     { path: '/deposit', icon: ArrowDownCircle, label: getText('Depoze', 'Déposer', 'Deposit') },
     { path: '/withdraw', icon: ArrowUpCircle, label: getText('Retire', 'Retirer', 'Withdraw') },
