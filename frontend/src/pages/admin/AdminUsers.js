@@ -8,12 +8,12 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Search, Eye, Ban, DollarSign, RefreshCw } from 'lucide-react';
+import { Search, Eye, Ban, DollarSign, RefreshCw, UserX, CheckCircle } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function AdminUsers() {
-  const { t } = useLanguage();
+  const { getText } = useLanguage();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -43,7 +43,7 @@ export default function AdminUsers() {
       setSelectedUser(response.data);
       setShowModal(true);
     } catch (error) {
-      toast.error('Erreur lors du chargement');
+      toast.error(getText('Erè pandan chajman', 'Erreur lors du chargement', 'Error loading'));
     }
   };
 
@@ -52,10 +52,10 @@ export default function AdminUsers() {
       await axios.patch(`${API}/admin/users/${userId}/status`, {
         is_active: !currentStatus
       });
-      toast.success('Statut mis à jour');
+      toast.success(getText('Statis mete ajou', 'Statut mis à jour', 'Status updated'));
       fetchUsers();
     } catch (error) {
-      toast.error('Erreur lors de la mise à jour');
+      toast.error(getText('Erè pandan mizajou', 'Erreur lors de la mise à jour', 'Error updating'));
     }
   };
 
@@ -68,16 +68,51 @@ export default function AdminUsers() {
     return styles[status] || 'bg-slate-100 text-slate-700';
   };
 
+  const getKycText = (status) => {
+    if (status === 'approved') return getText('Verifye', 'Vérifié', 'Verified');
+    if (status === 'pending') return getText('An atant', 'En attente', 'Pending');
+    if (status === 'rejected') return getText('Rejte', 'Rejeté', 'Rejected');
+    return getText('Pa soumèt', 'Non soumis', 'Not submitted');
+  };
+
   return (
-    <AdminLayout title={t('users')}>
+    <AdminLayout title={getText('Jesyon Kliyan', 'Gestion des clients', 'Client Management')}>
       <div className="space-y-6" data-testid="admin-users">
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card className="bg-blue-50 dark:bg-blue-900/30">
+            <CardContent className="p-4 text-center">
+              <p className="text-blue-800 dark:text-blue-300 font-bold text-2xl">{users.length}</p>
+              <p className="text-blue-600 dark:text-blue-400 text-sm">{getText('Total Kliyan', 'Total Clients', 'Total Clients')}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-emerald-50 dark:bg-emerald-900/30">
+            <CardContent className="p-4 text-center">
+              <p className="text-emerald-800 dark:text-emerald-300 font-bold text-2xl">{users.filter(u => u.kyc_status === 'approved').length}</p>
+              <p className="text-emerald-600 dark:text-emerald-400 text-sm">{getText('KYC Verifye', 'KYC Vérifié', 'KYC Verified')}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-amber-50 dark:bg-amber-900/30">
+            <CardContent className="p-4 text-center">
+              <p className="text-amber-800 dark:text-amber-300 font-bold text-2xl">{users.filter(u => u.kyc_status === 'pending').length}</p>
+              <p className="text-amber-600 dark:text-amber-400 text-sm">{getText('KYC An Atant', 'KYC En Attente', 'KYC Pending')}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-red-50 dark:bg-red-900/30">
+            <CardContent className="p-4 text-center">
+              <p className="text-red-800 dark:text-red-300 font-bold text-2xl">{users.filter(u => !u.is_active).length}</p>
+              <p className="text-red-600 dark:text-red-400 text-sm">{getText('Bloke', 'Bloqués', 'Blocked')}</p>
+            </CardContent>
+          </Card>
+        </div>
+
         {/* Search */}
         <Card>
           <CardContent className="p-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
               <Input
-                placeholder="Rechercher par email, nom ou ID..."
+                placeholder={getText('Chèche pa imèl, non oswa ID...', 'Rechercher par email, nom ou ID...', 'Search by email, name or ID...')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"
@@ -90,10 +125,10 @@ export default function AdminUsers() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
-              <span>Liste des utilisateurs ({users.length})</span>
+              <span>{getText('Lis Kliyan', 'Liste des clients', 'Client List')} ({users.length})</span>
               <Button variant="outline" size="sm" onClick={fetchUsers}>
                 <RefreshCw size={16} className="mr-2" />
-                Actualiser
+                {getText('Aktyalize', 'Actualiser', 'Refresh')}
               </Button>
             </CardTitle>
           </CardHeader>
@@ -103,23 +138,23 @@ export default function AdminUsers() {
                 <thead>
                   <tr>
                     <th>Client ID</th>
-                    <th>Nom</th>
-                    <th>Email</th>
+                    <th>{getText('Non', 'Nom', 'Name')}</th>
+                    <th>{getText('Imèl', 'Email', 'Email')}</th>
                     <th>KYC</th>
-                    <th>Balance USD</th>
-                    <th>Balance HTG</th>
-                    <th>Statut</th>
-                    <th>Actions</th>
+                    <th>{getText('Balans USD', 'Solde USD', 'USD Balance')}</th>
+                    <th>{getText('Balans HTG', 'Solde HTG', 'HTG Balance')}</th>
+                    <th>{getText('Statis', 'Statut', 'Status')}</th>
+                    <th>{getText('Aksyon', 'Actions', 'Actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="8" className="text-center py-8">Chargement...</td>
+                      <td colSpan="8" className="text-center py-8">{getText('Chajman...', 'Chargement...', 'Loading...')}</td>
                     </tr>
                   ) : users.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="text-center py-8">Aucun utilisateur trouvé</td>
+                      <td colSpan="8" className="text-center py-8">{getText('Pa gen kliyan', 'Aucun client', 'No clients')}</td>
                     </tr>
                   ) : (
                     users.map((user) => (
@@ -129,27 +164,28 @@ export default function AdminUsers() {
                         <td>{user.email}</td>
                         <td>
                           <Badge className={getKycBadge(user.kyc_status)}>
-                            {user.kyc_status}
+                            {getKycText(user.kyc_status)}
                           </Badge>
                         </td>
-                        <td>${user.wallet_usd?.toFixed(2)}</td>
-                        <td>G {user.wallet_htg?.toLocaleString()}</td>
+                        <td className="font-semibold text-emerald-600">${user.wallet_usd?.toFixed(2)}</td>
+                        <td className="font-semibold text-blue-600">G {user.wallet_htg?.toLocaleString()}</td>
                         <td>
                           <Badge className={user.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
-                            {user.is_active ? 'Actif' : 'Bloqué'}
+                            {user.is_active ? getText('Aktif', 'Actif', 'Active') : getText('Bloke', 'Bloqué', 'Blocked')}
                           </Badge>
                         </td>
                         <td>
                           <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => viewUser(user.user_id)}>
+                            <Button size="sm" variant="outline" onClick={() => viewUser(user.user_id)} title={getText('Wè detay', 'Voir détails', 'View details')}>
                               <Eye size={16} />
                             </Button>
                             <Button 
                               size="sm" 
                               variant={user.is_active ? 'destructive' : 'default'}
                               onClick={() => toggleUserStatus(user.user_id, user.is_active)}
+                              title={user.is_active ? getText('Bloke', 'Bloquer', 'Block') : getText('Debloke', 'Débloquer', 'Unblock')}
                             >
-                              <Ban size={16} />
+                              {user.is_active ? <UserX size={16} /> : <CheckCircle size={16} />}
                             </Button>
                           </div>
                         </td>
@@ -166,13 +202,13 @@ export default function AdminUsers() {
         <Dialog open={showModal} onOpenChange={setShowModal}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Détails utilisateur</DialogTitle>
+              <DialogTitle>{getText('Detay Kliyan', 'Détails du client', 'Client Details')}</DialogTitle>
             </DialogHeader>
             {selectedUser && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-slate-500">Nom complet</p>
+                    <p className="text-sm text-slate-500">{getText('Non konplè', 'Nom complet', 'Full name')}</p>
                     <p className="font-medium">{selectedUser.user.full_name}</p>
                   </div>
                   <div>
@@ -180,29 +216,29 @@ export default function AdminUsers() {
                     <p className="font-mono">{selectedUser.user.client_id}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-slate-500">Email</p>
+                    <p className="text-sm text-slate-500">{getText('Imèl', 'Email', 'Email')}</p>
                     <p>{selectedUser.user.email}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-slate-500">Téléphone</p>
-                    <p>{selectedUser.user.phone}</p>
+                    <p className="text-sm text-slate-500">{getText('Telefòn', 'Téléphone', 'Phone')}</p>
+                    <p>{selectedUser.user.phone || '-'}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-slate-500">Balance USD</p>
+                    <p className="text-sm text-slate-500">{getText('Balans USD', 'Solde USD', 'USD Balance')}</p>
                     <p className="font-semibold text-emerald-600">${selectedUser.user.wallet_usd?.toFixed(2)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-slate-500">Balance HTG</p>
+                    <p className="text-sm text-slate-500">{getText('Balans HTG', 'Solde HTG', 'HTG Balance')}</p>
                     <p className="font-semibold text-blue-600">G {selectedUser.user.wallet_htg?.toLocaleString()}</p>
                   </div>
                 </div>
                 
                 <div className="border-t pt-4">
-                  <h4 className="font-semibold mb-2">Transactions récentes</h4>
+                  <h4 className="font-semibold mb-2">{getText('Dènye Tranzaksyon', 'Transactions récentes', 'Recent Transactions')}</h4>
                   {selectedUser.recent_transactions?.length > 0 ? (
                     <div className="space-y-2 max-h-48 overflow-y-auto">
                       {selectedUser.recent_transactions.map((tx) => (
-                        <div key={tx.transaction_id} className="flex justify-between p-2 bg-slate-50 rounded">
+                        <div key={tx.transaction_id} className="flex justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded">
                           <span className="capitalize">{tx.type.replace('_', ' ')}</span>
                           <span className={tx.amount >= 0 ? 'text-emerald-600' : 'text-red-500'}>
                             {tx.amount >= 0 ? '+' : ''}{tx.currency === 'USD' ? '$' : 'G '}{Math.abs(tx.amount).toFixed(2)}
@@ -211,7 +247,7 @@ export default function AdminUsers() {
                       ))}
                     </div>
                   ) : (
-                    <p className="text-slate-500">Aucune transaction</p>
+                    <p className="text-slate-500">{getText('Pa gen tranzaksyon', 'Aucune transaction', 'No transactions')}</p>
                   )}
                 </div>
               </div>
