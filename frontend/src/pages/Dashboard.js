@@ -28,6 +28,12 @@ export default function Dashboard() {
   const [rates, setRates] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
