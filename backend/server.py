@@ -420,8 +420,27 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
     if current_user["kyc_status"] != "approved":
         raise HTTPException(status_code=403, detail="KYC verification required for withdrawals")
     
-    currency_key = f"wallet_{request.currency.lower()}"
-    if current_user.get(currency_key, 0) < request.amount:
+    # Determine source and target currencies
+    target_currency = request.currency.upper()
+    source_currency = (request.source_currency or request.currency).upper()
+    
+    # Get exchange rates for cross-currency withdrawal
+    rates = await db.exchange_rates.find_one({"rate_id": "main"}, {"_id": 0})
+    if not rates:
+        rates = {"htg_to_usd": 0.0075, "usd_to_htg": 133.0}
+    
+    # Calculate amount to deduct from source wallet
+    if source_currency == target_currency:
+        amount_to_deduct = request.amount
+    elif source_currency == "USD" and target_currency == "HTG":
+        # User wants HTG but will pay from USD wallet
+        amount_to_deduct = request.amount * rates["htg_to_usd"]
+    else:  # source_currency == "HTG" and target_currency == "USD"
+        # User wants USD but will pay from HTG wallet
+        amount_to_deduct = request.amount * rates["usd_to_htg"]
+    
+    source_key = f"wallet_{source_currency.lower()}"
+    if current_user.get(source_key, 0) < amount_to_deduct:
         raise HTTPException(status_code=400, detail="Insufficient balance")
     
     # Check withdrawal limits
@@ -454,35 +473,49 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
         "amount": request.amount,
         "fee": fee,
         "net_amount": request.amount - fee,
-        "currency": request.currency.upper(),
+        "currency": target_currency,
+        "source_currency": source_currency,
+        "amount_deducted": amount_to_deduct,
+        "exchange_rate_used": rates["usd_to_htg"] if source_currency != target_currency else 1,
         "method": request.method,
         "destination": request.destination,
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
-    # Deduct from wallet
+    # Deduct from source wallet
     await db.users.update_one(
         {"user_id": current_user["user_id"]},
-        {"$inc": {currency_key: -request.amount}}
+        {"$inc": {source_key: -amount_to_deduct}}
     )
     
     await db.withdrawals.insert_one(withdrawal)
     
     # Create transaction record
+    description = f"Withdrawal via {request.method}"
+    if source_currency != target_currency:
+        description += f" (converted from {source_currency})"
+    
     await db.transactions.insert_one({
         "transaction_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
         "type": "withdrawal",
-        "amount": -request.amount,
-        "currency": request.currency.upper(),
+        "amount": -amount_to_deduct,
+        "currency": source_currency,
+        "target_amount": request.amount,
+        "target_currency": target_currency,
         "reference_id": withdrawal_id,
         "status": "pending",
-        "description": f"Withdrawal via {request.method}",
+        "description": description,
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     
-    await log_action(current_user["user_id"], "withdrawal_request", {"amount": request.amount, "method": request.method})
+    await log_action(current_user["user_id"], "withdrawal_request", {
+        "amount": request.amount, 
+        "method": request.method,
+        "source_currency": source_currency,
+        "target_currency": target_currency
+    })
     
     if "_id" in withdrawal:
         del withdrawal["_id"]
