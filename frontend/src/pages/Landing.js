@@ -25,29 +25,36 @@ export default function Landing() {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
 
+  // Helper for trilingual text
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
+
   const features = [
     {
       icon: Shield,
-      title: language === 'fr' ? 'Sécurité Maximale' : 'Maximum Security',
-      description: language === 'fr' ? 'Vos fonds sont protégés avec un cryptage bancaire.' : 'Your funds are protected with bank-level encryption.',
+      title: getText('Sekirite Maksimòm', 'Sécurité Maximale', 'Maximum Security'),
+      description: getText('Lajan ou pwoteje ak kriptaj nivo bank.', 'Vos fonds sont protégés avec un cryptage bancaire.', 'Your funds are protected with bank-level encryption.'),
       color: 'bg-orange-100 text-[#EA580C]'
     },
     {
       icon: Zap,
-      title: language === 'fr' ? 'Transferts Instantanés' : 'Instant Transfers',
-      description: language === 'fr' ? 'Envoyez de l\'argent en quelques secondes.' : 'Send money in seconds.',
+      title: getText('Transfè Enstantane', 'Transferts Instantanés', 'Instant Transfers'),
+      description: getText('Voye lajan nan kèk segonn.', 'Envoyez de l\'argent en quelques secondes.', 'Send money in seconds.'),
       color: 'bg-amber-100 text-amber-600'
     },
     {
       icon: Globe,
-      title: language === 'fr' ? 'Multi-Devises HTG & USD' : 'Multi-Currency HTG & USD',
-      description: language === 'fr' ? 'Gérez Gourdes et Dollars dans un seul compte.' : 'Manage Gourdes and Dollars in one account.',
+      title: getText('Multi-Deviz HTG & USD', 'Multi-Devises HTG & USD', 'Multi-Currency HTG & USD'),
+      description: getText('Jere Goud ak Dola nan yon sèl kont.', 'Gérez Gourdes et Dollars dans un seul compte.', 'Manage Gourdes and Dollars in one account.'),
       color: 'bg-emerald-100 text-emerald-600'
     },
     {
       icon: CreditCard,
-      title: language === 'fr' ? 'Carte Virtuelle' : 'Virtual Card',
-      description: language === 'fr' ? 'Commandez votre carte pour payer partout.' : 'Order your card to pay anywhere.',
+      title: getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card'),
+      description: getText('Komande kat ou pou peye toupatou.', 'Commandez votre carte pour payer partout.', 'Order your card to pay anywhere.'),
       color: 'bg-purple-100 text-purple-600'
     }
   ];
