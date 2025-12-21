@@ -135,7 +135,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
           className="sidebar-item w-full text-left mt-4 text-red-500 hover:text-red-600 hover:bg-red-50"
         >
           <LogOut size={20} />
-          <span>{t('logout')}</span>
+          <span>{getText('Dekonekte', 'Déconnexion', 'Logout')}</span>
         </button>
       </aside>
     </>
