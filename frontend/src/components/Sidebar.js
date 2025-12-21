@@ -2,7 +2,6 @@ import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
-import { Logo } from '@/components/Logo';
 import { 
   LayoutDashboard, 
   ArrowDownCircle, 
