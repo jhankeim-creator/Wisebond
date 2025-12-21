@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { Logo } from '@/components/Logo';
 import { 
   LayoutDashboard, 
@@ -19,12 +20,14 @@ import {
   Menu,
   X,
   CreditCard,
-  Phone
+  Phone,
+  Home,
+  Bell
 } from 'lucide-react';
 
 export const AdminLayout = ({ children, title }) => {
-  const { t, language } = useLanguage();
-  const { logout, isAdmin } = useAuth();
+  const { language } = useLanguage();
+  const { logout, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -42,7 +45,7 @@ export const AdminLayout = ({ children, title }) => {
 
   const menuItems = [
     { path: '/admin', icon: LayoutDashboard, label: getText('Tablo bò', 'Tableau de bord', 'Dashboard'), exact: true },
-    { path: '/admin/users', icon: Users, label: getText('Itilizatè', 'Utilisateurs', 'Users') },
+    { path: '/admin/users', icon: Users, label: getText('Kliyan', 'Clients', 'Clients') },
     { path: '/admin/kyc', icon: UserCheck, label: 'KYC' },
     { path: '/admin/deposits', icon: ArrowDownCircle, label: getText('Depo', 'Dépôts', 'Deposits') },
     { path: '/admin/withdrawals', icon: ArrowUpCircle, label: getText('Retrè', 'Retraits', 'Withdrawals') },
@@ -50,7 +53,7 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/topup', icon: Phone, label: getText('Komand Minit', 'Commandes Minutes', 'Minute Orders') },
     { path: '/admin/rates', icon: RefreshCw, label: getText('To chanj', 'Taux de change', 'Exchange Rates') },
     { path: '/admin/fees', icon: DollarSign, label: getText('Frè', 'Frais', 'Fees') },
-    { path: '/admin/bulk-email', icon: Mail, label: getText('Imèl an mas', 'Email en masse', 'Bulk Email') },
+    { path: '/admin/bulk-email', icon: Mail, label: getText('Imèl', 'Emails', 'Emails') },
     { path: '/admin/settings', icon: Settings, label: getText('Paramèt', 'Paramètres', 'Settings') },
   ];
 
@@ -60,22 +63,11 @@ export const AdminLayout = ({ children, title }) => {
   };
 
   return (
-    <div className="min-h-screen bg-stone-100">
-      {/* Mobile Header */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-stone-900 text-white px-4 py-3 flex items-center justify-between">
-        <button onClick={() => setSidebarOpen(true)} className="p-2 hover:bg-white/10 rounded-lg">
-          <Menu size={24} />
-        </button>
-        <Link to="/admin">
-          <Logo size="small" />
-        </Link>
-        <LanguageSwitcher />
-      </header>
-
+    <div className="min-h-screen bg-stone-100 dark:bg-stone-900">
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div 
-          className="lg:hidden fixed inset-0 bg-black/50 z-50"
+          className="lg:hidden fixed inset-0 bg-black/50 z-40"
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -94,14 +86,15 @@ export const AdminLayout = ({ children, title }) => {
           <X size={20} />
         </button>
 
-        <div className="p-6">
-          <Link to="/admin" className="flex items-center gap-2">
-            <Logo size="small" />
-          </Link>
-          <p className="text-xs text-stone-400 mt-1 ml-12">Admin Panel</p>
+        {/* Admin Header in Sidebar */}
+        <div className="p-4 border-b border-stone-700">
+          <div className="bg-gradient-to-r from-[#EA580C] to-amber-500 rounded-lg p-3">
+            <p className="text-white font-bold text-sm">Admin Panel</p>
+            <p className="text-white/80 text-xs truncate">{user?.full_name}</p>
+          </div>
         </div>
 
-        <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
           {menuItems.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path, item.exact);
@@ -111,52 +104,88 @@ export const AdminLayout = ({ children, title }) => {
                 key={item.path}
                 to={item.path}
                 onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                className={`flex items-center gap-3 px-4 py-2.5 rounded-lg transition-colors ${
                   active 
                     ? 'bg-[#EA580C] text-white' 
                     : 'text-stone-400 hover:text-white hover:bg-white/10'
                 }`}
               >
-                <Icon size={20} />
+                <Icon size={18} />
                 <span className="text-sm">{item.label}</span>
               </Link>
             );
           })}
         </nav>
 
-        <div className="p-4 border-t border-stone-700 space-y-2">
+        <div className="p-3 border-t border-stone-700 space-y-1">
+          <Link
+            to="/"
+            onClick={() => setSidebarOpen(false)}
+            className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-stone-400 hover:text-white hover:bg-white/10"
+          >
+            <Home size={18} />
+            <span className="text-sm">{getText('Akèy', 'Accueil', 'Home')}</span>
+          </Link>
           <Link
             to="/dashboard"
             onClick={() => setSidebarOpen(false)}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg text-stone-400 hover:text-white hover:bg-white/10"
+            className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-stone-400 hover:text-white hover:bg-white/10"
           >
-            <ChevronLeft size={20} />
-            <span className="text-sm">{getText('Retounen nan Dashboard', 'Retour au Dashboard', 'Back to Dashboard')}</span>
+            <ChevronLeft size={18} />
+            <span className="text-sm">{getText('Tablo bò kliyan', 'Dashboard client', 'Client Dashboard')}</span>
           </Link>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-4 py-3 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 w-full"
+            className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 w-full"
           >
-            <LogOut size={20} />
+            <LogOut size={18} />
             <span className="text-sm">{getText('Dekonekte', 'Déconnexion', 'Logout')}</span>
           </button>
         </div>
       </aside>
 
       {/* Main Content */}
-      <main className="lg:ml-64 min-h-screen pt-16 lg:pt-0">
-        <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl border-b border-stone-200 hidden lg:block">
+      <main className="lg:ml-64 min-h-screen">
+        {/* Header with Logo */}
+        <header className="sticky top-0 z-20 bg-white/90 dark:bg-stone-800/90 backdrop-blur-xl border-b border-stone-200 dark:border-stone-700">
           <div className="flex items-center justify-between px-4 lg:px-8 py-4">
-            <h1 className="text-lg lg:text-xl font-bold text-stone-900">{title}</h1>
-            <LanguageSwitcher />
+            <div className="flex items-center gap-4">
+              {/* Mobile Menu Button */}
+              <button 
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden p-2 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg"
+              >
+                <Menu size={24} className="text-stone-700 dark:text-stone-300" />
+              </button>
+              
+              {/* Logo */}
+              <Link to="/" className="hover:opacity-80 transition-opacity">
+                <Logo size="small" />
+              </Link>
+              
+              {/* Title - Desktop */}
+              <div className="hidden lg:block">
+                <h1 className="text-xl font-bold text-stone-900 dark:text-white">{title}</h1>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <ThemeToggle />
+              <LanguageSwitcher />
+              
+              <button className="relative p-2 rounded-xl hover:bg-orange-50 dark:hover:bg-stone-700 transition-colors">
+                <Bell size={20} className="text-stone-600 dark:text-stone-300" />
+              </button>
+            </div>
           </div>
         </header>
         
         {/* Mobile Title */}
-        <div className="lg:hidden px-4 py-4 border-b border-stone-200 bg-white">
-          <h1 className="text-lg font-bold text-stone-900">{title}</h1>
+        <div className="lg:hidden px-4 py-4 bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700">
+          <h1 className="text-lg font-bold text-stone-900 dark:text-white">{title}</h1>
         </div>
         
+        {/* Page Content */}
         <div className="p-4 lg:p-8">
           {children}
         </div>
