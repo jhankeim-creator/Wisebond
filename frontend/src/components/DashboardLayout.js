@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
+import { ThemeToggle } from '@/components/ThemeToggle';
 import { Logo } from '@/components/Logo';
 import { Menu, Bell } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
@@ -10,7 +11,7 @@ export const DashboardLayout = ({ children, title }) => {
   const { user } = useAuth();
 
   return (
-    <div className="min-h-screen bg-[#FAFAF9]">
+    <div className="min-h-screen bg-background dark:bg-background">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       
       {/* Mobile menu button */}
@@ -19,25 +20,26 @@ export const DashboardLayout = ({ children, title }) => {
         className="mobile-menu-btn"
         data-testid="mobile-menu-btn"
       >
-        <Menu size={24} className="text-stone-700" />
+        <Menu size={24} className="text-stone-700 dark:text-stone-300" />
       </button>
       
       <main className="main-content">
         {/* Header */}
-        <header className="sticky top-0 z-20 glass-effect border-b border-stone-200">
+        <header className="sticky top-0 z-20 glass-effect border-b border-stone-200 dark:border-stone-700 dark:bg-stone-900/80">
           <div className="flex items-center justify-between px-6 py-4">
             <div className="hidden lg:block">
-              <h1 className="text-xl font-bold text-stone-900">{title}</h1>
+              <h1 className="text-xl font-bold text-stone-900 dark:text-white">{title}</h1>
             </div>
             <div className="lg:hidden">
               <Logo size="small" />
             </div>
             
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              <ThemeToggle />
               <LanguageSwitcher />
               
-              <button className="relative p-2 rounded-xl hover:bg-orange-50 transition-colors">
-                <Bell size={20} className="text-stone-600" />
+              <button className="relative p-2 rounded-xl hover:bg-orange-50 dark:hover:bg-stone-800 transition-colors">
+                <Bell size={20} className="text-stone-600 dark:text-stone-300" />
                 <span className="absolute top-1 right-1 w-2 h-2 bg-[#EA580C] rounded-full" />
               </button>
               
@@ -55,7 +57,7 @@ export const DashboardLayout = ({ children, title }) => {
         {/* Page content */}
         <div className="p-6 lg:p-8">
           {/* Mobile title */}
-          <h1 className="text-2xl font-bold text-stone-900 mb-6 lg:hidden">{title}</h1>
+          <h1 className="text-2xl font-bold text-stone-900 dark:text-white mb-6 lg:hidden">{title}</h1>
           {children}
         </div>
       </main>
