@@ -15,6 +15,7 @@ import Dashboard from "@/pages/Dashboard";
 import Deposit from "@/pages/Deposit";
 import Withdraw from "@/pages/Withdraw";
 import Transfer from "@/pages/Transfer";
+import Swap from "@/pages/Swap";
 import Transactions from "@/pages/Transactions";
 import KYC from "@/pages/KYC";
 import Affiliate from "@/pages/Affiliate";
@@ -38,8 +39,8 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
   
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0047AB]"></div>
+      <div className="min-h-screen flex items-center justify-center bg-stone-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#EA580C]"></div>
       </div>
     );
   }
@@ -61,8 +62,8 @@ const PublicRoute = ({ children }) => {
   
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0047AB]"></div>
+      <div className="min-h-screen flex items-center justify-center bg-stone-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#EA580C]"></div>
       </div>
     );
   }
@@ -88,6 +89,7 @@ function AppRoutes() {
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/deposit" element={<ProtectedRoute><Deposit /></ProtectedRoute>} />
       <Route path="/withdraw" element={<ProtectedRoute><Withdraw /></ProtectedRoute>} />
+      <Route path="/swap" element={<ProtectedRoute><Swap /></ProtectedRoute>} />
       <Route path="/transfer" element={<ProtectedRoute><Transfer /></ProtectedRoute>} />
       <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
       <Route path="/kyc" element={<ProtectedRoute><KYC /></ProtectedRoute>} />
