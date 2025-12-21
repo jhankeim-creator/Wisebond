@@ -15,7 +15,8 @@ import {
   LogOut,
   Shield,
   X,
-  CreditCard
+  CreditCard,
+  ArrowDownUp
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
@@ -36,15 +37,16 @@ export const Sidebar = ({ isOpen, onClose }) => {
   };
 
   const menuItems = [
-    { path: '/dashboard', icon: LayoutDashboard, label: t('dashboard') },
-    { path: '/deposit', icon: ArrowDownCircle, label: t('deposit') },
-    { path: '/withdraw', icon: ArrowUpCircle, label: t('withdraw') },
-    { path: '/transfer', icon: Send, label: t('transfer') },
+    { path: '/dashboard', icon: LayoutDashboard, label: getText('Tablo bò', 'Tableau de bord', 'Dashboard') },
+    { path: '/deposit', icon: ArrowDownCircle, label: getText('Depoze', 'Déposer', 'Deposit') },
+    { path: '/withdraw', icon: ArrowUpCircle, label: getText('Retire', 'Retirer', 'Withdraw') },
+    { path: '/swap', icon: ArrowDownUp, label: 'Swap' },
+    { path: '/transfer', icon: Send, label: getText('Voye', 'Envoyer', 'Transfer') },
     { path: '/virtual-card', icon: CreditCard, label: getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card') },
-    { path: '/transactions', icon: History, label: t('transactions') },
-    { path: '/kyc', icon: UserCheck, label: t('kyc') },
-    { path: '/affiliate', icon: Users, label: t('affiliate') },
-    { path: '/settings', icon: Settings, label: t('settings') },
+    { path: '/transactions', icon: History, label: getText('Tranzaksyon', 'Transactions', 'Transactions') },
+    { path: '/kyc', icon: UserCheck, label: getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification') },
+    { path: '/affiliate', icon: Users, label: getText('Afilyasyon', 'Affiliation', 'Affiliate') },
+    { path: '/settings', icon: Settings, label: getText('Paramèt', 'Paramètres', 'Settings') },
   ];
 
   return (
