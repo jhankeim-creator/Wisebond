@@ -610,7 +610,8 @@ async def submit_kyc(request: KYCSubmit, current_user: dict = Depends(get_curren
     
     await log_action(current_user["user_id"], "kyc_submit", {})
     
-    del kyc_doc["_id"] if "_id" in kyc_doc else None
+    if "_id" in kyc_doc:
+        del kyc_doc["_id"]
     return {"kyc": kyc_doc}
 
 @api_router.get("/kyc/status")
