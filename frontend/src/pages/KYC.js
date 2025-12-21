@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -19,26 +20,42 @@ import {
   User,
   MapPin,
   Flag,
-  Calendar
+  Calendar,
+  Phone,
+  MessageCircle,
+  FileText,
+  AlertTriangle
 } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function KYC() {
-  const { t } = useLanguage();
+  const { language } = useLanguage();
   const { user, refreshUser } = useAuth();
   
   const [kycData, setKycData] = useState(null);
   const [formData, setFormData] = useState({
+    full_name: '',
     date_of_birth: '',
-    address: '',
+    full_address: '',
+    city: '',
+    country: 'Haiti',
     nationality: '',
+    phone_number: '',
+    whatsapp_number: '',
     id_type: 'id_card',
+    id_number: '',
     id_front_image: '',
     id_back_image: '',
-    selfie_image: ''
+    selfie_with_id: ''
   });
   const [loading, setLoading] = useState(false);
+
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
 
   useEffect(() => {
     fetchKycStatus();
@@ -57,7 +74,7 @@ export default function KYC() {
     const file = e.target.files[0];
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
-        toast.error('Image trop grande (max 5MB)');
+        toast.error(getText('Imaj la twò gwo (maks 5MB)', 'Image trop grande (max 5MB)', 'Image too large (max 5MB)'));
         return;
       }
       const reader = new FileReader();
@@ -71,8 +88,14 @@ export default function KYC() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!formData.id_front_image || !formData.selfie_image) {
-      toast.error('Veuillez télécharger tous les documents requis');
+    // Validate required fields
+    if (!formData.full_name || !formData.date_of_birth || !formData.full_address || 
+        !formData.phone_number || !formData.id_front_image || !formData.selfie_with_id) {
+      toast.error(getText(
+        'Tanpri ranpli tout chan obligatwa yo',
+        'Veuillez remplir tous les champs obligatoires',
+        'Please fill all required fields'
+      ));
       return;
     }
 
@@ -82,55 +105,31 @@ export default function KYC() {
       await axios.post(`${API}/kyc/submit`, formData);
       await refreshUser();
       await fetchKycStatus();
-      toast.success('Documents KYC soumis avec succès!');
+      toast.success(getText('Dokiman KYC soumèt siksè!', 'Documents KYC soumis avec succès!', 'KYC documents submitted successfully!'));
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Erreur lors de la soumission');
+      toast.error(error.response?.data?.detail || getText('Erè nan soumisyon', 'Erreur lors de la soumission', 'Submission error'));
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusDisplay = () => {
-    switch (user?.kyc_status) {
-      case 'approved':
-        return {
-          icon: <Check className="text-emerald-500" size={32} />,
-          color: 'bg-emerald-100 border-emerald-200',
-          text: t('kycApproved'),
-          textColor: 'text-emerald-700'
-        };
-      case 'pending':
-        return {
-          icon: <Clock className="text-amber-500" size={32} />,
-          color: 'bg-amber-100 border-amber-200',
-          text: t('kycPending'),
-          textColor: 'text-amber-700'
-        };
-      case 'rejected':
-        return {
-          icon: <X className="text-red-500" size={32} />,
-          color: 'bg-red-100 border-red-200',
-          text: t('kycRejected'),
-          textColor: 'text-red-700'
-        };
-      default:
-        return null;
-    }
-  };
-
-  const statusDisplay = getStatusDisplay();
-
   if (user?.kyc_status === 'approved') {
     return (
-      <DashboardLayout title={t('kycVerification')}>
+      <DashboardLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
         <Card className="max-w-xl mx-auto">
           <CardContent className="p-8 text-center">
             <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Check className="text-emerald-500" size={40} />
             </div>
-            <h3 className="text-2xl font-bold text-slate-900 mb-2">{t('kycApproved')}</h3>
-            <p className="text-slate-600">
-              Votre identité a été vérifiée avec succès. Vous avez accès à toutes les fonctionnalités.
+            <h3 className="text-2xl font-bold text-stone-900 mb-2">
+              {getText('KYC Apwouve!', 'KYC Approuvé!', 'KYC Approved!')}
+            </h3>
+            <p className="text-stone-600">
+              {getText(
+                'Idantite ou verifye avèk siksè. Ou gen aksè nan tout fonksyonalite yo.',
+                'Votre identité a été vérifiée avec succès. Vous avez accès à toutes les fonctionnalités.',
+                'Your identity has been successfully verified. You have access to all features.'
+              )}
             </p>
           </CardContent>
         </Card>
@@ -140,18 +139,24 @@ export default function KYC() {
 
   if (user?.kyc_status === 'pending' && kycData) {
     return (
-      <DashboardLayout title={t('kycVerification')}>
+      <DashboardLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
         <Card className="max-w-xl mx-auto">
           <CardContent className="p-8 text-center">
             <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
               <Clock className="text-amber-500" size={40} />
             </div>
-            <h3 className="text-2xl font-bold text-slate-900 mb-2">{t('kycPending')}</h3>
-            <p className="text-slate-600 mb-4">
-              Vos documents sont en cours de vérification. Cela peut prendre jusqu'à 24 heures.
+            <h3 className="text-2xl font-bold text-stone-900 mb-2">
+              {getText('Ap tann verifikasyon', 'Vérification en cours', 'Verification pending')}
+            </h3>
+            <p className="text-stone-600 mb-4">
+              {getText(
+                'Dokiman ou yo ap verifye. Sa ka pran jiska 24 èdtan.',
+                'Vos documents sont en cours de vérification. Cela peut prendre jusqu\'à 24 heures.',
+                'Your documents are being verified. This may take up to 24 hours.'
+              )}
             </p>
-            <div className="bg-slate-50 rounded-xl p-4 text-left">
-              <p className="text-sm text-slate-500">Soumis le:</p>
+            <div className="bg-stone-50 rounded-xl p-4 text-left">
+              <p className="text-sm text-stone-500">{getText('Soumèt le', 'Soumis le', 'Submitted on')}:</p>
               <p className="font-medium">{new Date(kycData.submitted_at).toLocaleString()}</p>
             </div>
           </CardContent>
@@ -161,22 +166,38 @@ export default function KYC() {
   }
 
   return (
-    <DashboardLayout title={t('kycVerification')}>
+    <DashboardLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
       <div className="max-w-2xl mx-auto space-y-6" data-testid="kyc-page">
-        {/* Info Banner */}
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <h3 className="font-semibold text-blue-800 mb-2">Pourquoi la vérification KYC?</h3>
-          <p className="text-sm text-blue-700">
-            La vérification de votre identité est requise pour la sécurité de votre compte et pour respecter les réglementations financières.
-          </p>
+        {/* Warning Banner */}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="text-amber-500 mt-0.5" size={24} />
+            <div>
+              <h3 className="font-semibold text-amber-800 mb-1">
+                {getText('KYC OBLIGATWA', 'KYC OBLIGATOIRE', 'KYC REQUIRED')}
+              </h3>
+              <p className="text-sm text-amber-700">
+                {getText(
+                  'Ou dwe konplete verifikasyon KYC ANVAN ou ka itilize nenpòt sèvis nan platfòm nan (depo, retrè, transfè, kat vityèl).',
+                  'Vous devez compléter la vérification KYC AVANT de pouvoir utiliser tout service sur la plateforme (dépôt, retrait, transfert, carte virtuelle).',
+                  'You must complete KYC verification BEFORE you can use any service on the platform (deposit, withdrawal, transfer, virtual card).'
+                )}
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Rejection Notice */}
         {user?.kyc_status === 'rejected' && kycData?.rejection_reason && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-            <h3 className="font-semibold text-red-800 mb-2">Demande rejetée</h3>
-            <p className="text-sm text-red-700">{kycData.rejection_reason}</p>
-            <p className="text-sm text-red-600 mt-2">Veuillez soumettre à nouveau vos documents.</p>
+            <div className="flex items-start gap-3">
+              <X className="text-red-500 mt-0.5" size={24} />
+              <div>
+                <h3 className="font-semibold text-red-800 mb-1">{getText('Demann rejte', 'Demande rejetée', 'Request rejected')}</h3>
+                <p className="text-sm text-red-700">{kycData.rejection_reason}</p>
+                <p className="text-sm text-red-600 mt-2">{getText('Tanpri soumèt dokiman yo ankò.', 'Veuillez soumettre à nouveau vos documents.', 'Please resubmit your documents.')}</p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -185,16 +206,32 @@ export default function KYC() {
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <User size={20} />
-                Informations personnelles
+                <User size={20} className="text-[#EA580C]" />
+                {getText('Enfòmasyon Pèsonèl', 'Informations Personnelles', 'Personal Information')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="full_name">
+                  <User size={16} className="inline mr-2" />
+                  {getText('Non konplè (jan li ye sou ID ou)', 'Nom complet (tel qu\'il apparaît sur votre ID)', 'Full name (as it appears on your ID)')} *
+                </Label>
+                <Input
+                  id="full_name"
+                  placeholder={getText('Non Prenon Siyati', 'Nom Prénom Signature', 'First Middle Last Name')}
+                  value={formData.full_name}
+                  onChange={(e) => setFormData({...formData, full_name: e.target.value})}
+                  required
+                  className="mt-1"
+                  data-testid="kyc-fullname"
+                />
+              </div>
+
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="dob">
                     <Calendar size={16} className="inline mr-2" />
-                    {t('dateOfBirth')}
+                    {getText('Dat nesans', 'Date de naissance', 'Date of birth')} *
                   </Label>
                   <Input
                     id="dob"
@@ -209,11 +246,11 @@ export default function KYC() {
                 <div>
                   <Label htmlFor="nationality">
                     <Flag size={16} className="inline mr-2" />
-                    {t('nationality')}
+                    {getText('Nasyonalite', 'Nationalité', 'Nationality')} *
                   </Label>
                   <Input
                     id="nationality"
-                    placeholder="Haïtien"
+                    placeholder={getText('Ayisyen', 'Haïtien', 'Haitian')}
                     value={formData.nationality}
                     onChange={(e) => setFormData({...formData, nationality: e.target.value})}
                     required
@@ -222,20 +259,89 @@ export default function KYC() {
                   />
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Address & Contact */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MapPin size={20} className="text-[#EA580C]" />
+                {getText('Adrès & Kontak', 'Adresse & Contact', 'Address & Contact')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="address">
+                <Label htmlFor="full_address">
                   <MapPin size={16} className="inline mr-2" />
-                  {t('address')}
+                  {getText('Adrès konplè', 'Adresse complète', 'Full address')} *
                 </Label>
-                <Input
-                  id="address"
-                  placeholder="Votre adresse complète"
-                  value={formData.address}
-                  onChange={(e) => setFormData({...formData, address: e.target.value})}
+                <Textarea
+                  id="full_address"
+                  placeholder={getText('Nimewo kay, ri, katye, vil', 'Numéro, rue, quartier, ville', 'Number, street, neighborhood, city')}
+                  value={formData.full_address}
+                  onChange={(e) => setFormData({...formData, full_address: e.target.value})}
                   required
                   className="mt-1"
+                  rows={2}
                   data-testid="kyc-address"
                 />
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="city">{getText('Vil', 'Ville', 'City')}</Label>
+                  <Input
+                    id="city"
+                    placeholder={getText('Pòtoprens', 'Port-au-Prince', 'Port-au-Prince')}
+                    value={formData.city}
+                    onChange={(e) => setFormData({...formData, city: e.target.value})}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="country">{getText('Peyi', 'Pays', 'Country')}</Label>
+                  <Input
+                    id="country"
+                    value={formData.country}
+                    onChange={(e) => setFormData({...formData, country: e.target.value})}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="phone_number">
+                    <Phone size={16} className="inline mr-2" />
+                    {getText('Nimewo telefòn', 'Numéro de téléphone', 'Phone number')} *
+                  </Label>
+                  <Input
+                    id="phone_number"
+                    type="tel"
+                    placeholder="+509 00 00 0000"
+                    value={formData.phone_number}
+                    onChange={(e) => setFormData({...formData, phone_number: e.target.value})}
+                    required
+                    className="mt-1"
+                    data-testid="kyc-phone"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="whatsapp_number">
+                    <MessageCircle size={16} className="inline mr-2" />
+                    {getText('Nimewo WhatsApp', 'Numéro WhatsApp', 'WhatsApp number')}
+                  </Label>
+                  <Input
+                    id="whatsapp_number"
+                    type="tel"
+                    placeholder="+509 00 00 0000"
+                    value={formData.whatsapp_number}
+                    onChange={(e) => setFormData({...formData, whatsapp_number: e.target.value})}
+                    className="mt-1"
+                    data-testid="kyc-whatsapp"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -244,43 +350,59 @@ export default function KYC() {
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <CreditCard size={20} />
-                Document d'identité
+                <CreditCard size={20} className="text-[#EA580C]" />
+                {getText('Pyès Idantite', 'Pièce d\'identité', 'ID Document')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <Label>{t('idType')}</Label>
-                <Select 
-                  value={formData.id_type} 
-                  onValueChange={(v) => setFormData({...formData, id_type: v})}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="id_card">{t('idCard')}</SelectItem>
-                    <SelectItem value="passport">{t('passport')}</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <Label>{getText('Tip dokiman', 'Type de document', 'Document type')} *</Label>
+                  <Select 
+                    value={formData.id_type} 
+                    onValueChange={(v) => setFormData({...formData, id_type: v})}
+                  >
+                    <SelectTrigger className="mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="id_card">{getText('Kat Idantite Nasyonal (CIN)', 'Carte d\'Identité Nationale', 'National ID Card')}</SelectItem>
+                      <SelectItem value="passport">{getText('Paspò', 'Passeport', 'Passport')}</SelectItem>
+                      <SelectItem value="driver_license">{getText('Pèmi kondwi', 'Permis de conduire', 'Driver\'s License')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="id_number">
+                    <FileText size={16} className="inline mr-2" />
+                    {getText('Nimewo ID', 'Numéro d\'ID', 'ID Number')}
+                  </Label>
+                  <Input
+                    id="id_number"
+                    placeholder={getText('Nimewo sou pyès la', 'Numéro sur le document', 'Number on document')}
+                    value={formData.id_number}
+                    onChange={(e) => setFormData({...formData, id_number: e.target.value})}
+                    className="mt-1"
+                  />
+                </div>
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <Label>{t('frontPhoto')} *</Label>
+                  <Label>{getText('Foto devan ID', 'Photo recto ID', 'Front of ID')} *</Label>
                   <div 
-                    className={`file-upload-zone mt-2 ${formData.id_front_image ? 'border-emerald-500 bg-emerald-50' : ''}`}
+                    className={`file-upload-zone mt-2 cursor-pointer ${formData.id_front_image ? 'border-emerald-500 bg-emerald-50' : ''}`}
                     onClick={() => document.getElementById('id-front').click()}
                   >
                     {formData.id_front_image ? (
                       <div className="flex items-center justify-center gap-2">
                         <Check className="text-emerald-500" size={20} />
-                        <span className="text-emerald-700 text-sm">Image téléchargée</span>
+                        <span className="text-emerald-700 text-sm">{getText('Imaj telechaje', 'Image téléchargée', 'Image uploaded')}</span>
                       </div>
                     ) : (
                       <>
-                        <Upload className="mx-auto text-slate-400 mb-2" size={24} />
-                        <p className="text-sm text-slate-600">Cliquez pour télécharger</p>
+                        <Upload className="mx-auto text-stone-400 mb-2" size={24} />
+                        <p className="text-sm text-stone-600">{getText('Klike pou telechaje', 'Cliquez pour télécharger', 'Click to upload')}</p>
                       </>
                     )}
                   </div>
@@ -293,65 +415,68 @@ export default function KYC() {
                   />
                 </div>
 
-                {formData.id_type === 'id_card' && (
-                  <div>
-                    <Label>{t('backPhoto')}</Label>
-                    <div 
-                      className={`file-upload-zone mt-2 ${formData.id_back_image ? 'border-emerald-500 bg-emerald-50' : ''}`}
-                      onClick={() => document.getElementById('id-back').click()}
-                    >
-                      {formData.id_back_image ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <Check className="text-emerald-500" size={20} />
-                          <span className="text-emerald-700 text-sm">Image téléchargée</span>
-                        </div>
-                      ) : (
-                        <>
-                          <Upload className="mx-auto text-slate-400 mb-2" size={24} />
-                          <p className="text-sm text-slate-600">Cliquez pour télécharger</p>
-                        </>
-                      )}
-                    </div>
-                    <input
-                      id="id-back"
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleImageUpload('id_back_image')}
-                    />
+                <div>
+                  <Label>{getText('Foto dèyè ID', 'Photo verso ID', 'Back of ID')}</Label>
+                  <div 
+                    className={`file-upload-zone mt-2 cursor-pointer ${formData.id_back_image ? 'border-emerald-500 bg-emerald-50' : ''}`}
+                    onClick={() => document.getElementById('id-back').click()}
+                  >
+                    {formData.id_back_image ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <Check className="text-emerald-500" size={20} />
+                        <span className="text-emerald-700 text-sm">{getText('Imaj telechaje', 'Image téléchargée', 'Image uploaded')}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="mx-auto text-stone-400 mb-2" size={24} />
+                        <p className="text-sm text-stone-600">{getText('Klike pou telechaje', 'Cliquez pour télécharger', 'Click to upload')}</p>
+                      </>
+                    )}
                   </div>
-                )}
+                  <input
+                    id="id-back"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageUpload('id_back_image')}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Selfie */}
+          {/* Selfie with ID */}
           <Card className="mb-6">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Camera size={20} />
-                {t('selfieWithId')}
+                <Camera size={20} className="text-[#EA580C]" />
+                {getText('Selfie ak ID nan men', 'Selfie avec ID en main', 'Selfie with ID in hand')}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-slate-600 mb-4">
-                Prenez une photo de vous en tenant votre document d'identité à côté de votre visage. 
-                Les deux doivent être clairement visibles.
-              </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-blue-700">
+                  {getText(
+                    'Pran yon foto de ou menm kote ou kenbe pyès idantite ou bò kote figi ou. Toude dwe parèt klè.',
+                    'Prenez une photo de vous en tenant votre pièce d\'identité à côté de votre visage. Les deux doivent être clairement visibles.',
+                    'Take a photo of yourself holding your ID document next to your face. Both must be clearly visible.'
+                  )}
+                </p>
+              </div>
               <div 
-                className={`file-upload-zone ${formData.selfie_image ? 'border-emerald-500 bg-emerald-50' : ''}`}
+                className={`file-upload-zone cursor-pointer ${formData.selfie_with_id ? 'border-emerald-500 bg-emerald-50' : ''}`}
                 onClick={() => document.getElementById('selfie').click()}
               >
-                {formData.selfie_image ? (
+                {formData.selfie_with_id ? (
                   <div className="flex items-center justify-center gap-2">
                     <Check className="text-emerald-500" size={24} />
-                    <span className="text-emerald-700">Selfie téléchargé</span>
+                    <span className="text-emerald-700">{getText('Selfie telechaje', 'Selfie téléchargé', 'Selfie uploaded')}</span>
                   </div>
                 ) : (
                   <>
-                    <Camera className="mx-auto text-slate-400 mb-2" size={32} />
-                    <p className="text-slate-600">Cliquez pour télécharger votre selfie</p>
-                    <p className="text-sm text-slate-400 mt-1">PNG, JPG jusqu'à 5MB</p>
+                    <Camera className="mx-auto text-stone-400 mb-2" size={32} />
+                    <p className="text-stone-600">{getText('Klike pou telechaje selfie ou', 'Cliquez pour télécharger votre selfie', 'Click to upload your selfie')}</p>
+                    <p className="text-sm text-stone-400 mt-1">PNG, JPG {getText('jiska', "jusqu'à", 'up to')} 5MB</p>
                   </>
                 )}
               </div>
@@ -360,7 +485,7 @@ export default function KYC() {
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={handleImageUpload('selfie_image')}
+                onChange={handleImageUpload('selfie_with_id')}
               />
             </CardContent>
           </Card>
@@ -371,7 +496,7 @@ export default function KYC() {
             disabled={loading}
             data-testid="kyc-submit"
           >
-            {loading ? t('loading') : t('submitKyc')}
+            {loading ? getText('Ap soumèt...', 'Soumission...', 'Submitting...') : getText('Soumèt Verifikasyon', 'Soumettre la Vérification', 'Submit Verification')}
           </Button>
         </form>
       </div>
