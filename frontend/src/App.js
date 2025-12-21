@@ -129,6 +129,7 @@ function App() {
         <AuthProvider>
           <BrowserRouter>
             <AppRoutes />
+            <LiveChat />
             <Toaster position="top-right" richColors />
           </BrowserRouter>
         </AuthProvider>
