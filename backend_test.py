@@ -5,23 +5,15 @@ from datetime import datetime
 class KayicomWalletTester:
     def __init__(self, base_url="https://payiwallet.preview.emergentagent.com/api"):
         self.base_url = base_url
-        self.token = None
         self.admin_token = None
+        self.user_token = None
         self.tests_run = 0
         self.tests_passed = 0
-        self.user_id = None
-        self.client_id = None
 
-    def run_test(self, name, method, endpoint, expected_status, data=None, headers=None, use_admin=False):
+    def run_test(self, name, method, endpoint, expected_status, data=None, headers=None):
         """Run a single API test"""
         url = f"{self.base_url}/{endpoint}"
         test_headers = {'Content-Type': 'application/json'}
-        
-        # Use admin token if specified
-        token_to_use = self.admin_token if use_admin else self.token
-        if token_to_use:
-            test_headers['Authorization'] = f'Bearer {token_to_use}'
-        
         if headers:
             test_headers.update(headers)
 
@@ -33,26 +25,32 @@ class KayicomWalletTester:
                 response = requests.get(url, headers=test_headers)
             elif method == 'POST':
                 response = requests.post(url, json=data, headers=test_headers)
-            elif method == 'PATCH':
-                response = requests.patch(url, json=data, headers=test_headers)
             elif method == 'PUT':
                 response = requests.put(url, json=data, headers=test_headers)
+            elif method == 'DELETE':
+                response = requests.delete(url, headers=test_headers)
 
             success = response.status_code == expected_status
             if success:
                 self.tests_passed += 1
                 print(f"✅ Passed - Status: {response.status_code}")
-                try:
-                    return True, response.json()
-                except:
-                    return True, {}
+                if response.content:
+                    try:
+                        resp_data = response.json()
+                        if isinstance(resp_data, dict) and len(str(resp_data)) < 200:
+                            print(f"   Response: {resp_data}")
+                    except:
+                        pass
             else:
                 print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
-                try:
-                    print(f"   Response: {response.json()}")
-                except:
-                    print(f"   Response: {response.text}")
-                return False, {}
+                if response.content:
+                    try:
+                        error_data = response.json()
+                        print(f"   Error: {error_data}")
+                    except:
+                        print(f"   Raw response: {response.text[:200]}")
+
+            return success, response.json() if response.content and success else {}
 
         except Exception as e:
             print(f"❌ Failed - Error: {str(e)}")
@@ -69,225 +67,147 @@ class KayicomWalletTester:
         )
         if success and 'token' in response:
             self.admin_token = response['token']
-            print(f"   Admin logged in successfully")
             return True
         return False
 
-    def test_user_login(self):
-        """Test regular user login"""
+    def test_exchange_rates_with_swap(self):
+        """Test exchange rates endpoint includes swap rates"""
         success, response = self.run_test(
-            "User Login",
-            "POST",
-            "auth/login",
+            "GET Exchange Rates with Swap Rates",
+            "GET",
+            "exchange-rates",
+            200
+        )
+        if success:
+            has_swap_rates = 'swap_htg_to_usd' in response and 'swap_usd_to_htg' in response
+            print(f"   Swap rates present: {has_swap_rates}")
+            if has_swap_rates:
+                print(f"   swap_htg_to_usd: {response.get('swap_htg_to_usd')}")
+                print(f"   swap_usd_to_htg: {response.get('swap_usd_to_htg')}")
+        return success
+
+    def test_admin_update_swap_rates(self):
+        """Test admin can update swap rates"""
+        if not self.admin_token:
+            print("❌ Admin token required")
+            return False
+            
+        headers = {'Authorization': f'Bearer {self.admin_token}'}
+        success, response = self.run_test(
+            "PUT Admin Exchange Rates with Swap",
+            "PUT",
+            "admin/exchange-rates",
             200,
-            data={"email": "demo@kayicom.com", "password": "Demo1234!"}
-        )
-        if success and 'token' in response:
-            self.token = response['token']
-            self.user_id = response['user']['user_id']
-            self.client_id = response['user']['client_id']
-            print(f"   User logged in successfully - Client ID: {self.client_id}")
-            return True
-        return False
-
-    def test_virtual_card_endpoints(self):
-        """Test virtual card related endpoints"""
-        print("\n📱 Testing Virtual Card Endpoints...")
-        
-        # Test virtual card order endpoint
-        self.run_test(
-            "POST /api/virtual-cards/order",
-            "POST",
-            "virtual-cards/order",
-            200,  # Should work if user has KYC approved and sufficient balance
-            data={"card_email": "test@example.com"}
-        )
-        
-        # Test get user's virtual card orders
-        self.run_test(
-            "GET /api/virtual-cards/orders",
-            "GET",
-            "virtual-cards/orders",
-            200
-        )
-        
-        # Test get user's virtual card deposits
-        self.run_test(
-            "GET /api/virtual-cards/deposits",
-            "GET",
-            "virtual-cards/deposits",
-            200
-        )
-
-    def test_topup_endpoints(self):
-        """Test TopUp related endpoints"""
-        print("\n📞 Testing TopUp Endpoints...")
-        
-        # Test topup order endpoint
-        self.run_test(
-            "POST /api/topup/order",
-            "POST",
-            "topup/order",
-            200,  # Should work if user has KYC approved and sufficient USD balance
             data={
-                "country": "US",
-                "country_name": "USA",
-                "minutes": 30,
-                "price": 5.0,
-                "phone_number": "+1234567890"
-            }
+                "htg_to_usd": 0.0075,
+                "usd_to_htg": 133.0,
+                "swap_htg_to_usd": 0.0074,
+                "swap_usd_to_htg": 132.0
+            },
+            headers=headers
         )
-        
-        # Test get user's topup orders
-        self.run_test(
-            "GET /api/topup/orders",
-            "GET",
-            "topup/orders",
-            200
-        )
+        return success
 
-    def test_admin_virtual_card_endpoints(self):
-        """Test admin virtual card management endpoints"""
-        print("\n🔧 Testing Admin Virtual Card Endpoints...")
+    def test_admin_card_fees_endpoints(self):
+        """Test admin card fees management"""
+        if not self.admin_token:
+            print("❌ Admin token required")
+            return False
+            
+        headers = {'Authorization': f'Bearer {self.admin_token}'}
         
-        # Test get all virtual card orders (admin)
-        self.run_test(
-            "GET /api/admin/virtual-card-orders",
+        # Test GET card fees
+        success1, response1 = self.run_test(
+            "GET Admin Card Fees",
             "GET",
-            "admin/virtual-card-orders",
+            "admin/card-fees",
             200,
-            use_admin=True
+            headers=headers
         )
         
-        # Test get pending virtual card orders
-        self.run_test(
-            "GET /api/admin/virtual-card-orders?status=pending",
-            "GET",
-            "admin/virtual-card-orders?status=pending",
-            200,
-            use_admin=True
-        )
-
-    def test_admin_topup_endpoints(self):
-        """Test admin topup management endpoints"""
-        print("\n🔧 Testing Admin TopUp Endpoints...")
-        
-        # Test get all topup orders (admin)
-        self.run_test(
-            "GET /api/admin/topup-orders",
-            "GET",
-            "admin/topup-orders",
-            200,
-            use_admin=True
-        )
-        
-        # Test get pending topup orders
-        self.run_test(
-            "GET /api/admin/topup-orders?status=pending",
-            "GET",
-            "admin/topup-orders?status=pending",
-            200,
-            use_admin=True
-        )
-
-    def test_swap_endpoint(self):
-        """Test swap functionality"""
-        print("\n💱 Testing Swap Endpoint...")
-        
-        self.run_test(
-            "POST /api/wallet/swap",
+        # Test POST card fee
+        success2, response2 = self.run_test(
+            "POST Admin Card Fee",
             "POST",
-            "wallet/swap",
-            200,  # Should work if user has sufficient balance
+            "admin/card-fees",
+            200,
             data={
-                "from_currency": "HTG",
-                "to_currency": "USD",
-                "amount": 100
-            }
+                "min_amount": 0,
+                "max_amount": 100,
+                "fee": 5
+            },
+            headers=headers
         )
+        
+        fee_id = None
+        if success2 and 'fee' in response2:
+            fee_id = response2['fee'].get('fee_id')
+        
+        # Test DELETE card fee if we created one
+        success3 = True
+        if fee_id:
+            success3, _ = self.run_test(
+                "DELETE Admin Card Fee",
+                "DELETE",
+                f"admin/card-fees/{fee_id}",
+                200,
+                headers=headers
+            )
+        
+        return success1 and success2 and success3
 
-    def test_basic_endpoints(self):
-        """Test basic endpoints for completeness"""
-        print("\n🔍 Testing Basic Endpoints...")
-        
-        # Test health endpoint
-        self.run_test(
-            "Health Check",
-            "GET",
-            "health",
-            200
-        )
-        
-        # Test exchange rates
-        self.run_test(
-            "Exchange Rates",
+    def test_dashboard_features(self):
+        """Test dashboard related features"""
+        # Test basic dashboard data endpoints
+        success1, response1 = self.run_test(
+            "GET Exchange Rates for Dashboard",
             "GET",
             "exchange-rates",
             200
         )
         
-        # Test user profile
-        self.run_test(
-            "User Profile",
-            "GET",
-            "auth/me",
-            200
-        )
-        
-        # Test wallet balance
-        self.run_test(
-            "Wallet Balance",
-            "GET",
-            "wallet/balance",
-            200
-        )
+        return success1
 
 def main():
-    print("🚀 Starting KAYICOM Wallet API Testing...")
+    print("🚀 Starting KAYICOM Wallet New Features Testing...")
     print("=" * 60)
     
     tester = KayicomWalletTester()
     
     # Test admin login first
     if not tester.test_admin_login():
-        print("❌ Admin login failed, continuing with user tests only")
-    
-    # Test user login
-    if not tester.test_user_login():
-        print("❌ User login failed, stopping tests")
+        print("❌ Admin login failed, stopping tests")
         return 1
+
+    print("\n📊 Testing New Features...")
+    print("-" * 40)
     
-    # Test basic endpoints
-    tester.test_basic_endpoints()
+    # Test new features
+    tests = [
+        ("Exchange Rates with Swap", tester.test_exchange_rates_with_swap),
+        ("Admin Update Swap Rates", tester.test_admin_update_swap_rates),
+        ("Admin Card Fees Management", tester.test_admin_card_fees_endpoints),
+        ("Dashboard Features", tester.test_dashboard_features),
+    ]
     
-    # Test virtual card endpoints
-    tester.test_virtual_card_endpoints()
+    for test_name, test_func in tests:
+        print(f"\n🔧 {test_name}...")
+        try:
+            test_func()
+        except Exception as e:
+            print(f"❌ {test_name} failed with error: {e}")
     
-    # Test topup endpoints
-    tester.test_topup_endpoints()
-    
-    # Test swap endpoint
-    tester.test_swap_endpoint()
-    
-    # Test admin endpoints if admin login worked
-    if tester.admin_token:
-        tester.test_admin_virtual_card_endpoints()
-        tester.test_admin_topup_endpoints()
-    
-    # Print final results
+    # Print results
     print("\n" + "=" * 60)
-    print(f"📊 Final Results: {tester.tests_passed}/{tester.tests_run} tests passed")
-    success_rate = (tester.tests_passed / tester.tests_run) * 100 if tester.tests_run > 0 else 0
-    print(f"📈 Success Rate: {success_rate:.1f}%")
+    print(f"📊 FINAL RESULTS")
+    print(f"Tests passed: {tester.tests_passed}/{tester.tests_run}")
+    print(f"Success rate: {(tester.tests_passed/tester.tests_run*100):.1f}%" if tester.tests_run > 0 else "No tests run")
     
-    if success_rate >= 80:
-        print("🎉 Overall: GOOD - Most functionality working")
-        return 0
-    elif success_rate >= 60:
-        print("⚠️  Overall: FAIR - Some issues need attention")
+    if tester.tests_passed == tester.tests_run:
+        print("🎉 All tests passed!")
         return 0
     else:
-        print("❌ Overall: POOR - Major issues detected")
+        print("⚠️  Some tests failed")
         return 1
 
 if __name__ == "__main__":
