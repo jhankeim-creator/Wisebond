@@ -108,7 +108,7 @@ export default function Landing() {
               
               <div className="flex flex-wrap gap-4">
                 <Link to="/register">
-                  <Button className="btn-primary text-lg px-8 py-4 h-auto" data-testid="get-started-btn">
+                  <Button className="bg-[#0047AB] hover:bg-[#003380] text-white font-semibold text-lg px-8 py-4 h-auto rounded-full shadow-lg" data-testid="get-started-btn">
                     {t('getStarted')}
                     <ArrowRight className="ml-2" size={20} />
                   </Button>
