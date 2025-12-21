@@ -70,7 +70,14 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-[#EA580C] hover:bg-[#C2410C] text-white font-bold px-8 py-3 rounded-full transition-all duration-200 active:scale-95 shadow-lg hover:shadow-xl hover:shadow-orange-500/20;
+    background-color: #EA580C !important;
+    color: white !important;
+    font-weight: 700 !important;
+    @apply px-8 py-3 rounded-full transition-all duration-200 active:scale-95 shadow-lg hover:shadow-xl hover:shadow-orange-500/20;
+  }
+  
+  .btn-primary:hover {
+    background-color: #C2410C !important;
   }
   
   .btn-secondary {
