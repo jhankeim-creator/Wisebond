@@ -1239,7 +1239,12 @@ async def admin_process_topup_order(
 async def get_exchange_rates():
     rates = await db.exchange_rates.find_one({"rate_id": "main"}, {"_id": 0})
     if not rates:
-        rates = {"htg_to_usd": 0.0075, "usd_to_htg": 133.0}
+        rates = {
+            "htg_to_usd": 0.0075, 
+            "usd_to_htg": 133.0,
+            "swap_htg_to_usd": 0.0074,
+            "swap_usd_to_htg": 132.0
+        }
     return rates
 
 # ==================== ADMIN ROUTES ====================
