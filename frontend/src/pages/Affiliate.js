@@ -279,9 +279,11 @@ export default function Affiliate() {
             
             <div className="mt-8 p-4 bg-amber-50 rounded-xl border border-amber-200 text-center">
               <p className="text-amber-800 font-semibold">
-                {language === 'fr' 
-                  ? '5 cartes commandées par vos filleuls = G 2,000 pour vous!'
-                  : '5 cards ordered by your referrals = G 2,000 for you!'}
+                {getText(
+                  '5 kat ki komande pa moun ou refere = G 2,000 pou ou!',
+                  '5 cartes commandées par vos filleuls = G 2,000 pour vous!',
+                  '5 cards ordered by your referrals = G 2,000 for you!'
+                )}
               </p>
             </div>
           </CardContent>
@@ -290,7 +292,7 @@ export default function Affiliate() {
         {/* Referrals List */}
         <Card>
           <CardHeader>
-            <CardTitle>{language === 'fr' ? 'Vos filleuls' : 'Your referrals'}</CardTitle>
+            <CardTitle>{getText('Moun ou refere yo', 'Vos filleuls', 'Your referrals')}</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -321,7 +323,7 @@ export default function Affiliate() {
                       {ref.has_card && (
                         <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-semibold flex items-center gap-1">
                           <CreditCard size={12} />
-                          {language === 'fr' ? 'Carte' : 'Card'}
+                          {getText('Kat', 'Carte', 'Card')}
                         </span>
                       )}
                       <span className="text-sm text-stone-400">
@@ -334,8 +336,8 @@ export default function Affiliate() {
             ) : (
               <div className="text-center py-8 text-stone-500">
                 <Users className="mx-auto mb-3 text-stone-400" size={48} />
-                <p>{language === 'fr' ? 'Vous n\'avez pas encore de filleuls' : 'You have no referrals yet'}</p>
-                <p className="text-sm mt-1">{language === 'fr' ? 'Partagez votre lien pour commencer!' : 'Share your link to get started!'}</p>
+                <p>{getText('Ou poko gen moun ou refere', 'Vous n\'avez pas encore de filleuls', 'You have no referrals yet')}</p>
+                <p className="text-sm mt-1">{getText('Pataje lyen ou pou kòmanse!', 'Partagez votre lien pour commencer!', 'Share your link to get started!')}</p>
               </div>
             )}
           </CardContent>
