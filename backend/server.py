@@ -93,6 +93,11 @@ class TransferRequest(BaseModel):
     amount: float
     currency: str
 
+class SwapRequest(BaseModel):
+    from_currency: str
+    to_currency: str
+    amount: float
+
 class KYCSubmit(BaseModel):
     date_of_birth: str
     address: str
