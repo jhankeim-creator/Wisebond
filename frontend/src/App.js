@@ -19,6 +19,7 @@ import Transactions from "@/pages/Transactions";
 import KYC from "@/pages/KYC";
 import Affiliate from "@/pages/Affiliate";
 import Settings from "@/pages/Settings";
+import VirtualCard from "@/pages/VirtualCard";
 
 // Admin Pages
 import AdminDashboard from "@/pages/admin/AdminDashboard";
@@ -91,6 +92,7 @@ function AppRoutes() {
       <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
       <Route path="/kyc" element={<ProtectedRoute><KYC /></ProtectedRoute>} />
       <Route path="/affiliate" element={<ProtectedRoute><Affiliate /></ProtectedRoute>} />
+      <Route path="/virtual-card" element={<ProtectedRoute><VirtualCard /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       
       {/* Admin Routes */}

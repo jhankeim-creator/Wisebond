@@ -12,18 +12,22 @@ import {
   Users,
   DollarSign,
   Share2,
-  Gift
+  Gift,
+  CreditCard,
+  TrendingUp,
+  ArrowRight
 } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 export default function Affiliate() {
-  const { t } = useLanguage();
-  const { user } = useAuth();
+  const { language } = useLanguage();
+  const { user, refreshUser } = useAuth();
   
   const [affiliateData, setAffiliateData] = useState(null);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [withdrawing, setWithdrawing] = useState(false);
 
   useEffect(() => {
     fetchAffiliateInfo();
@@ -43,7 +47,7 @@ export default function Affiliate() {
   const copyLink = () => {
     navigator.clipboard.writeText(affiliateData?.affiliate_link);
     setCopied(true);
-    toast.success(t('linkCopied'));
+    toast.success(language === 'fr' ? 'Lien copié!' : 'Link copied!');
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -51,7 +55,9 @@ export default function Affiliate() {
     if (navigator.share) {
       navigator.share({
         title: 'KAYICOM Wallet',
-        text: 'Rejoignez KAYICOM Wallet et gérez vos finances en HTG et USD!',
+        text: language === 'fr' 
+          ? 'Rejoignez KAYICOM Wallet et gérez vos finances en HTG et USD!'
+          : 'Join KAYICOM Wallet and manage your finances in HTG and USD!',
         url: affiliateData?.affiliate_link
       });
     } else {
@@ -59,108 +65,214 @@ export default function Affiliate() {
     }
   };
 
+  const withdrawEarnings = async () => {
+    if (user?.affiliate_earnings < 2000) {
+      toast.error(language === 'fr' ? 'Minimum de retrait: G 2,000' : 'Minimum withdrawal: G 2,000');
+      return;
+    }
+
+    setWithdrawing(true);
+    try {
+      await axios.post(`${API}/affiliate/withdraw`);
+      toast.success(language === 'fr' ? 'Gains transférés vers votre wallet!' : 'Earnings transferred to your wallet!');
+      refreshUser();
+      fetchAffiliateInfo();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error');
+    } finally {
+      setWithdrawing(false);
+    }
+  };
+
+  // Calculate progress to next reward
+  const referralsWithCards = affiliateData?.referrals_with_cards || 0;
+  const progressToNext = referralsWithCards % 5;
+  const completedSets = Math.floor(referralsWithCards / 5);
+
   return (
-    <DashboardLayout title={t('affiliate')}>
+    <DashboardLayout title={language === 'fr' ? 'Programme d\'Affiliation' : 'Affiliate Program'}>
       <div className="space-y-6" data-testid="affiliate-page">
-        {/* Stats Cards */}
-        <div className="grid md:grid-cols-2 gap-6">
-          <Card className="bg-gradient-to-br from-purple-500 to-purple-700 text-white">
+        {/* Main Stats */}
+        <div className="grid md:grid-cols-3 gap-6">
+          {/* Earnings Card */}
+          <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white md:col-span-2">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-purple-200 text-sm">{t('totalEarnings')}</p>
-                  <p className="text-3xl font-bold mt-1">
-                    ${affiliateData?.earnings?.toFixed(2) || '0.00'}
+                  <p className="text-amber-100 text-sm uppercase tracking-wide">
+                    {language === 'fr' ? 'Gains disponibles' : 'Available earnings'}
+                  </p>
+                  <p className="text-4xl font-bold mt-2">
+                    G {(user?.affiliate_earnings || 0).toLocaleString()}
+                  </p>
+                  <p className="text-amber-100 text-sm mt-1">
+                    ≈ ${((user?.affiliate_earnings || 0) * 0.0075).toFixed(2)} USD
                   </p>
                 </div>
-                <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
-                  <DollarSign size={28} />
+                <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center">
+                  <Gift size={32} />
                 </div>
               </div>
+              
+              <Button 
+                onClick={withdrawEarnings}
+                disabled={withdrawing || (user?.affiliate_earnings || 0) < 2000}
+                className="mt-6 bg-white text-amber-600 hover:bg-amber-50 font-bold"
+              >
+                {withdrawing 
+                  ? (language === 'fr' ? 'Transfert...' : 'Transferring...') 
+                  : (language === 'fr' ? 'Transférer vers wallet' : 'Transfer to wallet')}
+                <ArrowRight className="ml-2" size={18} />
+              </Button>
+              {(user?.affiliate_earnings || 0) < 2000 && (
+                <p className="text-amber-100 text-xs mt-2">
+                  {language === 'fr' ? 'Minimum: G 2,000' : 'Minimum: G 2,000'}
+                </p>
+              )}
             </CardContent>
           </Card>
 
+          {/* Referrals Count */}
           <Card>
             <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-slate-500 text-sm">{t('totalReferrals')}</p>
-                  <p className="text-3xl font-bold text-slate-900 mt-1">
-                    {affiliateData?.referrals?.length || 0}
-                  </p>
+              <div className="text-center">
+                <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Users className="text-[#EA580C]" size={32} />
                 </div>
-                <div className="w-14 h-14 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <Users size={28} className="text-[#0047AB]" />
-                </div>
+                <p className="text-stone-500 text-sm">{language === 'fr' ? 'Total filleuls' : 'Total referrals'}</p>
+                <p className="text-4xl font-bold text-stone-900 mt-1">
+                  {affiliateData?.referrals?.length || 0}
+                </p>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Progress to Next Reward */}
+        <Card className="bg-gradient-to-r from-stone-900 to-stone-800 text-white">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-stone-300 text-sm">{language === 'fr' ? 'Progression vers la prochaine récompense' : 'Progress to next reward'}</p>
+                <p className="text-2xl font-bold mt-1">
+                  {progressToNext}/5 {language === 'fr' ? 'cartes commandées' : 'cards ordered'}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-stone-300 text-sm">{language === 'fr' ? 'Récompense' : 'Reward'}</p>
+                <p className="text-2xl font-bold text-amber-400">G 2,000</p>
+              </div>
+            </div>
+            
+            {/* Progress bar */}
+            <div className="w-full bg-stone-700 rounded-full h-4 overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-[#EA580C] to-[#F59E0B] rounded-full transition-all duration-500"
+                style={{ width: `${(progressToNext / 5) * 100}%` }}
+              />
+            </div>
+            
+            <div className="flex justify-between mt-2 text-xs text-stone-400">
+              <span>0</span>
+              <span>5 {language === 'fr' ? 'cartes' : 'cards'} = G 2,000</span>
+            </div>
+            
+            {completedSets > 0 && (
+              <p className="text-emerald-400 text-sm mt-4">
+                {language === 'fr' 
+                  ? `Vous avez déjà gagné ${completedSets * 2000} HTG de ${completedSets} séries complétées!`
+                  : `You've already earned ${completedSets * 2000} HTG from ${completedSets} completed sets!`}
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Affiliate Link */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Share2 size={20} />
-              {t('yourAffiliateLink')}
+              {language === 'fr' ? 'Votre lien d\'affiliation' : 'Your affiliate link'}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="bg-slate-50 rounded-xl p-4 flex items-center gap-4">
-              <code className="flex-1 text-sm text-slate-700 break-all">
-                {affiliateData?.affiliate_link || 'Chargement...'}
+            <div className="bg-stone-50 rounded-xl p-4 flex items-center gap-4">
+              <code className="flex-1 text-sm text-stone-700 break-all font-mono">
+                {affiliateData?.affiliate_link || 'Loading...'}
               </code>
               <Button 
                 onClick={copyLink} 
                 variant="outline"
-                className="shrink-0"
-                data-testid="copy-affiliate-link"
+                className="shrink-0 border-[#EA580C] text-[#EA580C] hover:bg-orange-50"
               >
                 {copied ? <Check size={18} /> : <Copy size={18} />}
-                <span className="ml-2">{copied ? 'Copié!' : t('copyLink')}</span>
+                <span className="ml-2">{copied ? (language === 'fr' ? 'Copié!' : 'Copied!') : (language === 'fr' ? 'Copier' : 'Copy')}</span>
               </Button>
             </div>
             
             <div className="flex gap-3 mt-4">
               <Button onClick={shareLink} className="btn-primary flex-1">
                 <Share2 size={18} className="mr-2" />
-                Partager
+                {language === 'fr' ? 'Partager' : 'Share'}
               </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Program Rules */}
+        {/* How it works */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Gift size={20} />
-              {t('affiliateRules')}
+              <CreditCard size={20} />
+              {language === 'fr' ? 'Comment ça marche?' : 'How does it work?'}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-start gap-4 p-4 bg-emerald-50 rounded-xl">
-                <div className="w-10 h-10 bg-emerald-500 rounded-full flex items-center justify-center text-white font-bold shrink-0">
-                  $1
-                </div>
-                <div>
-                  <p className="font-medium text-slate-900">{t('affiliateRule1')}</p>
-                  <p className="text-sm text-slate-600 mt-1">
-                    Chaque fois qu'un de vos filleuls effectue un retrait de $300 ou plus, vous recevez automatiquement $1 de commission.
-                  </p>
-                </div>
-              </div>
-              
-              <div className="bg-slate-50 rounded-xl p-4">
-                <h4 className="font-medium text-slate-900 mb-2">Comment ça marche?</h4>
-                <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600">
-                  <li>Partagez votre lien d'affiliation avec vos amis et famille</li>
-                  <li>Ils s'inscrivent via votre lien</li>
-                  <li>Quand ils font des retraits USD, vous gagnez des commissions</li>
-                  <li>Les commissions sont automatiquement ajoutées à votre wallet USD</li>
-                </ol>
-              </div>
+            <div className="grid md:grid-cols-3 gap-6">
+              {[
+                { 
+                  step: '1', 
+                  icon: Share2,
+                  title: language === 'fr' ? 'Partagez votre lien' : 'Share your link',
+                  desc: language === 'fr' ? 'Envoyez votre lien unique à vos amis et famille' : 'Send your unique link to friends and family'
+                },
+                { 
+                  step: '2', 
+                  icon: CreditCard,
+                  title: language === 'fr' ? 'Ils commandent une carte' : 'They order a card',
+                  desc: language === 'fr' ? 'Vos filleuls s\'inscrivent et commandent une carte virtuelle' : 'Your referrals sign up and order a virtual card'
+                },
+                { 
+                  step: '3', 
+                  icon: Gift,
+                  title: language === 'fr' ? 'Vous gagnez!' : 'You earn!',
+                  desc: language === 'fr' ? 'Recevez G 2,000 pour chaque 5 cartes commandées' : 'Receive G 2,000 for every 5 cards ordered'
+                }
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div key={item.step} className="text-center">
+                    <div className="relative inline-block">
+                      <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center mx-auto">
+                        <Icon className="text-[#EA580C]" size={28} />
+                      </div>
+                      <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-br from-[#EA580C] to-[#F59E0B] rounded-full flex items-center justify-center text-white font-bold text-sm">
+                        {item.step}
+                      </div>
+                    </div>
+                    <h3 className="font-bold text-stone-900 mt-4 mb-2">{item.title}</h3>
+                    <p className="text-stone-500 text-sm">{item.desc}</p>
+                  </div>
+                );
+              })}
+            </div>
+            
+            <div className="mt-8 p-4 bg-amber-50 rounded-xl border border-amber-200 text-center">
+              <p className="text-amber-800 font-semibold">
+                {language === 'fr' 
+                  ? '5 cartes commandées par vos filleuls = G 2,000 pour vous!'
+                  : '5 cards ordered by your referrals = G 2,000 for you!'}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -168,7 +280,7 @@ export default function Affiliate() {
         {/* Referrals List */}
         <Card>
           <CardHeader>
-            <CardTitle>Vos filleuls</CardTitle>
+            <CardTitle>{language === 'fr' ? 'Vos filleuls' : 'Your referrals'}</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -181,29 +293,39 @@ export default function Affiliate() {
                 ))}
               </div>
             ) : affiliateData?.referrals?.length > 0 ? (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-stone-100">
                 {affiliateData.referrals.map((ref, index) => (
-                  <div key={index} className="flex items-center justify-between py-3">
+                  <div key={index} className="flex items-center justify-between py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
-                        <Users size={18} className="text-slate-500" />
+                      <div className="w-10 h-10 bg-gradient-to-br from-orange-100 to-amber-100 rounded-full flex items-center justify-center">
+                        <span className="text-[#EA580C] font-bold">
+                          {ref.full_name?.charAt(0)?.toUpperCase()}
+                        </span>
                       </div>
                       <div>
-                        <p className="font-medium text-slate-900">{ref.full_name}</p>
-                        <p className="text-sm text-slate-500 font-mono">{ref.client_id}</p>
+                        <p className="font-medium text-stone-900">{ref.full_name}</p>
+                        <p className="text-sm text-stone-500 font-mono">{ref.client_id}</p>
                       </div>
                     </div>
-                    <p className="text-sm text-slate-500">
-                      {new Date(ref.created_at).toLocaleDateString()}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      {ref.has_card && (
+                        <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-semibold flex items-center gap-1">
+                          <CreditCard size={12} />
+                          {language === 'fr' ? 'Carte' : 'Card'}
+                        </span>
+                      )}
+                      <span className="text-sm text-stone-400">
+                        {new Date(ref.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-slate-500">
-                <Users className="mx-auto mb-3 text-slate-400" size={48} />
-                <p>Vous n'avez pas encore de filleuls</p>
-                <p className="text-sm mt-1">Partagez votre lien pour commencer à gagner!</p>
+              <div className="text-center py-8 text-stone-500">
+                <Users className="mx-auto mb-3 text-stone-400" size={48} />
+                <p>{language === 'fr' ? 'Vous n\'avez pas encore de filleuls' : 'You have no referrals yet'}</p>
+                <p className="text-sm mt-1">{language === 'fr' ? 'Partagez votre lien pour commencer!' : 'Share your link to get started!'}</p>
               </div>
             )}
           </CardContent>
