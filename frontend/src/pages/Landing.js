@@ -382,23 +382,25 @@ export default function Landing() {
         <div className="max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-100 rounded-full text-amber-700 text-sm font-semibold mb-6">
             <Users size={16} />
-            <span>{language === 'fr' ? 'Programme d\'Affiliation' : 'Affiliate Program'}</span>
+            <span>{getText('Pwogram Afilyasyon', 'Programme d\'Affiliation', 'Affiliate Program')}</span>
           </div>
           
           <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 mb-4">
-            {language === 'fr' ? 'Gagnez 2,000 HTG' : 'Earn 2,000 HTG'}
+            {getText('Touche G 2,000', 'Gagnez 2,000 HTG', 'Earn 2,000 HTG')}
           </h2>
           <p className="text-lg text-stone-600 mb-8 max-w-2xl mx-auto">
-            {language === 'fr' 
-              ? 'Pour chaque 5 personnes que vous référez qui commandent une carte virtuelle, vous recevez 2,000 HTG!'
-              : 'For every 5 people you refer who order a virtual card, you receive 2,000 HTG!'}
+            {getText(
+              'Pou chak 5 moun ou refere ki komande yon kat vityèl, ou resevwa G 2,000!',
+              'Pour chaque 5 personnes que vous référez qui commandent une carte virtuelle, vous recevez 2,000 HTG!',
+              'For every 5 people you refer who order a virtual card, you receive 2,000 HTG!'
+            )}
           </p>
           
           <div className="grid md:grid-cols-3 gap-6 mb-10">
             {[
-              { step: '1', title: language === 'fr' ? 'Partagez' : 'Share', desc: language === 'fr' ? 'Votre lien unique' : 'Your unique link' },
-              { step: '2', title: language === 'fr' ? 'Ils commandent' : 'They order', desc: language === 'fr' ? 'Une carte virtuelle' : 'A virtual card' },
-              { step: '3', title: language === 'fr' ? 'Vous gagnez' : 'You earn', desc: '2,000 HTG / 5 cartes' }
+              { step: '1', title: getText('Pataje', 'Partagez', 'Share'), desc: getText('Lyen inik ou', 'Votre lien unique', 'Your unique link') },
+              { step: '2', title: getText('Yo komande', 'Ils commandent', 'They order'), desc: getText('Yon kat vityèl', 'Une carte virtuelle', 'A virtual card') },
+              { step: '3', title: getText('Ou touche', 'Vous gagnez', 'You earn'), desc: 'G 2,000 / 5 kat' }
             ].map((item) => (
               <div key={item.step} className="bg-white rounded-2xl p-6 shadow-sm border border-stone-200">
                 <div className="w-10 h-10 bg-gradient-to-br from-[#EA580C] to-[#F59E0B] rounded-full flex items-center justify-center text-white font-bold mx-auto mb-4">
@@ -412,7 +414,7 @@ export default function Landing() {
           
           <Link to="/register">
             <Button className="btn-gold text-lg px-10 py-4 h-auto">
-              {language === 'fr' ? 'Commencer à gagner' : 'Start earning'}
+              {getText('Kòmanse touche', 'Commencer à gagner', 'Start earning')}
               <ChevronRight className="ml-2" size={20} />
             </Button>
           </Link>
@@ -423,16 +425,18 @@ export default function Landing() {
       <section className="py-20 px-6 bg-gradient-to-r from-[#EA580C] to-[#C2410C]">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-            {language === 'fr' ? 'Prêt à commencer?' : 'Ready to start?'}
+            {getText('Pare pou kòmanse?', 'Prêt à commencer?', 'Ready to start?')}
           </h2>
           <p className="text-xl text-orange-100 mb-8">
-            {language === 'fr' 
-              ? 'Créez votre compte en quelques minutes et commencez à gérer vos finances.'
-              : 'Create your account in minutes and start managing your finances.'}
+            {getText(
+              'Kreye kont ou nan kèk minit epi kòmanse jere finans ou.',
+              'Créez votre compte en quelques minutes et commencez à gérer vos finances.',
+              'Create your account in minutes and start managing your finances.'
+            )}
           </p>
           <Link to="/register">
             <Button className="bg-white text-[#EA580C] hover:bg-orange-50 text-lg px-10 py-4 h-auto font-bold rounded-full shadow-lg">
-              {language === 'fr' ? 'Créer un compte gratuit' : 'Create free account'}
+              {getText('Kreye kont gratis', 'Créer un compte gratuit', 'Create free account')}
               <ChevronRight className="ml-2" size={20} />
             </Button>
           </Link>
@@ -446,18 +450,18 @@ export default function Landing() {
             <Logo />
             
             <p className="text-stone-400 text-sm">
-              © 2024 KAYICOM Wallet. {language === 'fr' ? 'Tous droits réservés.' : 'All rights reserved.'}
+              © 2024 KAYICOM Wallet. {getText('Tout dwa rezève.', 'Tous droits réservés.', 'All rights reserved.')}
             </p>
             
             <div className="flex items-center gap-6">
               <a href="#" className="text-stone-400 hover:text-white transition-colors">
-                {language === 'fr' ? 'Conditions' : 'Terms'}
+                {getText('Kondisyon', 'Conditions', 'Terms')}
               </a>
               <a href="#" className="text-stone-400 hover:text-white transition-colors">
-                {language === 'fr' ? 'Confidentialité' : 'Privacy'}
+                {getText('Konfidansyalite', 'Confidentialité', 'Privacy')}
               </a>
               <a href="#" className="text-stone-400 hover:text-white transition-colors">
-                Contact
+                {getText('Kontak', 'Contact', 'Contact')}
               </a>
             </div>
           </div>
