@@ -161,13 +161,13 @@ export default function Affiliate() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-stone-300 text-sm">{language === 'fr' ? 'Progression vers la prochaine récompense' : 'Progress to next reward'}</p>
+                <p className="text-stone-300 text-sm">{getText('Pwogrè pou pwochen rekonpans', 'Progression vers la prochaine récompense', 'Progress to next reward')}</p>
                 <p className="text-2xl font-bold mt-1">
-                  {progressToNext}/5 {language === 'fr' ? 'cartes commandées' : 'cards ordered'}
+                  {progressToNext}/5 {getText('kat komande', 'cartes commandées', 'cards ordered')}
                 </p>
               </div>
               <div className="text-right">
-                <p className="text-stone-300 text-sm">{language === 'fr' ? 'Récompense' : 'Reward'}</p>
+                <p className="text-stone-300 text-sm">{getText('Rekonpans', 'Récompense', 'Reward')}</p>
                 <p className="text-2xl font-bold text-amber-400">G 2,000</p>
               </div>
             </div>
@@ -182,14 +182,16 @@ export default function Affiliate() {
             
             <div className="flex justify-between mt-2 text-xs text-stone-400">
               <span>0</span>
-              <span>5 {language === 'fr' ? 'cartes' : 'cards'} = G 2,000</span>
+              <span>5 {getText('kat', 'cartes', 'cards')} = G 2,000</span>
             </div>
             
             {completedSets > 0 && (
               <p className="text-emerald-400 text-sm mt-4">
-                {language === 'fr' 
-                  ? `Vous avez déjà gagné ${completedSets * 2000} HTG de ${completedSets} séries complétées!`
-                  : `You've already earned ${completedSets * 2000} HTG from ${completedSets} completed sets!`}
+                {getText(
+                  `Ou deja touche ${completedSets * 2000} HTG sou ${completedSets} seri konplete!`,
+                  `Vous avez déjà gagné ${completedSets * 2000} HTG de ${completedSets} séries complétées!`,
+                  `You've already earned ${completedSets * 2000} HTG from ${completedSets} completed sets!`
+                )}
               </p>
             )}
           </CardContent>
@@ -200,7 +202,7 @@ export default function Affiliate() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Share2 size={20} />
-              {language === 'fr' ? 'Votre lien d\'affiliation' : 'Your affiliate link'}
+              {getText('Lyen afilyasyon ou', 'Votre lien d\'affiliation', 'Your affiliate link')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -214,7 +216,7 @@ export default function Affiliate() {
                 className="shrink-0 border-[#EA580C] text-[#EA580C] hover:bg-orange-50"
               >
                 {copied ? <Check size={18} /> : <Copy size={18} />}
-                <span className="ml-2">{copied ? (language === 'fr' ? 'Copié!' : 'Copied!') : (language === 'fr' ? 'Copier' : 'Copy')}</span>
+                <span className="ml-2">{copied ? getText('Kopye!', 'Copié!', 'Copied!') : getText('Kopye', 'Copier', 'Copy')}</span>
               </Button>
             </div>
             
