@@ -1,34 +1,176 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* App-specific styles */
+.wallet-card {
+  background: linear-gradient(135deg, #0047AB 0%, #003380 100%);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  color: white;
+  position: relative;
+  overflow: hidden;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+.wallet-card::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+  pointer-events: none;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.wallet-card-usd {
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
 }
 
-.App-link {
-    color: #61dafb;
+.transaction-item {
+  @apply flex items-center justify-between p-4 border-b border-slate-100 last:border-0 hover:bg-slate-50 transition-colors duration-200;
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.transaction-amount-positive {
+  @apply text-emerald-600 font-semibold;
+}
+
+.transaction-amount-negative {
+  @apply text-red-500 font-semibold;
+}
+
+.deposit-method-card {
+  @apply p-4 border-2 border-slate-200 rounded-xl cursor-pointer transition-all duration-200 hover:border-[#0047AB] hover:shadow-md;
+}
+
+.deposit-method-card.selected {
+  @apply border-[#0047AB] bg-blue-50;
+}
+
+.kyc-status-indicator {
+  @apply w-3 h-3 rounded-full;
+}
+
+.kyc-status-pending {
+  @apply bg-amber-500 animate-pulse;
+}
+
+.kyc-status-approved {
+  @apply bg-emerald-500;
+}
+
+.kyc-status-rejected {
+  @apply bg-red-500;
+}
+
+/* Sidebar styles */
+.sidebar {
+  background: #0F172A;
+  width: 280px;
+  min-height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 40;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-logo {
+  @apply text-2xl font-bold text-white mb-8;
+}
+
+.main-content {
+  margin-left: 280px;
+  min-height: 100vh;
+  background: #F8FAFC;
+}
+
+@media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  
+  .main-content {
+    margin-left: 0;
+  }
+}
+
+/* Stats card */
+.stats-card {
+  @apply bg-white rounded-xl p-6 border border-slate-200;
+}
+
+.stats-value {
+  @apply text-3xl font-bold text-slate-900;
+}
+
+.stats-label {
+  @apply text-sm text-slate-500 mt-1;
+}
+
+/* Table styles */
+.data-table {
+  @apply w-full;
+}
+
+.data-table th {
+  @apply text-left text-xs font-semibold text-slate-500 uppercase tracking-wider py-3 px-4 border-b border-slate-200;
+}
+
+.data-table td {
+  @apply py-4 px-4 border-b border-slate-100;
+}
+
+.data-table tr:hover td {
+  @apply bg-slate-50;
+}
+
+/* File upload */
+.file-upload-zone {
+  @apply border-2 border-dashed border-slate-300 rounded-xl p-8 text-center cursor-pointer hover:border-[#0047AB] hover:bg-blue-50 transition-all duration-200;
+}
+
+.file-upload-zone.dragover {
+  @apply border-[#0047AB] bg-blue-50;
+}
+
+/* Amount input */
+.amount-input {
+  @apply text-4xl font-bold text-center bg-transparent border-none outline-none w-full;
+}
+
+.amount-input::placeholder {
+  @apply text-slate-300;
+}
+
+/* Language switcher */
+.lang-switcher {
+  @apply flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 transition-colors duration-200 cursor-pointer;
+}
+
+/* Admin panel */
+.admin-nav-item {
+  @apply flex items-center gap-3 px-4 py-3 text-slate-600 hover:text-[#0047AB] hover:bg-blue-50 rounded-lg transition-colors duration-200;
+}
+
+.admin-nav-item.active {
+  @apply text-[#0047AB] bg-blue-50 font-medium;
+}
+
+/* Loading states */
+.skeleton {
+  @apply bg-slate-200 animate-pulse rounded;
+}
+
+/* Toast customization */
+[data-sonner-toaster] {
+  font-family: 'Inter', sans-serif;
+}
+
+/* Mobile menu button */
+.mobile-menu-btn {
+  @apply lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-md;
 }
