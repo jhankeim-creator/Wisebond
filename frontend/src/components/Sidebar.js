@@ -19,10 +19,16 @@ import {
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user, logout, isAdmin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
 
   const handleLogout = () => {
     logout();
@@ -34,7 +40,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { path: '/deposit', icon: ArrowDownCircle, label: t('deposit') },
     { path: '/withdraw', icon: ArrowUpCircle, label: t('withdraw') },
     { path: '/transfer', icon: Send, label: t('transfer') },
-    { path: '/virtual-card', icon: CreditCard, label: 'Carte Virtuelle' },
+    { path: '/virtual-card', icon: CreditCard, label: getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card') },
     { path: '/transactions', icon: History, label: t('transactions') },
     { path: '/kyc', icon: UserCheck, label: t('kyc') },
     { path: '/affiliate', icon: Users, label: t('affiliate') },
