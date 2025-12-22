@@ -32,7 +32,7 @@
     "Dashboard shows HTG (G 49,400) and USD ($495.75) balances with proper formatting",
     "Recent transactions display correctly (Swap In/Out, TopUp Order, Card Order, Deposit)",
     "Haitian Creole interface working perfectly (Tablo bò, Depoze, Retire, Kat Vityèl, etc.)",
-    "Admin login with admin@kayicom.com / Admin123! works correctly",
+    "Admin login with graciaemmanuel509@gmail.com / Admin123! works correctly",
     "User login with demo@kayicom.com / Demo1234! works correctly",
     "Virtual card manual system with $5 bonus implementation visible in backend",
     "TopUp manual system implementation confirmed in backend",

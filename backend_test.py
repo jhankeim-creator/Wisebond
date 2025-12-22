@@ -63,7 +63,7 @@ class KayicomWalletTester:
             "POST",
             "auth/login",
             200,
-            data={"email": "admin@kayicom.com", "password": "Admin123!"}
+            data={"email": "graciaemmanuel509@gmail.com", "password": "Admin123!"}
         )
         if success and 'token' in response:
             self.admin_token = response['token']

@@ -31,7 +31,7 @@
     "User list shows Client ID, Name, Email, KYC status, USD/HTG balances, Status, Actions",
     "Search functionality in admin users: 'Chèche pa imèl, non oswa ID...'",
     "Haitian Creole interface throughout: Jesyon Kliyan, Total Kliyan, KYC Verifye, Bloke, etc.",
-    "Admin login with admin@kayicom.com / Admin123! working correctly",
+    "Admin login with graciaemmanuel509@gmail.com / Admin123! working correctly",
     "Backend API endpoints all returning proper status codes (100% success rate)"
   ],
   
