@@ -4,7 +4,7 @@ const translations = {
   ht: {
     // Navigation
     home: "Akèy",
-    dashboard: "Tablo bò",
+    dashboard: "Tablo de bò",
     deposit: "Depoze",
     withdraw: "Retire",
     transfer: "Voye",
@@ -42,7 +42,7 @@ const translations = {
     multiCurrency: "Multi-Deviz",
     multiCurrencyDesc: "Jere HTG ak USD nan yon sèl kont.",
     affiliateProgram: "Pwogram Afilyasyon",
-    affiliateProgramDesc: "Touche G 2,000 pou chak 5 moun ou refere ki komande yon kat!",
+    affiliateProgramDesc: "Touche G 2,000 pou chak 5 moun ou refere ki gen kat yo apwouve!",
     
     // Dashboard
     welcomeBack: "Byenveni",
@@ -96,7 +96,7 @@ const translations = {
     totalEarnings: "Tout sa ou touche",
     totalReferrals: "Total moun ou refere",
     affiliateRules: "Règ pwogram nan",
-    affiliateRule1: "Touche G 2,000 pou chak 5 moun ou refere ki komande yon kat",
+    affiliateRule1: "Touche G 2,000 pou chak 5 moun ou refere ki gen kat yo apwouve",
     
     // Status
     pending: "Ap tann",
@@ -138,7 +138,7 @@ const translations = {
     cardBalance: "Balans kat",
     
     // Errors
-    invalidCredentials: "Idantifyan envalid",
+    invalidCredentials: "Idantifyan pa valab",
     insufficientBalance: "Balans ensifizan",
     kycRequiredError: "Verifikasyon KYC obligatwa",
     networkError: "Erè rezo",

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Mail, Lock, ArrowRight, Wallet } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Wallet, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const { t, language } = useLanguage();
@@ -20,6 +20,7 @@ export default function Login() {
     password: ''
   });
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -56,7 +57,7 @@ export default function Login() {
             <div>
               <h1 className="text-3xl font-bold text-stone-900">{t('login')}</h1>
               <p className="text-stone-600 mt-1">
-                {getText('Byenveni! Konekte nan kont ou.', 'Bienvenue! Connectez-vous à votre compte.', 'Welcome! Sign in to your account.')}
+                {getText('Byenveni! Konekte sou kont ou.', 'Bienvenue! Connectez-vous à votre compte.', 'Welcome! Sign in to your account.')}
               </p>
             </div>
             <LanguageSwitcher />
@@ -91,14 +92,22 @@ export default function Login() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-400" size={20} />
                 <Input
                   id="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
-                  className="pl-10 h-12 border-stone-200 focus:border-[#EA580C] focus:ring-[#EA580C]/20"
+                  className="pl-10 pr-12 h-12 border-stone-200 focus:border-[#EA580C] focus:ring-[#EA580C]/20"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   required
                   data-testid="login-password"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
               </div>
             </div>
             

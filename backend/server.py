@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 # Background tasks
 _plisio_poll_task: Optional[asyncio.Task] = None
+_cleanup_task: Optional[asyncio.Task] = None
 
 # ==================== PLISIO HELPERS ====================
 
@@ -324,6 +325,42 @@ async def _plisio_poll_loop():
         except Exception as e:
             logger.error("Plisio poll loop error: %s", e)
         await asyncio.sleep(60)
+
+
+async def _purge_old_records(days: int = 7) -> dict:
+    """Delete deposits/withdrawals older than N days (excluding pending)."""
+    if days <= 0:
+        days = 7
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+
+    deposit_res = await db.deposits.delete_many({
+        "created_at": {"$lt": cutoff},
+        "status": {"$in": ["completed", "rejected", "failed"]}
+    })
+    withdrawal_res = await db.withdrawals.delete_many({
+        "created_at": {"$lt": cutoff},
+        "status": {"$in": ["completed", "rejected"]}
+    })
+    return {
+        "days": days,
+        "cutoff": cutoff,
+        "deleted_deposits": deposit_res.deleted_count,
+        "deleted_withdrawals": withdrawal_res.deleted_count
+    }
+
+
+async def _cleanup_loop():
+    """Daily cleanup task."""
+    while True:
+        try:
+            result = await _purge_old_records(days=7)
+            if result["deleted_deposits"] or result["deleted_withdrawals"]:
+                logger.info("Cleanup: %s", result)
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            logger.error("Cleanup loop error: %s", e)
+        await asyncio.sleep(24 * 3600)
 
 
 def _plisio_verify_hash(payload: dict, secret_key: str) -> bool:
@@ -2357,6 +2394,13 @@ async def admin_diagnostics(admin: dict = Depends(get_admin_user)):
         warnings.append("MongoDB ping failed")
     return {"diagnostics": diagnostics, "warnings": warnings}
 
+
+@api_router.post("/admin/purge-old-records")
+async def admin_purge_old_records(days: int = Query(default=7, ge=1, le=365), admin: dict = Depends(get_admin_user)):
+    result = await _purge_old_records(days=days)
+    await log_action(admin["user_id"], "purge_old_records", result)
+    return {"result": result}
+
 # Bulk Email Admin
 @api_router.post("/admin/bulk-email")
 async def admin_send_bulk_email(request: BulkEmailRequest, admin: dict = Depends(get_admin_user)):
@@ -2557,10 +2601,19 @@ async def startup():
     if _plisio_poll_task is None:
         _plisio_poll_task = asyncio.create_task(_plisio_poll_loop())
 
+    # Start daily cleanup loop (purge old deposits/withdrawals)
+    global _cleanup_task
+    if _cleanup_task is None:
+        _cleanup_task = asyncio.create_task(_cleanup_loop())
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     global _plisio_poll_task
     if _plisio_poll_task is not None:
         _plisio_poll_task.cancel()
         _plisio_poll_task = None
+    global _cleanup_task
+    if _cleanup_task is not None:
+        _cleanup_task.cancel()
+        _cleanup_task = None
     client.close()

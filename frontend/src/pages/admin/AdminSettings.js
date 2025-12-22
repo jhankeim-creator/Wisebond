@@ -96,6 +96,20 @@ export default function AdminSettings() {
     }
   };
 
+  const purgeOldRecords = async () => {
+    try {
+      const resp = await axios.post(`${API}/admin/purge-old-records?days=7`);
+      const r = resp.data?.result;
+      toast.success(getText(
+        `Netwayaj fèt: ${r.deleted_deposits} depo, ${r.deleted_withdrawals} retrè efase`,
+        `Nettoyage effectué: ${r.deleted_deposits} dépôts, ${r.deleted_withdrawals} retraits supprimés`,
+        `Cleanup done: deleted ${r.deleted_deposits} deposits, ${r.deleted_withdrawals} withdrawals`
+      ));
+    } catch (e) {
+      toast.error(getText('Erè pandan netwayaj', 'Erreur nettoyage', 'Cleanup error'));
+    }
+  };
+
   return (
     <AdminLayout title={getText('Paramèt', 'Paramètres', 'Settings')}>
       <div className="max-w-3xl mx-auto space-y-6" data-testid="admin-settings">
@@ -386,6 +400,10 @@ export default function AdminSettings() {
           <CardContent className="space-y-3">
             <Button variant="outline" onClick={fetchDiagnostics} disabled={diagnosticsLoading}>
               {diagnosticsLoading ? getText('Chajman...', 'Chargement...', 'Loading...') : getText('Kouri dyagnostik', 'Lancer diagnostics', 'Run diagnostics')}
+            </Button>
+
+            <Button variant="outline" onClick={purgeOldRecords}>
+              {getText('Efase depo/retrè ki depase 7 jou', 'Supprimer dépôts/retraits > 7 jours', 'Delete deposits/withdrawals older than 7 days')}
             </Button>
 
             {diagnostics && (
