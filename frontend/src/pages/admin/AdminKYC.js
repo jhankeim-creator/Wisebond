@@ -37,6 +37,16 @@ export default function AdminKYC() {
     }
   };
 
+  const viewKyc = async (kycId) => {
+    try {
+      const response = await axios.get(`${API}/admin/kyc/${kycId}`);
+      setSelectedKyc(response.data.kyc);
+      setShowModal(true);
+    } catch (error) {
+      toast.error('Erreur lors du chargement');
+    }
+  };
+
   const handleReview = async (action) => {
     if (action === 'reject' && !rejectReason) {
       toast.error('Veuillez indiquer une raison de rejet');
@@ -118,7 +128,7 @@ export default function AdminKYC() {
                     submissions.map((kyc) => (
                       <tr key={kyc.kyc_id}>
                         <td className="font-mono text-sm">{kyc.client_id}</td>
-                        <td>{kyc.nationality}</td>
+                        <td>{kyc.full_name}</td>
                         <td>{kyc.nationality}</td>
                         <td className="capitalize">{kyc.id_type?.replace('_', ' ')}</td>
                         <td>{new Date(kyc.submitted_at).toLocaleDateString()}</td>
@@ -135,7 +145,7 @@ export default function AdminKYC() {
                           <Button 
                             size="sm" 
                             variant="outline"
-                            onClick={() => { setSelectedKyc(kyc); setShowModal(true); }}
+                            onClick={() => viewKyc(kyc.kyc_id)}
                           >
                             <Eye size={16} className="mr-2" />
                             Voir
@@ -169,7 +179,7 @@ export default function AdminKYC() {
                   </div>
                   <div className="col-span-2">
                     <p className="text-sm text-slate-500">Adresse</p>
-                    <p className="font-medium">{selectedKyc.address}</p>
+                    <p className="font-medium">{selectedKyc.full_address}</p>
                   </div>
                 </div>
 
@@ -204,9 +214,9 @@ export default function AdminKYC() {
                   </div>
                   <div>
                     <p className="text-sm text-slate-500 mb-2">Selfie avec ID</p>
-                    {selectedKyc.selfie_image ? (
+                    {selectedKyc.selfie_with_id ? (
                       <img 
-                        src={selectedKyc.selfie_image} 
+                        src={selectedKyc.selfie_with_id} 
                         alt="Selfie" 
                         className="rounded-lg border w-full h-40 object-cover"
                       />

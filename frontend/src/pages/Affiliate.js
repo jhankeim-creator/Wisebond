@@ -94,8 +94,10 @@ export default function Affiliate() {
 
   // Calculate progress to next reward
   const referralsWithCards = affiliateData?.referrals_with_cards || 0;
-  const progressToNext = referralsWithCards % 5;
-  const completedSets = Math.floor(referralsWithCards / 5);
+  const cardsRequired = affiliateData?.affiliate_cards_required || 5;
+  const rewardHtg = affiliateData?.affiliate_reward_htg || 2000;
+  const progressToNext = referralsWithCards % cardsRequired;
+  const completedSets = Math.floor(referralsWithCards / cardsRequired);
 
   return (
     <DashboardLayout title={getText('Pwogram Afilyasyon', 'Programme d\'Affiliation', 'Affiliate Program')}>
@@ -163,12 +165,12 @@ export default function Affiliate() {
               <div>
                 <p className="text-stone-300 text-sm">{getText('Pwogrè pou pwochen rekonpans', 'Progression vers la prochaine récompense', 'Progress to next reward')}</p>
                 <p className="text-2xl font-bold mt-1">
-                  {progressToNext}/5 {getText('kat komande', 'cartes commandées', 'cards ordered')}
+                  {progressToNext}/{cardsRequired} {getText('kat komande', 'cartes commandées', 'cards ordered')}
                 </p>
               </div>
               <div className="text-right">
                 <p className="text-stone-300 text-sm">{getText('Rekonpans', 'Récompense', 'Reward')}</p>
-                <p className="text-2xl font-bold text-amber-400">G 2,000</p>
+                <p className="text-2xl font-bold text-amber-400">G {rewardHtg.toLocaleString()}</p>
               </div>
             </div>
             
@@ -176,21 +178,21 @@ export default function Affiliate() {
             <div className="w-full bg-stone-700 rounded-full h-4 overflow-hidden">
               <div 
                 className="h-full bg-gradient-to-r from-[#EA580C] to-[#F59E0B] rounded-full transition-all duration-500"
-                style={{ width: `${(progressToNext / 5) * 100}%` }}
+                style={{ width: `${(progressToNext / cardsRequired) * 100}%` }}
               />
             </div>
             
             <div className="flex justify-between mt-2 text-xs text-stone-400">
               <span>0</span>
-              <span>5 {getText('kat', 'cartes', 'cards')} = G 2,000</span>
+              <span>{cardsRequired} {getText('kat', 'cartes', 'cards')} = G {rewardHtg.toLocaleString()}</span>
             </div>
             
             {completedSets > 0 && (
               <p className="text-emerald-400 text-sm mt-4">
                 {getText(
-                  `Ou deja touche ${completedSets * 2000} HTG sou ${completedSets} seri konplete!`,
-                  `Vous avez déjà gagné ${completedSets * 2000} HTG de ${completedSets} séries complétées!`,
-                  `You've already earned ${completedSets * 2000} HTG from ${completedSets} completed sets!`
+                  `Ou deja touche ${completedSets * rewardHtg} HTG sou ${completedSets} seri konplete!`,
+                  `Vous avez déjà gagné ${completedSets * rewardHtg} HTG de ${completedSets} séries complétées!`,
+                  `You've already earned ${completedSets * rewardHtg} HTG from ${completedSets} completed sets!`
                 )}
               </p>
             )}
@@ -256,7 +258,11 @@ export default function Affiliate() {
                   step: '3', 
                   icon: Gift,
                   title: getText('Ou touche!', 'Vous gagnez!', 'You earn!'),
-                  desc: getText('Resevwa G 2,000 pou chak 5 kat ki komande', 'Recevez G 2,000 pour chaque 5 cartes commandées', 'Receive G 2,000 for every 5 cards ordered')
+                  desc: getText(
+                    `Resevwa G ${rewardHtg.toLocaleString()} pou chak ${cardsRequired} kat ki apwouve`,
+                    `Recevez G ${rewardHtg.toLocaleString()} pour chaque ${cardsRequired} cartes approuvées`,
+                    `Receive G ${rewardHtg.toLocaleString()} for every ${cardsRequired} approved cards`
+                  )
                 }
               ].map((item) => {
                 const Icon = item.icon;
@@ -280,9 +286,9 @@ export default function Affiliate() {
             <div className="mt-8 p-4 bg-amber-50 rounded-xl border border-amber-200 text-center">
               <p className="text-amber-800 font-semibold">
                 {getText(
-                  '5 kat ki komande pa moun ou refere = G 2,000 pou ou!',
-                  '5 cartes commandées par vos filleuls = G 2,000 pour vous!',
-                  '5 cards ordered by your referrals = G 2,000 for you!'
+                  `${cardsRequired} kat ki apwouve pa moun ou refere = G ${rewardHtg.toLocaleString()} pou ou!`,
+                  `${cardsRequired} cartes approuvées par vos filleuls = G ${rewardHtg.toLocaleString()} pour vous!`,
+                  `${cardsRequired} approved cards by your referrals = G ${rewardHtg.toLocaleString()} for you!`
                 )}
               </p>
             </div>

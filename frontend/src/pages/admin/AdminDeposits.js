@@ -49,6 +49,16 @@ export default function AdminDeposits() {
     }
   };
 
+  const viewDeposit = async (depositId) => {
+    try {
+      const response = await axios.get(`${API}/admin/deposits/${depositId}`);
+      setSelectedDeposit(response.data.deposit);
+      setShowModal(true);
+    } catch (error) {
+      toast.error('Erreur lors du chargement');
+    }
+  };
+
   return (
     <AdminLayout title="Gestion des dépôts">
       <div className="space-y-6" data-testid="admin-deposits">
@@ -124,7 +134,7 @@ export default function AdminDeposits() {
                           <Button 
                             size="sm" 
                             variant="outline"
-                            onClick={() => { setSelectedDeposit(deposit); setShowModal(true); }}
+                            onClick={() => viewDeposit(deposit.deposit_id)}
                           >
                             <Eye size={16} className="mr-2" />
                             Voir

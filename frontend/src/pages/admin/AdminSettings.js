@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Save, Key, Mail, MessageCircle, Wallet, CreditCard, DollarSign, Shield, MessageSquare, Phone } from 'lucide-react';
@@ -40,6 +41,8 @@ export default function AdminSettings() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -62,10 +65,29 @@ export default function AdminSettings() {
     }
   };
 
+  const fetchDiagnostics = async () => {
+    setDiagnosticsLoading(true);
+    try {
+      const response = await axios.get(`${API}/admin/diagnostics`);
+      setDiagnostics(response.data);
+    } catch (error) {
+      toast.error(getText('Erè pandan dyagnostik', 'Erreur diagnostic', 'Diagnostics error'));
+    } finally {
+      setDiagnosticsLoading(false);
+    }
+  };
+
   const saveSettings = async () => {
     setSaving(true);
     try {
-      await axios.put(`${API}/admin/settings`, settings);
+      // Do not send derived fields back to API
+      const {
+        resend_api_key_last4,
+        plisio_api_key_last4,
+        plisio_secret_key_last4,
+        ...payload
+      } = settings;
+      await axios.put(`${API}/admin/settings`, payload);
       toast.success(getText('Paramèt anrejistre!', 'Paramètres enregistrés!', 'Settings saved!'));
     } catch (error) {
       toast.error(getText('Erè nan anrejistreman', 'Erreur lors de la sauvegarde', 'Error saving'));
@@ -111,7 +133,11 @@ export default function AdminSettings() {
                     <Input
                       id="resend_key"
                       type="password"
-                      placeholder="re_xxxxxxxxxxxxx"
+                      placeholder={
+                        settings.resend_api_key_last4
+                          ? `Configured (****${settings.resend_api_key_last4}) - enter new to replace`
+                          : "re_xxxxxxxxxxxxx"
+                      }
                       value={settings.resend_api_key || ''}
                       onChange={(e) => setSettings({...settings, resend_api_key: e.target.value})}
                       className="mt-1 font-mono"
@@ -248,7 +274,11 @@ export default function AdminSettings() {
                 <Input
                   id="plisio_key"
                   type="password"
-                  placeholder="plisio_api_key"
+                      placeholder={
+                        settings.plisio_api_key_last4
+                          ? `Configured (****${settings.plisio_api_key_last4}) - enter new to replace`
+                          : "plisio_api_key"
+                      }
                   value={settings.plisio_api_key || ''}
                   onChange={(e) => setSettings({...settings, plisio_api_key: e.target.value})}
                   className="mt-1 font-mono"
@@ -262,7 +292,11 @@ export default function AdminSettings() {
                 <Input
                   id="plisio_secret"
                   type="password"
-                  placeholder="plisio_secret_key"
+                  placeholder={
+                    settings.plisio_secret_key_last4
+                      ? `Configured (****${settings.plisio_secret_key_last4}) - enter new to replace`
+                      : "plisio_secret_key"
+                  }
                   value={settings.plisio_secret_key || ''}
                   onChange={(e) => setSettings({...settings, plisio_secret_key: e.target.value})}
                   className="mt-1 font-mono"
@@ -331,6 +365,52 @@ export default function AdminSettings() {
                 )}
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Diagnostics */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield size={20} className="text-slate-600" />
+              {getText('Dyagnostik', 'Diagnostics', 'Diagnostics')}
+            </CardTitle>
+            <CardDescription>
+              {getText(
+                'Verifye si konfig admin yo byen ploge (Resend/WhatsApp/Plisio) epi si DB a OK.',
+                'Vérifier la configuration admin (Resend/WhatsApp/Plisio) et la connexion DB.',
+                'Verify admin configuration (Resend/WhatsApp/Plisio) and DB connectivity.'
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button variant="outline" onClick={fetchDiagnostics} disabled={diagnosticsLoading}>
+              {diagnosticsLoading ? getText('Chajman...', 'Chargement...', 'Loading...') : getText('Kouri dyagnostik', 'Lancer diagnostics', 'Run diagnostics')}
+            </Button>
+
+            {diagnostics && (
+              <div className="text-sm space-y-2">
+                <div className="flex items-center justify-between">
+                  <span>DB</span>
+                  <Badge className={diagnostics.diagnostics?.db_ok ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}>
+                    {diagnostics.diagnostics?.db_ok ? 'OK' : 'KO'}
+                  </Badge>
+                </div>
+
+                {Array.isArray(diagnostics.warnings) && diagnostics.warnings.length > 0 ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="font-medium text-amber-800 mb-1">Warnings</p>
+                    <ul className="list-disc pl-5 text-amber-700">
+                      {diagnostics.warnings.map((w) => <li key={w}>{w}</li>)}
+                    </ul>
+                  </div>
+                ) : (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-800">
+                    {getText('Pa gen pwoblèm detekte.', 'Aucun problème détecté.', 'No issues detected.')}
+                  </div>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 

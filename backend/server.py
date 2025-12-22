@@ -25,7 +25,8 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 # JWT Configuration
-SECRET_KEY = os.environ.get('JWT_SECRET', secrets.token_urlsafe(32))
+# Initialized on startup (env overrides DB) to avoid random secret on each restart.
+SECRET_KEY: Optional[str] = os.environ.get("JWT_SECRET")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
@@ -133,10 +134,28 @@ class WithdrawalLimitUpdate(BaseModel):
     waiting_hours: int
 
 class AdminSettingsUpdate(BaseModel):
+    # Email (Resend)
+    resend_enabled: Optional[bool] = None
     resend_api_key: Optional[str] = None
     sender_email: Optional[str] = None
+
+    # Live chat (Crisp)
+    crisp_enabled: Optional[bool] = None
     crisp_website_id: Optional[str] = None
+
+    # WhatsApp
+    whatsapp_enabled: Optional[bool] = None
     whatsapp_number: Optional[str] = None
+
+    # USDT (Plisio)
+    plisio_enabled: Optional[bool] = None
+    plisio_api_key: Optional[str] = None
+    plisio_secret_key: Optional[str] = None
+
+    # Fees & Affiliate (card-based)
+    card_order_fee_htg: Optional[int] = None
+    affiliate_reward_htg: Optional[int] = None
+    affiliate_cards_required: Optional[int] = None
 
 class BulkEmailRequest(BaseModel):
     subject: str
@@ -194,12 +213,16 @@ def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    if not SECRET_KEY:
+        raise HTTPException(status_code=500, detail="JWT secret not initialized")
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    if not SECRET_KEY:
+        raise HTTPException(status_code=500, detail="JWT secret not initialized")
     try:
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
@@ -232,8 +255,14 @@ async def log_action(user_id: str, action: str, details: dict):
 async def send_email(to_email: str, subject: str, html_content: str):
     try:
         settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+        resend_enabled = settings.get("resend_enabled", False) if settings else False
         resend_key = settings.get("resend_api_key") if settings else os.environ.get("RESEND_API_KEY")
         sender = settings.get("sender_email") if settings else os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+        
+        # If admin disabled email in settings, do not send.
+        if settings and not resend_enabled:
+            logger.info("Resend disabled in admin settings; skipping email send.")
+            return False
         
         if not resend_key:
             logger.warning("Resend API key not configured")
@@ -670,8 +699,6 @@ async def send_transfer(request: TransferRequest, current_user: dict = Depends(g
         raise HTTPException(status_code=404, detail="Recipient not found")
     
     currency_key = f"wallet_{request.currency.lower()}"
-    if current_user.get(currency_key, 0) < request.amount:
-        raise HTTPException(status_code=400, detail="Insufficient balance")
     
     # Get transfer fee config
     fee = 0
@@ -681,13 +708,18 @@ async def send_transfer(request: TransferRequest, current_user: dict = Depends(g
             fee = request.amount * (fee_config["fee_value"] / 100)
         else:
             fee = fee_config["fee_value"]
+
+    # Validate balance INCLUDING fee (prevents negative wallet)
+    total_to_deduct = request.amount + fee
+    if current_user.get(currency_key, 0) < total_to_deduct:
+        raise HTTPException(status_code=400, detail="Insufficient balance")
     
     transfer_id = str(uuid.uuid4())
     
     # Deduct from sender
     await db.users.update_one(
         {"user_id": current_user["user_id"]},
-        {"$inc": {currency_key: -(request.amount + fee)}}
+        {"$inc": {currency_key: -total_to_deduct}}
     )
     
     # Add to recipient
@@ -701,7 +733,7 @@ async def send_transfer(request: TransferRequest, current_user: dict = Depends(g
         "transaction_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
         "type": "transfer_out",
-        "amount": -(request.amount + fee),
+        "amount": -total_to_deduct,
         "fee": fee,
         "currency": request.currency.upper(),
         "reference_id": transfer_id,
@@ -797,6 +829,12 @@ async def get_kyc_status(current_user: dict = Depends(get_current_user)):
 
 @api_router.get("/affiliate/info")
 async def get_affiliate_info(current_user: dict = Depends(get_current_user)):
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0}) or {}
+    reward_htg = int(settings.get("affiliate_reward_htg", 2000))
+    cards_required = int(settings.get("affiliate_cards_required", 5))
+    if cards_required <= 0:
+        cards_required = 5
+
     # Get all referrals
     referrals = await db.users.find(
         {"referred_by": current_user["affiliate_code"]},
@@ -826,7 +864,9 @@ async def get_affiliate_info(current_user: dict = Depends(get_current_user)):
         "affiliate_link": f"{os.environ.get('FRONTEND_URL', 'http://localhost:3000')}/register?ref={current_user['affiliate_code']}",
         "earnings": current_user.get("affiliate_earnings", 0),
         "referrals": enriched_referrals,
-        "referrals_with_cards": referrals_with_cards
+        "referrals_with_cards": referrals_with_cards,
+        "affiliate_reward_htg": reward_htg,
+        "affiliate_cards_required": cards_required
     }
 
 @api_router.post("/affiliate/apply-code")
@@ -917,13 +957,18 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
     if current_user["kyc_status"] != "approved":
         raise HTTPException(status_code=403, detail="KYC verification required")
     
-    if current_user.get("wallet_htg", 0) < CARD_FEE_HTG:
-        raise HTTPException(status_code=400, detail=f"Insufficient balance. Card fee is {CARD_FEE_HTG} HTG")
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0}) or {}
+    card_fee_htg = int(settings.get("card_order_fee_htg", CARD_FEE_HTG))
+    if card_fee_htg < 0:
+        card_fee_htg = CARD_FEE_HTG
+
+    if current_user.get("wallet_htg", 0) < card_fee_htg:
+        raise HTTPException(status_code=400, detail=f"Insufficient balance. Card fee is {card_fee_htg} HTG")
     
     # Deduct fee
     await db.users.update_one(
         {"user_id": current_user["user_id"]},
-        {"$inc": {"wallet_htg": -CARD_FEE_HTG}}
+        {"$inc": {"wallet_htg": -card_fee_htg}}
     )
     
     # Create card order (manual process - admin will approve/reject)
@@ -932,7 +977,7 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
         "user_id": current_user["user_id"],
         "client_id": current_user["client_id"],
         "card_email": request.card_email.lower(),
-        "fee": CARD_FEE_HTG,
+        "fee": card_fee_htg,
         "status": "pending",  # pending, approved, rejected
         "admin_notes": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -947,7 +992,7 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
         "transaction_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
         "type": "card_order",
-        "amount": -CARD_FEE_HTG,
+        "amount": -card_fee_htg,
         "currency": "HTG",
         "status": "completed",
         "description": "Virtual card order fee",
@@ -1029,16 +1074,17 @@ async def admin_process_card_order(
             await process_card_affiliate_reward(user["referred_by"])
     else:
         # Refund the fee if rejected
+        refund_fee = order.get("fee", CARD_FEE_HTG)
         await db.users.update_one(
             {"user_id": order["user_id"]},
-            {"$inc": {"wallet_htg": CARD_FEE_HTG}}
+            {"$inc": {"wallet_htg": refund_fee}}
         )
         
         await db.transactions.insert_one({
             "transaction_id": str(uuid.uuid4()),
             "user_id": order["user_id"],
             "type": "card_order_refund",
-            "amount": CARD_FEE_HTG,
+            "amount": refund_fee,
             "currency": "HTG",
             "status": "completed",
             "description": "Virtual card order refund (rejected)",
@@ -1050,10 +1096,16 @@ async def admin_process_card_order(
     return {"message": f"Card order {action}d successfully"}
 
 async def process_card_affiliate_reward(affiliate_code: str):
-    """Process affiliate reward: 2000 HTG for every 5 referrals who get a card approved"""
+    """Process affiliate reward: configurable HTG reward per N approved card orders."""
     referrer = await db.users.find_one({"affiliate_code": affiliate_code}, {"_id": 0})
     if not referrer:
         return
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0}) or {}
+    reward_htg = int(settings.get("affiliate_reward_htg", 2000))
+    cards_required = int(settings.get("affiliate_cards_required", 5))
+    if cards_required <= 0:
+        cards_required = 5
     
     # Count referrals with approved card orders
     referrals = await db.users.find(
@@ -1070,18 +1122,18 @@ async def process_card_affiliate_reward(affiliate_code: str):
         if has_approved_card:
             cards_count += 1
     
-    # Check if we've hit a new milestone of 5
+    # Check if we've hit a new milestone of N
     rewarded_count = referrer.get("affiliate_cards_rewarded", 0)
-    new_rewards = (cards_count // 5) - rewarded_count
+    new_rewards = (cards_count // cards_required) - rewarded_count
     
     if new_rewards > 0:
-        reward_amount = new_rewards * 2000  # 2000 HTG per 5 cards
+        reward_amount = new_rewards * reward_htg
         
         await db.users.update_one(
             {"user_id": referrer["user_id"]},
             {
                 "$inc": {"affiliate_earnings": reward_amount},
-                "$set": {"affiliate_cards_rewarded": cards_count // 5}
+                "$set": {"affiliate_cards_rewarded": cards_count // cards_required}
             }
         )
         
@@ -1093,7 +1145,7 @@ async def process_card_affiliate_reward(affiliate_code: str):
             "amount": reward_amount,
             "currency": "HTG",
             "status": "completed",
-            "description": f"Affiliate reward for {new_rewards * 5} card orders",
+            "description": f"Affiliate reward for {new_rewards * cards_required} approved card orders",
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         
@@ -1307,7 +1359,11 @@ async def admin_get_user(user_id: str, admin: dict = Depends(get_admin_user)):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    kyc = await db.kyc.find_one({"user_id": user_id}, {"_id": 0})
+    # Avoid returning base64 images in generic user detail payload
+    kyc = await db.kyc.find_one(
+        {"user_id": user_id},
+        {"_id": 0, "id_front_image": 0, "id_back_image": 0, "selfie_with_id": 0}
+    )
     transactions = await db.transactions.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(20).to_list(20)
     
     return {"user": user, "kyc": kyc, "recent_transactions": transactions}
@@ -1374,8 +1430,22 @@ async def admin_get_kyc_submissions(
     if status:
         query["status"] = status
     
-    submissions = await db.kyc.find(query, {"_id": 0}).sort("submitted_at", -1).limit(limit).to_list(limit)
+    # Avoid returning large/sensitive base64 images in list view
+    projection = {
+        "_id": 0,
+        "id_front_image": 0,
+        "id_back_image": 0,
+        "selfie_with_id": 0
+    }
+    submissions = await db.kyc.find(query, projection).sort("submitted_at", -1).limit(limit).to_list(limit)
     return {"submissions": submissions}
+
+@api_router.get("/admin/kyc/{kyc_id}")
+async def admin_get_kyc_detail(kyc_id: str, admin: dict = Depends(get_admin_user)):
+    kyc = await db.kyc.find_one({"kyc_id": kyc_id}, {"_id": 0})
+    if not kyc:
+        raise HTTPException(status_code=404, detail="KYC submission not found")
+    return {"kyc": kyc}
 
 @api_router.patch("/admin/kyc/{kyc_id}")
 async def admin_review_kyc(
@@ -1430,8 +1500,16 @@ async def admin_get_deposits(
     if status:
         query["status"] = status
     
-    deposits = await db.deposits.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    # Avoid returning large base64 proof images in list view
+    deposits = await db.deposits.find(query, {"_id": 0, "proof_image": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     return {"deposits": deposits}
+
+@api_router.get("/admin/deposits/{deposit_id}")
+async def admin_get_deposit_detail(deposit_id: str, admin: dict = Depends(get_admin_user)):
+    deposit = await db.deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    return {"deposit": deposit}
 
 @api_router.patch("/admin/deposits/{deposit_id}")
 async def admin_process_deposit(
@@ -1517,36 +1595,29 @@ async def admin_process_withdrawal(
     )
     
     if action == "reject":
-        # Refund the amount
-        currency_key = f"wallet_{withdrawal['currency'].lower()}"
+        # Refund the ORIGINAL deducted amount back to the SOURCE currency wallet.
+        # (Fixes cross-currency withdrawal refund bug.)
+        source_currency = (withdrawal.get("source_currency") or withdrawal.get("currency") or "").upper()
+        amount_deducted = withdrawal.get("amount_deducted", withdrawal.get("amount", 0))
+
+        currency_key = f"wallet_{source_currency.lower()}"
         await db.users.update_one(
             {"user_id": withdrawal["user_id"]},
-            {"$inc": {currency_key: withdrawal["amount"]}}
+            {"$inc": {currency_key: amount_deducted}}
         )
-    else:
-        # Process affiliate commission if applicable
-        user = await db.users.find_one({"user_id": withdrawal["user_id"]}, {"_id": 0})
-        if user and user.get("referred_by") and withdrawal["currency"] == "USD":
-            # $1 for every $300 withdrawn
-            commission = (withdrawal["amount"] // 300) * 1
-            if commission > 0:
-                referrer = await db.users.find_one({"affiliate_code": user["referred_by"]}, {"_id": 0})
-                if referrer:
-                    await db.users.update_one(
-                        {"user_id": referrer["user_id"]},
-                        {"$inc": {"affiliate_earnings": commission, "wallet_usd": commission}}
-                    )
-                    
-                    await db.transactions.insert_one({
-                        "transaction_id": str(uuid.uuid4()),
-                        "user_id": referrer["user_id"],
-                        "type": "affiliate_commission",
-                        "amount": commission,
-                        "currency": "USD",
-                        "status": "completed",
-                        "description": f"Affiliate commission from {user['client_id']}",
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    })
+
+        # Add refund transaction record for traceability
+        await db.transactions.insert_one({
+            "transaction_id": str(uuid.uuid4()),
+            "user_id": withdrawal["user_id"],
+            "type": "withdrawal_refund",
+            "amount": amount_deducted,
+            "currency": source_currency,
+            "reference_id": withdrawal_id,
+            "status": "completed",
+            "description": f"Withdrawal refund (rejected) - refunded to {source_currency}",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
     
     await db.transactions.update_one(
         {"reference_id": withdrawal_id, "type": "withdrawal"},
@@ -1684,9 +1755,27 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
             "whatsapp_number": "",
             "plisio_enabled": False,
             "plisio_api_key": "",
-            "plisio_secret_key": ""
+            "plisio_secret_key": "",
+            "card_order_fee_htg": CARD_FEE_HTG,
+            "affiliate_reward_htg": 2000,
+            "affiliate_cards_required": 5
         }
-    return {"settings": settings}
+
+    # Do not return sensitive keys in plaintext
+    def _last4(val: Optional[str]) -> Optional[str]:
+        if not val:
+            return None
+        v = str(val)
+        return v[-4:] if len(v) >= 4 else v
+
+    safe_settings = dict(settings)
+    safe_settings["resend_api_key_last4"] = _last4(settings.get("resend_api_key"))
+    safe_settings["plisio_api_key_last4"] = _last4(settings.get("plisio_api_key"))
+    safe_settings["plisio_secret_key_last4"] = _last4(settings.get("plisio_secret_key"))
+    safe_settings["resend_api_key"] = ""
+    safe_settings["plisio_api_key"] = ""
+    safe_settings["plisio_secret_key"] = ""
+    return {"settings": safe_settings}
 
 # Public endpoint for chat settings (no auth required)
 @api_router.get("/public/chat-settings")
@@ -1711,6 +1800,10 @@ async def get_public_chat_settings():
 @api_router.put("/admin/settings")
 async def admin_update_settings(settings: AdminSettingsUpdate, admin: dict = Depends(get_admin_user)):
     update_doc = {k: v for k, v in settings.model_dump().items() if v is not None}
+    # Avoid wiping secrets if UI sends empty strings
+    for secret_field in ["resend_api_key", "plisio_api_key", "plisio_secret_key"]:
+        if secret_field in update_doc and isinstance(update_doc[secret_field], str) and update_doc[secret_field].strip() == "":
+            update_doc.pop(secret_field, None)
     update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
     
     await db.settings.update_one(
@@ -1722,6 +1815,49 @@ async def admin_update_settings(settings: AdminSettingsUpdate, admin: dict = Dep
     await log_action(admin["user_id"], "settings_update", {"fields_updated": list(update_doc.keys())})
     
     return {"message": "Settings updated"}
+
+@api_router.get("/admin/diagnostics")
+async def admin_diagnostics(admin: dict = Depends(get_admin_user)):
+    """Quick admin diagnostics to verify configuration and DB access."""
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0}) or {}
+    try:
+        await db.command("ping")
+        db_ok = True
+    except Exception:
+        db_ok = False
+
+    diagnostics = {
+        "db_ok": db_ok,
+        "resend": {
+            "enabled": bool(settings.get("resend_enabled", False)),
+            "configured": bool(settings.get("resend_api_key")),
+            "sender_email": settings.get("sender_email") or None,
+        },
+        "crisp": {
+            "enabled": bool(settings.get("crisp_enabled", False)),
+            "configured": bool(settings.get("crisp_website_id")),
+        },
+        "whatsapp": {
+            "enabled": bool(settings.get("whatsapp_enabled", False)),
+            "configured": bool(settings.get("whatsapp_number")),
+        },
+        "plisio": {
+            "enabled": bool(settings.get("plisio_enabled", False)),
+            "configured": bool(settings.get("plisio_api_key") and settings.get("plisio_secret_key")),
+        },
+    }
+    warnings = []
+    if diagnostics["resend"]["enabled"] and not diagnostics["resend"]["configured"]:
+        warnings.append("Resend enabled but API key not configured")
+    if diagnostics["crisp"]["enabled"] and not diagnostics["crisp"]["configured"]:
+        warnings.append("Crisp enabled but website id not configured")
+    if diagnostics["whatsapp"]["enabled"] and not diagnostics["whatsapp"]["configured"]:
+        warnings.append("WhatsApp enabled but number not configured")
+    if diagnostics["plisio"]["enabled"] and not diagnostics["plisio"]["configured"]:
+        warnings.append("Plisio enabled but keys not configured")
+    if not db_ok:
+        warnings.append("MongoDB ping failed")
+    return {"diagnostics": diagnostics, "warnings": warnings}
 
 # Bulk Email Admin
 @api_router.post("/admin/bulk-email")
@@ -1802,30 +1938,84 @@ async def startup():
     await db.withdrawals.create_index([("user_id", 1), ("status", 1)])
     await db.kyc.create_index("user_id", unique=True)
     
-    # Create default admin if not exists
-    admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
-    if not admin:
-        admin_doc = {
-            "user_id": str(uuid.uuid4()),
-            "client_id": "KCADMIN001",
-            "email": "admin@kayicom.com",
-            "password_hash": hash_password("Admin123!"),
-            "full_name": "System Admin",
-            "phone": "+509 0000 0000",
-            "language": "fr",
-            "kyc_status": "approved",
-            "wallet_htg": 0.0,
-            "wallet_usd": 0.0,
-            "affiliate_code": "ADMINCODE",
-            "affiliate_earnings": 0.0,
-            "referred_by": None,
-            "is_active": True,
-            "is_admin": True,
-            "two_factor_enabled": False,
+    # Ensure default settings exist
+    existing_settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not existing_settings:
+        await db.settings.insert_one({
+            "setting_id": "main",
+            "resend_enabled": False,
+            "resend_api_key": "",
+            "sender_email": "",
+            "crisp_enabled": False,
+            "crisp_website_id": "",
+            "whatsapp_enabled": False,
+            "whatsapp_number": "",
+            "plisio_enabled": False,
+            "plisio_api_key": "",
+            "plisio_secret_key": "",
+            "card_order_fee_htg": CARD_FEE_HTG,
+            "affiliate_reward_htg": 2000,
+            "affiliate_cards_required": 5,
             "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db.users.insert_one(admin_doc)
-        logger.info("Default admin created: admin@kayicom.com / Admin123!")
+        })
+
+    # Initialize JWT secret (env overrides DB). Persist in settings for stability across restarts.
+    global SECRET_KEY
+    if not SECRET_KEY:
+        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0}) or {}
+        jwt_secret = settings.get("jwt_secret")
+        if not jwt_secret:
+            jwt_secret = secrets.token_urlsafe(32)
+            await db.settings.update_one(
+                {"setting_id": "main"},
+                {"$set": {"jwt_secret": jwt_secret, "updated_at": datetime.now(timezone.utc).isoformat()}},
+                upsert=True
+            )
+        SECRET_KEY = jwt_secret
+
+    # Create default admin if not exists (or migrate old email)
+    admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
+    desired_admin_email = "graciaemmanuel509@gmail.com"
+    if not admin:
+        existing_user_with_email = await db.users.find_one({"email": desired_admin_email.lower()}, {"_id": 0})
+        if existing_user_with_email:
+            await db.users.update_one(
+                {"user_id": existing_user_with_email["user_id"]},
+                {"$set": {"is_admin": True, "kyc_status": "approved"}}
+            )
+            logger.info("Promoted existing user to admin: %s", desired_admin_email)
+            admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
+            # continue startup (indexes/exchange rates/etc.)
+        else:
+            admin_doc = {
+                "user_id": str(uuid.uuid4()),
+                "client_id": "KCADMIN001",
+                "email": desired_admin_email,
+                "password_hash": hash_password("Admin123!"),
+                "full_name": "System Admin",
+                "phone": "+509 0000 0000",
+                "language": "fr",
+                "kyc_status": "approved",
+                "wallet_htg": 0.0,
+                "wallet_usd": 0.0,
+                "affiliate_code": "ADMINCODE",
+                "affiliate_earnings": 0.0,
+                "referred_by": None,
+                "is_active": True,
+                "is_admin": True,
+                "two_factor_enabled": False,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.users.insert_one(admin_doc)
+            logger.info("Default admin created: %s / Admin123!", desired_admin_email)
+    else:
+        if admin.get("email", "").lower() == "admin@kayicom.com":
+            existing_user_with_email = await db.users.find_one({"email": desired_admin_email.lower()}, {"_id": 0, "user_id": 1})
+            if existing_user_with_email and existing_user_with_email["user_id"] != admin["user_id"]:
+                logger.warning("Cannot migrate admin email to %s (email already in use).", desired_admin_email)
+            else:
+                await db.users.update_one({"user_id": admin["user_id"]}, {"$set": {"email": desired_admin_email}})
+                logger.info("Default admin email updated to %s", desired_admin_email)
     
     # Create default exchange rates
     rates = await db.exchange_rates.find_one({"rate_id": "main"}, {"_id": 0})

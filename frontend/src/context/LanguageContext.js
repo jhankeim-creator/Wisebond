@@ -184,7 +184,7 @@ const translations = {
     multiCurrency: "Multi-Devises",
     multiCurrencyDesc: "Gérez HTG et USD dans un seul compte.",
     affiliateProgram: "Programme d'Affiliation",
-    affiliateProgramDesc: "Gagnez $1 pour chaque $300 de retraits de vos filleuls.",
+    affiliateProgramDesc: "Gagnez G 2,000 pour chaque 5 filleuls dont la carte est approuvée.",
     
     // Dashboard
     welcomeBack: "Bienvenue",
@@ -238,7 +238,7 @@ const translations = {
     totalEarnings: "Gains totaux",
     totalReferrals: "Total de filleuls",
     affiliateRules: "Règles du programme",
-    affiliateRule1: "Gagnez $1 pour chaque $300 de retraits de vos filleuls",
+    affiliateRule1: "Gagnez G 2,000 pour chaque 5 filleuls dont la carte est approuvée",
     
     // Status
     pending: "En attente",
@@ -321,7 +321,7 @@ const translations = {
     multiCurrency: "Multi-Currency",
     multiCurrencyDesc: "Manage HTG and USD in one account.",
     affiliateProgram: "Affiliate Program",
-    affiliateProgramDesc: "Earn $1 for every $300 withdrawn by your referrals.",
+    affiliateProgramDesc: "Earn G 2,000 for every 5 referrals whose card gets approved.",
     
     // Dashboard
     welcomeBack: "Welcome back",
@@ -375,7 +375,7 @@ const translations = {
     totalEarnings: "Total Earnings",
     totalReferrals: "Total Referrals",
     affiliateRules: "Program Rules",
-    affiliateRule1: "Earn $1 for every $300 withdrawn by your referrals",
+    affiliateRule1: "Earn G 2,000 for every 5 referrals whose card gets approved",
     
     // Status
     pending: "Pending",
