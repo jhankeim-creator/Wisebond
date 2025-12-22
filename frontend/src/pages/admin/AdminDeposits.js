@@ -178,6 +178,27 @@ export default function AdminDeposits() {
                   </div>
                 </div>
 
+                {selectedDeposit.provider === 'plisio' && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="font-medium text-amber-800 mb-2">Plisio</p>
+                    <div className="text-sm space-y-1">
+                      <div><span className="text-slate-600">Status:</span> <span className="font-semibold">{selectedDeposit.provider_status || selectedDeposit.status}</span></div>
+                      <div><span className="text-slate-600">Txn:</span> <code className="text-xs bg-white p-1 rounded">{selectedDeposit.plisio_txn_id || '-'}</code></div>
+                      {selectedDeposit.plisio_invoice_url && (
+                        <div>
+                          <span className="text-slate-600">Invoice URL:</span>{' '}
+                          <a className="text-[#EA580C] hover:underline break-all" href={selectedDeposit.plisio_invoice_url} target="_blank" rel="noreferrer">
+                            {selectedDeposit.plisio_invoice_url}
+                          </a>
+                        </div>
+                      )}
+                      {selectedDeposit.plisio_currency && (
+                        <div><span className="text-slate-600">Network:</span> <span className="font-semibold">{selectedDeposit.plisio_currency}</span></div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {selectedDeposit.proof_image && (
                   <div>
                     <p className="text-sm text-slate-500 mb-2">Preuve de paiement</p>

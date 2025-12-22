@@ -48,6 +48,7 @@ export default function Deposit() {
   const [usdtNetworks, setUsdtNetworks] = useState([]);
   const [usdtNetwork, setUsdtNetwork] = useState('');
   const [usdtLoading, setUsdtLoading] = useState(false);
+  const [usdtEnabled, setUsdtEnabled] = useState(false);
 
   useEffect(() => {
     const loadNetworks = async () => {
@@ -56,6 +57,7 @@ export default function Deposit() {
       try {
         const resp = await axios.get(`${API}/deposits/usdt-options`);
         const nets = resp.data?.networks || [];
+        setUsdtEnabled(!!resp.data?.enabled);
         setUsdtNetworks(nets);
         // auto-select first if none selected
         if (!usdtNetwork && nets.length > 0) {
@@ -63,6 +65,7 @@ export default function Deposit() {
         }
       } catch (e) {
         setUsdtNetworks([]);
+        setUsdtEnabled(false);
       } finally {
         setUsdtLoading(false);
       }
@@ -70,6 +73,15 @@ export default function Deposit() {
     loadNetworks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currency, method]);
+
+  // Reset USDT fields when method changes
+  useEffect(() => {
+    if (method !== 'usdt') {
+      setUsdtNetwork('');
+      setUsdtNetworks([]);
+      setUsdtEnabled(false);
+    }
+  }, [method]);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -95,6 +107,10 @@ export default function Deposit() {
     }
 
     if (method === 'usdt') {
+      if (!usdtEnabled) {
+        toast.error(getText('Plisio pa aktive (admin dwe mete kle yo)', 'Plisio non activé (admin doit mettre les clés)', 'Plisio not enabled (admin must set keys)'));
+        return;
+      }
       if (!usdtNetwork) {
         toast.error(getText('Chwazi rezo USDT la', 'Choisissez le réseau USDT', 'Select USDT network'));
         return;
@@ -350,6 +366,27 @@ export default function Deposit() {
           >
             {createdDeposit.plisio_invoice_url}
           </a>
+          <div className="mt-4 flex gap-3">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const resp = await axios.post(`${API}/deposits/${createdDeposit.deposit_id}/sync`);
+                  setCreatedDeposit(resp.data.deposit);
+                  toast.success(getText('Mizajou fèt', 'Mise à jour effectuée', 'Updated'));
+                } catch (e) {
+                  toast.error(getText('Erè pandan sync', 'Erreur sync', 'Sync error'));
+                }
+              }}
+            >
+              {getText('Verifye peman an', 'Vérifier le paiement', 'Check payment')}
+            </Button>
+          </div>
+          {createdDeposit.provider_status && (
+            <p className="text-sm text-stone-700 mt-3">
+              {getText('Estati', 'Statut', 'Status')}: <span className="font-semibold">{createdDeposit.provider_status}</span>
+            </p>
+          )}
         </div>
       )}
 

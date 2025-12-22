@@ -17,6 +17,8 @@ import secrets
 import base64
 import hashlib
 import requests
+import re
+import json
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -45,7 +47,8 @@ _plisio_poll_task: Optional[asyncio.Task] = None
 
 # ==================== PLISIO HELPERS ====================
 
-PLISIO_API_BASE = "https://plisio.net/api/v1"
+# As per Plisio docs: https://api.plisio.net/api/v1/...
+PLISIO_API_BASE = "https://api.plisio.net/api/v1"
 
 
 def _as_float(val, default: float = 0.0) -> float:
@@ -65,9 +68,9 @@ def _normalize_plisio_status(status: Optional[str]) -> str:
     s = str(status).lower()
     if s in {"completed", "confirmed", "success", "paid"}:
         return "completed"
-    if s in {"pending", "processing", "new", "unconfirmed"}:
+    if s in {"pending", "processing", "new", "unconfirmed", "pending internal"}:
         return "pending"
-    if s in {"expired", "error", "canceled", "cancelled", "failed"}:
+    if s in {"expired", "error", "canceled", "cancelled", "failed", "cancelled duplicate"}:
         return "failed"
     return s
 
@@ -113,11 +116,15 @@ async def plisio_create_invoice(
         "order_name": order_name,
     }
     if callback_url:
+        # Plisio recommends json=true for non-PHP
+        if "json=true" not in callback_url:
+            joiner = "&" if "?" in callback_url else "?"
+            callback_url = f"{callback_url}{joiner}json=true"
         params["callback_url"] = callback_url
     if success_url:
-        params["success_url"] = success_url
+        params["success_invoice_url"] = success_url
     if cancel_url:
-        params["cancel_url"] = cancel_url
+        params["fail_invoice_url"] = cancel_url
 
     data = await _plisio_request("/invoices/new", params)
     if data.get("status") != "success":
@@ -194,23 +201,55 @@ async def plisio_get_usdt_networks(api_key: str) -> List[dict]:
     Return a list of USDT network options based on Plisio supported currencies.
     Each option: { "code": "USDT.TRC20", "label": "USDT (TRC20)" }
     """
-    payload = await _plisio_request("/currencies", {"api_key": api_key})
-    items = _extract_plisio_currency_items(payload)
-    options = []
-    for it in items:
-        code = (it.get("currency") or it.get("code") or it.get("name") or "").strip()
-        if not code:
-            continue
-        upper = code.upper()
-        if not upper.startswith("USDT"):
-            continue
-        # Build label from code and (optional) name/network fields
-        if "." in upper:
-            _, net = upper.split(".", 1)
-            label = f"USDT ({net})"
-        else:
-            label = "USDT"
-        options.append({"code": upper, "label": label})
+    def _label_from_code(code: str) -> str:
+        c = code.upper()
+        # Plisio uses IDs like USDT (ERC-20), USDT_TRX (TRC-20), USDT_BSC (BEP-20), USDT_TON, USDT_SOL...
+        if c == "USDT":
+            return "USDT (ERC-20)"
+        suffix = c.replace("USDT_", "", 1) if c.startswith("USDT_") else c
+        mapping = {
+            "TRX": "TRC-20",
+            "BSC": "BEP-20",
+            "TON": "TON",
+            "SOL": "Solana",
+            "POLYGON": "Polygon",
+            "BASE": "Base",
+        }
+        return f"USDT ({mapping.get(suffix, suffix)})"
+
+    options: List[dict] = []
+
+    # Try Plisio API first (undocumented but commonly available)
+    try:
+        payload = await _plisio_request("/currencies", {"api_key": api_key})
+        items = _extract_plisio_currency_items(payload)
+        for it in items:
+            code = (it.get("currency") or it.get("code") or it.get("name") or "").strip()
+            if not code:
+                continue
+            upper = code.upper()
+            if not upper.startswith("USDT"):
+                continue
+            options.append({"code": upper, "label": _label_from_code(upper)})
+    except Exception:
+        options = []
+
+    # Fallback: scrape supported-cryptocurrencies docs (no API key needed)
+    if not options:
+        try:
+            html = await asyncio.to_thread(
+                lambda: requests.get(
+                    "https://plisio.net/documentation/appendices/supported-cryptocurrencies",
+                    timeout=20,
+                    headers={"User-Agent": "Mozilla/5.0"},
+                ).text
+            )
+            # The "ID" column contains values like USDT, USDT_TRX, USDT_BSC, USDT_TON, USDT_SOL...
+            ids = set(re.findall(r"<td>(USDT(?:_[A-Z0-9]+)?)</td>", html))
+            for code in ids:
+                options.append({"code": code.upper(), "label": _label_from_code(code)})
+        except Exception:
+            options = []
     # Unique + stable sort
     seen = set()
     uniq = []
@@ -285,6 +324,77 @@ async def _plisio_poll_loop():
         except Exception as e:
             logger.error("Plisio poll loop error: %s", e)
         await asyncio.sleep(60)
+
+
+def _plisio_verify_hash(payload: dict, secret_key: str) -> bool:
+    """
+    Verify Plisio callback payload using HMAC-SHA1 (per Plisio docs).
+    For non-PHP languages Plisio recommends callback_url?json=true and Node example uses:
+      hash = hmac_sha1(secret, JSON.stringify(payload_without_verify_hash))
+    We'll mimic that with JSON dumps preserving key order and compact separators.
+    """
+    if not isinstance(payload, dict):
+        return False
+    verify_hash = payload.get("verify_hash")
+    if not verify_hash or not secret_key:
+        return False
+    ordered = dict(payload)
+    ordered.pop("verify_hash", None)
+    # Plisio PHP example casts expire_utc to string and decodes tx_urls
+    if "expire_utc" in ordered and ordered["expire_utc"] is not None:
+        ordered["expire_utc"] = str(ordered["expire_utc"])
+    if "tx_urls" in ordered and ordered["tx_urls"] is not None and isinstance(ordered["tx_urls"], str):
+        ordered["tx_urls"] = ordered["tx_urls"].replace("&amp;", "&")
+    msg = json.dumps(ordered, separators=(",", ":"), ensure_ascii=False)
+    # hashlib doesn't support hmac directly; use hmac module? We'll use hashlib+key via hmac library:
+    import hmac as _hmac
+    digest = _hmac.new(secret_key.encode("utf-8"), msg.encode("utf-8"), hashlib.sha1).hexdigest()
+    return digest == str(verify_hash)
+
+
+@api_router.post("/public/plisio/callback")
+async def plisio_callback(payload: dict):
+    """
+    Plisio invoice status callback (expects json=true so the body is JSON).
+    Updates matching deposit and auto-credits when status=completed.
+    """
+    enabled, api_key, secret_key, _settings = await _plisio_get_settings()
+    if not (enabled and api_key and secret_key):
+        # Still accept to avoid retries storm, but record for troubleshooting
+        return {"ok": False, "message": "Plisio not configured"}
+
+    if not _plisio_verify_hash(payload, secret_key):
+        raise HTTPException(status_code=400, detail="Invalid verify_hash")
+
+    txn_id = str(payload.get("txn_id") or "")
+    order_number = str(payload.get("order_number") or "")
+    status = _normalize_plisio_status(payload.get("status"))
+
+    # Find deposit by order_number (we used deposit_id as order_number), fallback by txn_id
+    query = {"deposit_id": order_number} if order_number else {"plisio_txn_id": txn_id}
+    dep = await db.deposits.find_one({**query, "provider": "plisio"}, {"_id": 0})
+    if not dep:
+        return {"ok": True, "message": "No matching deposit"}
+
+    await db.deposits.update_one(
+        {"deposit_id": dep["deposit_id"]},
+        {"$set": {
+            "provider_status": status,
+            "provider_callback_at": datetime.now(timezone.utc).isoformat(),
+            "provider_callback": payload,
+        }}
+    )
+
+    if status == "completed":
+        await _finalize_deposit_as_completed(dep, provider_status=status)
+    elif status in {"failed", "expired", "cancelled", "error"}:
+        # keep as pending_payment but mark failed for visibility
+        await db.deposits.update_one(
+            {"deposit_id": dep["deposit_id"], "status": {"$in": ["pending_payment", "pending"]}},
+            {"$set": {"status": "failed"}}
+        )
+
+    return {"ok": True}
 
 # ==================== MODELS ====================
 
@@ -701,7 +811,12 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
             if not crypto_currency.startswith("USDT"):
                 crypto_currency = "USDT"
 
-            callback_url = os.environ.get("PLISIO_CALLBACK_URL")  # optional
+            # Prefer explicit config; otherwise infer from BACKEND_PUBLIC_URL/BACKEND_URL
+            callback_url = os.environ.get("PLISIO_CALLBACK_URL") or os.environ.get("BACKEND_PUBLIC_URL") or os.environ.get("PUBLIC_BACKEND_URL") or os.environ.get("BACKEND_URL")
+            if callback_url and callback_url.endswith("/api"):
+                callback_url = callback_url[:-4]
+            if callback_url and not callback_url.endswith("/api/public/plisio/callback"):
+                callback_url = callback_url.rstrip("/") + "/api/public/plisio/callback"
             success_url = os.environ.get("PLISIO_SUCCESS_URL") or os.environ.get("FRONTEND_URL")
             cancel_url = os.environ.get("PLISIO_CANCEL_URL") or os.environ.get("FRONTEND_URL")
 
@@ -727,9 +842,11 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
                     "provider_raw": invoice,
                     "provider_checked_at": datetime.now(timezone.utc).isoformat()
                 })
-            except HTTPException:
-                # If Plisio fails, fall back to manual pending deposit
-                pass
+            except HTTPException as e:
+                # Do not silently fall back for USDT when Plisio is enabled — user expects automatic flow.
+                raise e
+        else:
+            raise HTTPException(status_code=400, detail="Plisio is not enabled/configured for USDT deposits")
     
     await db.deposits.insert_one(deposit)
     await log_action(current_user["user_id"], "deposit_request", {"amount": request.amount, "method": request.method})
@@ -2200,6 +2317,7 @@ async def admin_diagnostics(admin: dict = Depends(get_admin_user)):
         "plisio": {
             "enabled": bool(settings.get("plisio_enabled", False)),
             "configured": bool(settings.get("plisio_api_key") and settings.get("plisio_secret_key")),
+            "usdt_networks_cached": len(settings.get("plisio_usdt_networks_cache") or []) if isinstance(settings.get("plisio_usdt_networks_cache"), list) else 0,
         },
     }
     warnings = []
