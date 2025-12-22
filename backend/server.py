@@ -975,17 +975,30 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
     
     # Calculate fees
     fee = 0
-    fee_config = await db.fees.find_one({
-        "method": request.method,
-        "min_amount": {"$lte": request.amount},
-        "max_amount": {"$gte": request.amount}
-    }, {"_id": 0})
-    
-    if fee_config:
-        if fee_config.get("fee_type") == "percentage":
-            fee = request.amount * (fee_config["fee_value"] / 100)
-        else:
-            fee = fee_config["fee_value"]
+
+    # Card withdrawal uses dedicated tiered fees (USD)
+    if request.method == "card":
+        card_fee = await db.card_fees.find_one({
+            "min_amount": {"$lte": request.amount},
+            "max_amount": {"$gte": request.amount}
+        }, {"_id": 0})
+        if card_fee:
+            if card_fee.get("fee_type") == "percentage":
+                fee = request.amount * (card_fee["fee"] / 100)
+            else:
+                fee = card_fee["fee"]
+    else:
+        fee_config = await db.fees.find_one({
+            "method": request.method,
+            "min_amount": {"$lte": request.amount},
+            "max_amount": {"$gte": request.amount}
+        }, {"_id": 0})
+        
+        if fee_config:
+            if fee_config.get("fee_type") == "percentage":
+                fee = request.amount * (fee_config["fee_value"] / 100)
+            else:
+                fee = fee_config["fee_value"]
     
     withdrawal_id = str(uuid.uuid4())
     withdrawal = {
@@ -1057,8 +1070,18 @@ async def get_withdrawals(
 
 @api_router.get("/withdrawals/fees")
 async def get_withdrawal_fees():
-    fees = await db.fees.find({}, {"_id": 0}).to_list(100)
-    limits = await db.withdrawal_limits.find({}, {"_id": 0}).to_list(100)
+    fees = await db.fees.find({}, {"_id": 0}).to_list(200)
+    # Merge card tiered fees into same shape used by frontend
+    card_fees = await db.card_fees.find({}, {"_id": 0}).to_list(500)
+    for cf in card_fees:
+        fees.append({
+            "method": "card",
+            "fee_type": cf.get("fee_type", "flat"),
+            "fee_value": cf.get("fee", 0),
+            "min_amount": cf.get("min_amount", 0),
+            "max_amount": cf.get("max_amount", 0),
+        })
+    limits = await db.withdrawal_limits.find({}, {"_id": 0}).to_list(200)
     return {"fees": fees, "limits": limits}
 
 # ==================== SWAP ROUTES ====================
@@ -2163,6 +2186,7 @@ class CardFeeConfig(BaseModel):
     min_amount: float
     max_amount: float
     fee: float
+    fee_type: str = "flat"  # flat | percentage
 
 @api_router.get("/admin/card-fees")
 async def admin_get_card_fees(admin: dict = Depends(get_admin_user)):
@@ -2500,6 +2524,33 @@ async def startup():
             "usd_to_htg": 133.0,
             "updated_at": datetime.now(timezone.utc).isoformat()
         })
+
+    # Seed default card withdrawal fees (if none exist)
+    if await db.card_fees.count_documents({}) == 0:
+        now = datetime.now(timezone.utc).isoformat()
+        tiers = [
+            (5, 19, "flat", 2.5),
+            (20, 39, "flat", 3),
+            (40, 99, "flat", 4.4),
+            (100, 199, "flat", 5.9),
+            (200, 299, "flat", 9),
+            (300, 399, "flat", 14),
+            (400, 499, "flat", 15),
+            (500, 599, "flat", 20),
+            (600, 1500, "flat", 30),
+            (1500, 10**12, "percentage", 5),
+        ]
+        docs = []
+        for mn, mx, fee_type, fee in tiers:
+            docs.append({
+                "fee_id": str(uuid.uuid4()),
+                "min_amount": float(mn),
+                "max_amount": float(mx),
+                "fee_type": fee_type,
+                "fee": float(fee),
+                "created_at": now
+            })
+        await db.card_fees.insert_many(docs)
 
     # Start Plisio polling loop (auto-detect paid deposits)
     global _plisio_poll_task
