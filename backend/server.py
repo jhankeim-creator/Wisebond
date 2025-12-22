@@ -2329,11 +2329,14 @@ async def get_public_chat_settings():
             "whatsapp_number": None
         }
     
+    crisp_enabled = bool(settings.get("crisp_enabled", False)) and bool(settings.get("crisp_website_id"))
+    whatsapp_enabled = bool(settings.get("whatsapp_enabled", False)) and bool(settings.get("whatsapp_number"))
+
     return {
-        "crisp_enabled": settings.get("crisp_enabled", False),
-        "crisp_website_id": settings.get("crisp_website_id") if settings.get("crisp_enabled") else None,
-        "whatsapp_enabled": settings.get("whatsapp_enabled", False),
-        "whatsapp_number": settings.get("whatsapp_number") if settings.get("whatsapp_enabled") else None
+        "crisp_enabled": crisp_enabled,
+        "crisp_website_id": settings.get("crisp_website_id") if crisp_enabled else None,
+        "whatsapp_enabled": whatsapp_enabled,
+        "whatsapp_number": settings.get("whatsapp_number") if whatsapp_enabled else None
     }
 
 @api_router.put("/admin/settings")

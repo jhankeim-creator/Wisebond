@@ -7,6 +7,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export const LiveChat = () => {
   const [settings, setSettings] = useState(null);
   const [crispLoaded, setCrispLoaded] = useState(false);
+  const crispActive = !!(settings?.crisp_enabled && settings?.crisp_website_id);
 
   useEffect(() => {
     const fetchSettings = async () => {
@@ -23,7 +24,7 @@ export const LiveChat = () => {
 
   // Load Crisp if enabled
   useEffect(() => {
-    if (settings?.crisp_enabled && settings?.crisp_website_id && !crispLoaded) {
+    if (crispActive && !crispLoaded) {
       window.$crisp = [];
       window.CRISP_WEBSITE_ID = settings.crisp_website_id;
       
@@ -44,10 +45,10 @@ export const LiveChat = () => {
         }
       };
     }
-  }, [settings, crispLoaded]);
+  }, [crispActive, settings, crispLoaded]);
 
   // Show WhatsApp button if enabled and Crisp is not enabled
-  if (settings?.whatsapp_enabled && settings?.whatsapp_number && !settings?.crisp_enabled) {
+  if (settings?.whatsapp_enabled && settings?.whatsapp_number && !crispActive) {
     const whatsappLink = `https://wa.me/${settings.whatsapp_number.replace(/[^0-9]/g, '')}`;
     
     return (
