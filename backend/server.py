@@ -160,6 +160,69 @@ async def plisio_get_operation(api_key: str, txn_id: str) -> Optional[dict]:
     return None
 
 
+def _extract_plisio_currency_items(payload) -> List[dict]:
+    """
+    Plisio currencies endpoint format can vary. Normalize to a list of dict items.
+    Accepts:
+    - {"status":"success","data":[...]}
+    - {"status":"success","data":{"items":[...]}}
+    - {"status":"success","data":{"USDT.TRC20": {...}, ...}}
+    """
+    if not isinstance(payload, dict):
+        return []
+    if payload.get("status") != "success":
+        return []
+    data = payload.get("data")
+    if isinstance(data, list):
+        return [x for x in data if isinstance(x, dict)]
+    if isinstance(data, dict):
+        if isinstance(data.get("items"), list):
+            return [x for x in data.get("items") if isinstance(x, dict)]
+        # dict keyed by currency code
+        items = []
+        for k, v in data.items():
+            if isinstance(v, dict):
+                vv = dict(v)
+                vv.setdefault("currency", k)
+                items.append(vv)
+        return items
+    return []
+
+
+async def plisio_get_usdt_networks(api_key: str) -> List[dict]:
+    """
+    Return a list of USDT network options based on Plisio supported currencies.
+    Each option: { "code": "USDT.TRC20", "label": "USDT (TRC20)" }
+    """
+    payload = await _plisio_request("/currencies", {"api_key": api_key})
+    items = _extract_plisio_currency_items(payload)
+    options = []
+    for it in items:
+        code = (it.get("currency") or it.get("code") or it.get("name") or "").strip()
+        if not code:
+            continue
+        upper = code.upper()
+        if not upper.startswith("USDT"):
+            continue
+        # Build label from code and (optional) name/network fields
+        if "." in upper:
+            _, net = upper.split(".", 1)
+            label = f"USDT ({net})"
+        else:
+            label = "USDT"
+        options.append({"code": upper, "label": label})
+    # Unique + stable sort
+    seen = set()
+    uniq = []
+    for opt in options:
+        if opt["code"] in seen:
+            continue
+        seen.add(opt["code"])
+        uniq.append(opt)
+    uniq.sort(key=lambda x: x["label"])
+    return uniq
+
+
 async def _finalize_deposit_as_completed(deposit: dict, *, provider_status: Optional[str] = None):
     """Idempotently mark a deposit as completed and credit wallet."""
     deposit_id = deposit["deposit_id"]
@@ -633,12 +696,10 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
     if is_usdt:
         enabled, api_key, _secret, _settings = await _plisio_get_settings()
         if enabled and api_key:
-            crypto_currency = "USDT"
-            net = (request.network or "").upper()
-            if "TRC" in net or "TRON" in net or "TRC20" in (request.method or "").upper():
-                crypto_currency = "USDT.TRC20"
-            elif "ERC" in net or "ETH" in net or "ERC20" in (request.method or "").upper():
-                crypto_currency = "USDT.ERC20"
+            # Frontend sends Plisio currency/network code in request.network, e.g. "USDT.TRC20", "USDT.BEP20", ...
+            crypto_currency = (request.network or "USDT").upper().strip()
+            if not crypto_currency.startswith("USDT"):
+                crypto_currency = "USDT"
 
             callback_url = os.environ.get("PLISIO_CALLBACK_URL")  # optional
             success_url = os.environ.get("PLISIO_SUCCESS_URL") or os.environ.get("FRONTEND_URL")
@@ -660,7 +721,7 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
                     "status": "pending_payment",
                     "provider": "plisio",
                     "plisio_txn_id": invoice.get("txn_id") or invoice.get("id"),
-                    "plisio_invoice_url": invoice.get("invoice_url") or invoice.get("invoice_url"),
+                    "plisio_invoice_url": invoice.get("invoice_url") or invoice.get("invoice"),
                     "plisio_wallet_hash": invoice.get("wallet_hash") or invoice.get("wallet"),
                     "plisio_currency": crypto_currency,
                     "provider_raw": invoice,
@@ -711,6 +772,39 @@ async def sync_deposit(deposit_id: str, current_user: dict = Depends(get_current
 
     dep2 = await db.deposits.find_one({"deposit_id": dep["deposit_id"]}, {"_id": 0})
     return {"deposit": dep2, "message": "Synced"}
+
+
+@api_router.get("/deposits/usdt-options")
+async def get_usdt_deposit_options(current_user: dict = Depends(get_current_user)):
+    """Return available USDT networks from Plisio (without exposing secrets)."""
+    enabled, api_key, _secret, settings = await _plisio_get_settings()
+    # Serve cached options if recent (6h)
+    cache = settings.get("plisio_usdt_networks_cache") if isinstance(settings, dict) else None
+    cache_ts = settings.get("plisio_usdt_networks_cache_at") if isinstance(settings, dict) else None
+    cache_fresh = False
+    if cache and cache_ts:
+        try:
+            age = datetime.now(timezone.utc) - datetime.fromisoformat(cache_ts)
+            cache_fresh = age.total_seconds() < 6 * 3600
+        except Exception:
+            cache_fresh = False
+
+    if enabled and api_key:
+        if cache_fresh:
+            return {"enabled": True, "networks": cache}
+        networks = await plisio_get_usdt_networks(api_key)
+        await db.settings.update_one(
+            {"setting_id": "main"},
+            {"$set": {
+                "plisio_usdt_networks_cache": networks,
+                "plisio_usdt_networks_cache_at": datetime.now(timezone.utc).isoformat()
+            }},
+            upsert=True
+        )
+        return {"enabled": True, "networks": networks}
+
+    # Not enabled/configured
+    return {"enabled": False, "networks": []}
 
 @api_router.get("/deposits")
 async def get_deposits(

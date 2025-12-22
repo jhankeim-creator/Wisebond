@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { 
@@ -28,8 +29,7 @@ const depositMethods = {
   USD: [
     { id: 'zelle', name: 'Zelle', icon: DollarSign },
     { id: 'paypal', name: 'PayPal', icon: DollarSign },
-    { id: 'usdt_trc20', name: 'USDT (TRC-20)', icon: Wallet },
-    { id: 'usdt_erc20', name: 'USDT (ERC-20)', icon: Wallet }
+    { id: 'usdt', name: 'USDT (Plisio)', icon: Wallet }
   ]
 };
 
@@ -45,6 +45,31 @@ export default function Deposit() {
   const [walletAddress, setWalletAddress] = useState('');
   const [loading, setLoading] = useState(false);
   const [createdDeposit, setCreatedDeposit] = useState(null);
+  const [usdtNetworks, setUsdtNetworks] = useState([]);
+  const [usdtNetwork, setUsdtNetwork] = useState('');
+  const [usdtLoading, setUsdtLoading] = useState(false);
+
+  useEffect(() => {
+    const loadNetworks = async () => {
+      if (currency !== 'USD' || method !== 'usdt') return;
+      setUsdtLoading(true);
+      try {
+        const resp = await axios.get(`${API}/deposits/usdt-options`);
+        const nets = resp.data?.networks || [];
+        setUsdtNetworks(nets);
+        // auto-select first if none selected
+        if (!usdtNetwork && nets.length > 0) {
+          setUsdtNetwork(nets[0].code);
+        }
+      } catch (e) {
+        setUsdtNetworks([]);
+      } finally {
+        setUsdtLoading(false);
+      }
+    };
+    loadNetworks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currency, method]);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -69,7 +94,14 @@ export default function Deposit() {
       return;
     }
 
-    if (!method.includes('usdt') && !proofImage) {
+    if (method === 'usdt') {
+      if (!usdtNetwork) {
+        toast.error(getText('Chwazi rezo USDT la', 'Choisissez le réseau USDT', 'Select USDT network'));
+        return;
+      }
+    }
+
+    if (method !== 'usdt' && !proofImage) {
       toast.error(getText('Telechaje prèv peman an', 'Veuillez télécharger la preuve de paiement', 'Please upload payment proof'));
       return;
     }
@@ -81,9 +113,9 @@ export default function Deposit() {
         amount: parseFloat(amount),
         currency,
         method,
-        proof_image: proofImage || null,
-        wallet_address: method.includes('usdt') ? walletAddress : null,
-        network: method.includes('trc20') ? 'TRC-20' : method.includes('erc20') ? 'ERC-20' : null
+        proof_image: method === 'usdt' ? null : (proofImage || null),
+        wallet_address: method === 'usdt' ? null : null,
+        network: method === 'usdt' ? usdtNetwork : null
       };
 
       const resp = await axios.post(`${API}/deposits/create`, payload);
@@ -179,30 +211,44 @@ export default function Deposit() {
         </div>
       </div>
 
-      {method.includes('usdt') ? (
+      {method === 'usdt' ? (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="text-amber-500 mt-0.5" size={20} />
             <div>
-              <p className="font-medium text-amber-800">{getText('Enstriksyon USDT', 'Instructions USDT', 'USDT Instructions')}</p>
+              <p className="font-medium text-amber-800">{getText('Enstriksyon USDT (Plisio)', 'Instructions USDT (Plisio)', 'USDT Instructions (Plisio)')}</p>
               <p className="text-sm text-amber-700 mt-1">
                 {getText(
-                  `Voye USDT ou nan adrès sa a sou rezo ${method.includes('trc20') ? 'TRC-20' : 'ERC-20'}:`,
-                  `Envoyez votre USDT à l'adresse suivante sur le réseau ${method.includes('trc20') ? 'TRC-20' : 'ERC-20'}:`,
-                  `Send your USDT to this address on ${method.includes('trc20') ? 'TRC-20' : 'ERC-20'} network:`
+                  'Chwazi rezo a, epi n ap kreye yon lyen peman otomatik. Depo a ap valide otomatikman apre peman an konfime.',
+                  'Choisissez le réseau, puis nous créerons un lien de paiement automatique. Le dépôt sera validé automatiquement après confirmation.',
+                  'Select the network and we will generate an automatic payment link. Deposit will auto-validate after confirmation.'
                 )}
               </p>
-              <code className="block bg-white rounded p-2 mt-2 text-xs break-all">
-                TRx1234567890abcdefghijklmnop
-              </code>
               <div className="mt-3">
-                <Label>{getText('Adrès retou ou (opsyonèl)', 'Votre adresse de retour (optionnel)', 'Your return address (optional)')}</Label>
-                <Input 
-                  placeholder={getText('Adrès USDT ou', 'Votre adresse USDT', 'Your USDT address')}
-                  value={walletAddress}
-                  onChange={(e) => setWalletAddress(e.target.value)}
-                  className="mt-1"
-                />
+                <Label>{getText('Rezo USDT', 'Réseau USDT', 'USDT Network')}</Label>
+                {usdtLoading ? (
+                  <div className="text-sm text-stone-600 mt-2">{getText('Chajman rezo yo...', 'Chargement des réseaux...', 'Loading networks...')}</div>
+                ) : (
+                  <Select value={usdtNetwork} onValueChange={setUsdtNetwork}>
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder={getText('Chwazi rezo a', 'Choisir le réseau', 'Select network')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {usdtNetworks.map((n) => (
+                        <SelectItem key={n.code} value={n.code}>{n.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {!usdtLoading && usdtNetworks.length === 0 && (
+                  <p className="text-sm text-amber-700 mt-2">
+                    {getText(
+                      'Plisio pa disponib kounye a. Kontakte admin pou aktive li.',
+                      'Plisio n’est pas disponible pour le moment. Contactez l’admin pour l’activer.',
+                      'Plisio is not available right now. Ask admin to enable it.'
+                    )}
+                  </p>
+                )}
               </div>
             </div>
           </div>
