@@ -2840,6 +2840,7 @@ async def startup():
                     "email": desired_admin_email,
                     "password_hash": hash_password(desired_admin_password),
                     "full_name": "System Admin",
+                    "admin_role": "owner",
                     "phone": "+509 0000 0000",
                     "language": "fr",
                     "kyc_status": "approved",

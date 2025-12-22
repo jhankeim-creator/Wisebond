@@ -23,7 +23,8 @@ import {
   Phone,
   Home,
   Bell,
-  MessageSquare
+  MessageSquare,
+  Shield
 } from 'lucide-react';
 
 export const AdminLayout = ({ children, title }) => {
@@ -55,6 +56,7 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/rates', icon: RefreshCw, label: getText('To chanj', 'Taux de change', 'Exchange Rates') },
     { path: '/admin/fees', icon: DollarSign, label: getText('Frè', 'Frais', 'Fees') },
     { path: '/admin/bulk-email', icon: Mail, label: getText('Imèl', 'Emails', 'Emails') },
+    { path: '/admin/team', icon: Shield, label: getText('Ekip', 'Équipe', 'Team') },
     { path: '/admin/logs', icon: MessageSquare, label: getText('Mesaj', 'Journaux', 'Logs') },
     { path: '/admin/settings', icon: Settings, label: getText('Paramèt', 'Paramètres', 'Settings') },
   ];
