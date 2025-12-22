@@ -159,7 +159,7 @@ export default function VirtualCard() {
                   <div className="bg-red-500/20 border border-red-300/30 rounded-lg p-3">
                     <p className="text-red-100 text-xs font-medium flex items-center gap-2">
                       ⚠️ {getText(
-                        'ENPÒTAN: Kat la PA pou peye sit paryaj oswa sit pokografik. Vyolasyon ap lakoz bloke kont ou.',
+                        'ENPÒTAN: Kat la PA pou peye sit paryaj oswa sit pònografik. Vyolasyon ap lakoz bloke kont ou.',
                         'IMPORTANT: La carte n\'est PAS pour payer des sites de paris ou des sites pornographiques. Toute violation entraînera le blocage de votre compte.',
                         'IMPORTANT: The card is NOT for paying gambling or pornographic sites. Violations will result in account blocking.'
                       )}
