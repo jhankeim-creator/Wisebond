@@ -2727,8 +2727,18 @@ async def startup():
                 await db.users.insert_one(admin_doc)
                 logger.info("Default admin created: %s", desired_admin_email)
     else:
-        if admin.get("email", "").lower() == "admin@kayicom.com":
-            existing_user_with_email = await db.users.find_one({"email": desired_admin_email.lower()}, {"_id": 0, "user_id": 1})
+        # If a seeded/default admin exists but the desired email differs, migrate it safely.
+        # We only auto-migrate accounts that look like the seeded "System Admin".
+        admin_email_current = (admin.get("email") or "").lower()
+        desired_admin_email_lc = (desired_admin_email or "").lower()
+        is_seeded_admin = (
+            admin.get("client_id") == "KCADMIN001"
+            or admin.get("affiliate_code") == "ADMINCODE"
+            or admin.get("full_name") == "System Admin"
+        )
+
+        if desired_admin_email_lc and is_seeded_admin and admin_email_current != desired_admin_email_lc:
+            existing_user_with_email = await db.users.find_one({"email": desired_admin_email_lc}, {"_id": 0, "user_id": 1})
             if existing_user_with_email and existing_user_with_email["user_id"] != admin["user_id"]:
                 logger.warning("Cannot migrate admin email to %s (email already in use).", desired_admin_email)
             else:
@@ -2737,7 +2747,7 @@ async def startup():
                 if desired_admin_password and len(desired_admin_password) >= 12:
                     update_admin["password_hash"] = hash_password(desired_admin_password)
                 await db.users.update_one({"user_id": admin["user_id"]}, {"$set": update_admin})
-                logger.info("Default admin email updated to %s", desired_admin_email)
+                logger.info("Seeded admin email updated to %s", desired_admin_email)
     
     # Create default exchange rates
     rates = await db.exchange_rates.find_one({"rate_id": "main"}, {"_id": 0})

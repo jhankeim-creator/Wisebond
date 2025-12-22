@@ -16,7 +16,7 @@
     "Backend API health check (16/16 endpoints working)",
     "Exchange rates API returns correct HTG/USD rates",
     "User registration flow with email/password authentication",
-    "Admin login with admin@kayicom.com credentials",
+    "Admin login works correctly (credentials configured via environment)",
     "User dashboard displays HTG & USD wallet balances correctly",
     "Admin dashboard shows statistics and navigation",
     "Admin KYC management interface accessible",

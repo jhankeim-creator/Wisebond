@@ -4,14 +4,27 @@ import sys
 from datetime import datetime
 
 class KayicomWalletTester:
-    def __init__(self, base_url="https://payiwallet.preview.emergentagent.com/api"):
-        self.base_url = base_url
+    def __init__(self, base_url=None):
+        env_base = (
+            os.environ.get("BACKEND_TEST_BASE_URL")
+            or os.environ.get("BACKEND_PUBLIC_URL")
+            or os.environ.get("REACT_APP_BACKEND_URL")
+            or "http://localhost:8000"
+        )
+        # Ensure we always hit the /api prefix
+        env_base = env_base.rstrip("/")
+        self.base_url = (base_url or env_base).rstrip("/")
+        if not self.base_url.endswith("/api"):
+            self.base_url = f"{self.base_url}/api"
         self.admin_token = None
         self.user_token = None
         self.tests_run = 0
         self.tests_passed = 0
-        self.admin_email = os.environ.get("DEFAULT_ADMIN_EMAIL", "graciaemmanuel509@gmail.com")
-        self.admin_password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "Admin123!")
+        self.admin_email = os.environ.get("DEFAULT_ADMIN_EMAIL")
+        self.admin_password = os.environ.get("DEFAULT_ADMIN_PASSWORD")
+
+        if not self.admin_email or not self.admin_password:
+            raise ValueError("DEFAULT_ADMIN_EMAIL and DEFAULT_ADMIN_PASSWORD must be set to run backend tests.")
 
     def run_test(self, name, method, endpoint, expected_status, data=None, headers=None):
         """Run a single API test"""
