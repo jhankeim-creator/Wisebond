@@ -1,14 +1,15 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict
 import uuid
 from datetime import datetime, timezone, timedelta
 import bcrypt
@@ -19,6 +20,8 @@ import hashlib
 import requests
 import re
 import json
+from io import BytesIO
+import time
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -45,6 +48,28 @@ logger = logging.getLogger(__name__)
 # Background tasks
 _plisio_poll_task: Optional[asyncio.Task] = None
 _cleanup_task: Optional[asyncio.Task] = None
+
+# Simple in-memory rate limiting (best-effort, per-process)
+_rate_limits: Dict[str, List[float]] = {}
+
+
+def _get_client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        # first IP in list
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _rate_limit(key: str, limit: int, window_seconds: int):
+    now = time.time()
+    bucket = _rate_limits.get(key, [])
+    cutoff = now - window_seconds
+    bucket = [t for t in bucket if t >= cutoff]
+    if len(bucket) >= limit:
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+    bucket.append(now)
+    _rate_limits[key] = bucket
 
 # ==================== PLISIO HELPERS ====================
 
@@ -359,7 +384,7 @@ async def _cleanup_loop():
     while True:
         try:
             result = await _purge_old_records(days=7)
-            if result["deleted_deposits"] or result["deleted_withdrawals"]:
+            if result["deleted_deposits"] or result["deleted_withdrawals"] or result.get("deleted_transactions"):
                 logger.info("Cleanup: %s", result)
         except asyncio.CancelledError:
             return
@@ -711,6 +736,8 @@ async def register(user: UserCreate):
         "is_active": True,
         "is_admin": False,
         "two_factor_enabled": False,
+        "failed_login_count": 0,
+        "lock_until": None,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -726,14 +753,45 @@ async def register(user: UserCreate):
     return {"token": token, "user": user_doc}
 
 @api_router.post("/auth/login")
-async def login(credentials: UserLogin):
+async def login(credentials: UserLogin, request: Request):
+    # Rate limit per IP
+    ip = _get_client_ip(request)
+    _rate_limit(f"login:{ip}", limit=20, window_seconds=60)
+
     user = await db.users.find_one({"email": credentials.email.lower()}, {"_id": 0})
-    if not user or not verify_password(credentials.password, user["password_hash"]):
+    # Generic response to avoid user enumeration
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # Account lockout support
+    lock_until = user.get("lock_until")
+    if lock_until:
+        try:
+            until = datetime.fromisoformat(lock_until)
+            if until.tzinfo is None:
+                until = until.replace(tzinfo=timezone.utc)
+            if until > datetime.now(timezone.utc):
+                raise HTTPException(status_code=429, detail="Account temporarily locked. Try again later.")
+        except ValueError:
+            pass
+
+    if not verify_password(credentials.password, user["password_hash"]):
+        # Increment failed login attempts
+        failed = int(user.get("failed_login_count", 0)) + 1
+        update = {"failed_login_count": failed}
+        # Lock for 15 minutes after 5 failures
+        if failed >= 5:
+            update["failed_login_count"] = 0
+            update["lock_until"] = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     if not user.get("is_active", True):
         raise HTTPException(status_code=403, detail="Account is suspended")
     
+    # Reset failed attempts on success
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"failed_login_count": 0, "lock_until": None}})
+
     await log_action(user["user_id"], "login", {"email": credentials.email})
     
     token = create_access_token({"sub": user["user_id"]})
@@ -743,7 +801,9 @@ async def login(credentials: UserLogin):
     return {"token": token, "user": user_response}
 
 @api_router.post("/auth/forgot-password")
-async def forgot_password(request: PasswordReset):
+async def forgot_password(request: PasswordReset, http_request: Request):
+    ip = _get_client_ip(http_request)
+    _rate_limit(f"forgot:{ip}", limit=10, window_seconds=60)
     user = await db.users.find_one({"email": request.email.lower()}, {"_id": 0})
     if not user:
         return {"message": "If email exists, reset link will be sent"}
@@ -820,6 +880,69 @@ async def get_transactions(
     
     transactions = await db.transactions.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     return {"transactions": transactions}
+
+
+@api_router.get("/wallet/transactions/{transaction_id}/receipt.pdf")
+async def get_transaction_receipt_pdf(transaction_id: str, current_user: dict = Depends(get_current_user)):
+    """Server-generated PDF receipt for a transaction."""
+    tx = await db.transactions.find_one(
+        {"transaction_id": transaction_id, "user_id": current_user["user_id"]},
+        {"_id": 0}
+    )
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas
+    except Exception:
+        raise HTTPException(status_code=501, detail="PDF generation not available on server")
+
+    buf = BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    width, height = letter
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(40, height - 50, "KAYICOM Wallet")
+    c.setFont("Helvetica", 10)
+    c.drawString(40, height - 65, "Yon satisfaksyon ak bon jan sèvis garanti.")
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(40, height - 95, "Resi / Receipt")
+
+    y = height - 125
+    c.setFont("Helvetica", 10)
+    fields = [
+        ("Client ID", current_user.get("client_id")),
+        ("Non / Name", current_user.get("full_name")),
+        ("Transaction ID", tx.get("transaction_id")),
+        ("Reference", tx.get("reference_id")),
+        ("Type", tx.get("type")),
+        ("Status", tx.get("status")),
+        ("Currency", tx.get("currency")),
+        ("Amount", tx.get("amount")),
+        ("Date", tx.get("created_at")),
+        ("Description", tx.get("description")),
+    ]
+    for label, value in fields:
+        if value is None or value == "":
+            continue
+        c.drawString(40, y, f"{label}:")
+        c.drawString(160, y, str(value))
+        y -= 14
+
+    c.setFont("Helvetica-Oblique", 8)
+    c.drawString(40, 30, "Generated automatically by KAYICOM Wallet.")
+    c.showPage()
+    c.save()
+
+    buf.seek(0)
+    filename = f"KAYICOM-receipt-{tx.get('reference_id') or tx.get('transaction_id')}.pdf"
+    return StreamingResponse(
+        buf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'}
+    )
 
 # ==================== DEPOSIT ROUTES ====================
 
@@ -2049,6 +2172,33 @@ async def admin_get_deposit_detail(deposit_id: str, admin: dict = Depends(get_ad
         raise HTTPException(status_code=404, detail="Deposit not found")
     return {"deposit": deposit}
 
+
+@api_router.post("/admin/deposits/{deposit_id}/sync-provider")
+async def admin_sync_deposit_provider(deposit_id: str, admin: dict = Depends(get_admin_user)):
+    """Admin: force sync provider status (Plisio) for a deposit."""
+    dep = await db.deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+    if not dep:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    if dep.get("provider") != "plisio" or not dep.get("plisio_txn_id"):
+        return {"deposit": dep, "message": "No provider sync needed"}
+
+    enabled, api_key, _secret, _settings = await _plisio_get_settings()
+    if not (enabled and api_key):
+        raise HTTPException(status_code=400, detail="Plisio not enabled/configured")
+
+    op = await plisio_get_operation(api_key, str(dep["plisio_txn_id"]))
+    if op:
+        st = _normalize_plisio_status(op.get("status") or op.get("invoice_status") or op.get("state"))
+        await db.deposits.update_one(
+            {"deposit_id": dep["deposit_id"]},
+            {"$set": {"provider_status": st, "provider_raw": op, "provider_checked_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        if st == "completed":
+            await _finalize_deposit_as_completed(dep, provider_status=st)
+    dep2 = await db.deposits.find_one({"deposit_id": dep["deposit_id"]}, {"_id": 0})
+    await log_action(admin["user_id"], "deposit_provider_sync", {"deposit_id": deposit_id})
+    return {"deposit": dep2, "message": "Synced"}
+
 @api_router.patch("/admin/deposits/{deposit_id}")
 async def admin_process_deposit(
     deposit_id: str,
@@ -2339,6 +2489,17 @@ async def get_public_chat_settings():
         "whatsapp_number": settings.get("whatsapp_number") if whatsapp_enabled else None
     }
 
+
+@api_router.get("/public/app-config")
+async def get_public_app_config():
+    """Non-sensitive config for frontend display."""
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0}) or {}
+    return {
+        "card_order_fee_htg": int(settings.get("card_order_fee_htg", CARD_FEE_HTG)),
+        "affiliate_reward_htg": int(settings.get("affiliate_reward_htg", 2000)),
+        "affiliate_cards_required": int(settings.get("affiliate_cards_required", 5)),
+    }
+
 @api_router.put("/admin/settings")
 async def admin_update_settings(settings: AdminSettingsUpdate, admin: dict = Depends(get_admin_user)):
     update_doc = {k: v for k, v in settings.model_dump().items() if v is not None}
@@ -2471,8 +2632,9 @@ app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    # We rely on Authorization header (not cookies), so credentials aren't required.
+    allow_credentials=False,
+    allow_origins=(os.environ.get("CORS_ORIGINS") or os.environ.get("FRONTEND_URL", "http://localhost:3000")).split(","),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -2525,7 +2687,8 @@ async def startup():
 
     # Create default admin if not exists (or migrate old email)
     admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
-    desired_admin_email = "graciaemmanuel509@gmail.com"
+    desired_admin_email = os.environ.get("DEFAULT_ADMIN_EMAIL", "graciaemmanuel509@gmail.com").strip().lower()
+    desired_admin_password = os.environ.get("DEFAULT_ADMIN_PASSWORD")
     if not admin:
         existing_user_with_email = await db.users.find_one({"email": desired_admin_email.lower()}, {"_id": 0})
         if existing_user_with_email:
@@ -2537,34 +2700,43 @@ async def startup():
             admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
             # continue startup (indexes/exchange rates/etc.)
         else:
-            admin_doc = {
-                "user_id": str(uuid.uuid4()),
-                "client_id": "KCADMIN001",
-                "email": desired_admin_email,
-                "password_hash": hash_password("Admin123!"),
-                "full_name": "System Admin",
-                "phone": "+509 0000 0000",
-                "language": "fr",
-                "kyc_status": "approved",
-                "wallet_htg": 0.0,
-                "wallet_usd": 0.0,
-                "affiliate_code": "ADMINCODE",
-                "affiliate_earnings": 0.0,
-                "referred_by": None,
-                "is_active": True,
-                "is_admin": True,
-                "two_factor_enabled": False,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            await db.users.insert_one(admin_doc)
-            logger.info("Default admin created: %s / Admin123!", desired_admin_email)
+            if not desired_admin_password or len(desired_admin_password) < 12:
+                logger.warning("DEFAULT_ADMIN_PASSWORD not set (or too short). Skipping default admin creation.")
+            else:
+                admin_doc = {
+                    "user_id": str(uuid.uuid4()),
+                    "client_id": "KCADMIN001",
+                    "email": desired_admin_email,
+                    "password_hash": hash_password(desired_admin_password),
+                    "full_name": "System Admin",
+                    "phone": "+509 0000 0000",
+                    "language": "fr",
+                    "kyc_status": "approved",
+                    "wallet_htg": 0.0,
+                    "wallet_usd": 0.0,
+                    "affiliate_code": "ADMINCODE",
+                    "affiliate_earnings": 0.0,
+                    "referred_by": None,
+                    "is_active": True,
+                    "is_admin": True,
+                    "two_factor_enabled": False,
+                    "failed_login_count": 0,
+                    "lock_until": None,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await db.users.insert_one(admin_doc)
+                logger.info("Default admin created: %s", desired_admin_email)
     else:
         if admin.get("email", "").lower() == "admin@kayicom.com":
             existing_user_with_email = await db.users.find_one({"email": desired_admin_email.lower()}, {"_id": 0, "user_id": 1})
             if existing_user_with_email and existing_user_with_email["user_id"] != admin["user_id"]:
                 logger.warning("Cannot migrate admin email to %s (email already in use).", desired_admin_email)
             else:
-                await db.users.update_one({"user_id": admin["user_id"]}, {"$set": {"email": desired_admin_email}})
+                update_admin = {"email": desired_admin_email}
+                # Optionally rotate password on migration if configured
+                if desired_admin_password and len(desired_admin_password) >= 12:
+                    update_admin["password_hash"] = hash_password(desired_admin_password)
+                await db.users.update_one({"user_id": admin["user_id"]}, {"$set": update_admin})
                 logger.info("Default admin email updated to %s", desired_admin_email)
     
     # Create default exchange rates

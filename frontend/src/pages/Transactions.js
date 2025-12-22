@@ -77,7 +77,26 @@ export default function Transactions() {
     return styles[status] || 'status-badge';
   };
 
-  const downloadReceipt = (tx) => {
+  const downloadReceipt = async (tx) => {
+    // Prefer server-generated official PDF if available
+    try {
+      const resp = await axios.get(`${API}/wallet/transactions/${tx.transaction_id}/receipt.pdf`, {
+        responseType: 'blob'
+      });
+      const blob = new Blob([resp.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `KAYICOM-receipt-${tx.reference_id || tx.transaction_id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      return;
+    } catch (e) {
+      // Fallback to client-generated PDF
+    }
+
     const doc = new jsPDF();
     const now = new Date();
 

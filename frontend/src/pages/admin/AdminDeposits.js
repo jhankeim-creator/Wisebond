@@ -59,6 +59,16 @@ export default function AdminDeposits() {
     }
   };
 
+  const syncProvider = async () => {
+    try {
+      const resp = await axios.post(`${API}/admin/deposits/${selectedDeposit.deposit_id}/sync-provider`);
+      setSelectedDeposit(resp.data.deposit);
+      toast.success('Mise à jour effectuée');
+    } catch (e) {
+      toast.error('Erreur lors du sync');
+    }
+  };
+
   return (
     <AdminLayout title="Gestion des dépôts">
       <div className="space-y-6" data-testid="admin-deposits">
@@ -195,6 +205,11 @@ export default function AdminDeposits() {
                       {selectedDeposit.plisio_currency && (
                         <div><span className="text-slate-600">Network:</span> <span className="font-semibold">{selectedDeposit.plisio_currency}</span></div>
                       )}
+                    </div>
+                    <div className="mt-3">
+                      <Button variant="outline" size="sm" onClick={syncProvider}>
+                        Sync Plisio
+                      </Button>
                     </div>
                   </div>
                 )}

@@ -20,7 +20,7 @@ Testing agent should verify the following flows:
 8. Admin Settings has **toggle switches** for integrations
 
 ## Test User Credentials
-- Admin: graciaemmanuel509@gmail.com / Admin123!
+- Admin credentials: configured via `DEFAULT_ADMIN_EMAIL` / `DEFAULT_ADMIN_PASSWORD`
 
 ## Key Features to Verify
 - Professional black woman image on landing page

@@ -1,3 +1,4 @@
+import os
 import requests
 import sys
 from datetime import datetime
@@ -9,6 +10,8 @@ class KayicomWalletTester:
         self.user_token = None
         self.tests_run = 0
         self.tests_passed = 0
+        self.admin_email = os.environ.get("DEFAULT_ADMIN_EMAIL", "graciaemmanuel509@gmail.com")
+        self.admin_password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "Admin123!")
 
     def run_test(self, name, method, endpoint, expected_status, data=None, headers=None):
         """Run a single API test"""
@@ -63,7 +66,7 @@ class KayicomWalletTester:
             "POST",
             "auth/login",
             200,
-            data={"email": "graciaemmanuel509@gmail.com", "password": "Admin123!"}
+            data={"email": self.admin_email, "password": self.admin_password}
         )
         if success and 'token' in response:
             self.admin_token = response['token']

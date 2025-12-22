@@ -34,6 +34,7 @@ export default function VirtualCard() {
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [cardEmail, setCardEmail] = useState('');
+  const [cardFee, setCardFee] = useState(500);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -43,7 +44,19 @@ export default function VirtualCard() {
 
   useEffect(() => {
     fetchData();
+    fetchConfig();
   }, []);
+
+  const fetchConfig = async () => {
+    try {
+      const resp = await axios.get(`${API}/public/app-config`);
+      if (resp.data?.card_order_fee_htg) {
+        setCardFee(resp.data.card_order_fee_htg);
+      }
+    } catch (e) {
+      // keep default
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -80,8 +93,6 @@ export default function VirtualCard() {
       setOrdering(false);
     }
   };
-
-  const cardFee = 500; // 500 HTG for card
 
   const getStatusBadge = (status) => {
     switch (status) {

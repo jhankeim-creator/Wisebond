@@ -92,7 +92,7 @@ LÒD OFISYÈL – DEVLOPMAN PLATFÒM WALLET MULTI-DEVIZ (KAYICOM WALLET)
 - [x] Activity logs
 
 ## Default Credentials
-- **Admin**: graciaemmanuel509@gmail.com / Admin123!
+- **Admin**: Set via environment variables `DEFAULT_ADMIN_EMAIL` and `DEFAULT_ADMIN_PASSWORD` (min 12 characters).
 
 ## Next Tasks (Phase 2)
 1. **USDT Auto-Detection**: Integrate blockchain API for automatic USDT deposit detection
