@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Save, Key, Mail, MessageCircle, Wallet, CreditCard, DollarSign, Shield, MessageSquare, Phone } from 'lucide-react';
+import { Save, Key, Mail, Wallet, CreditCard, DollarSign, Shield, MessageSquare, Phone, Smartphone } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -33,6 +33,12 @@ export default function AdminSettings() {
     plisio_enabled: false,
     plisio_api_key: '',
     plisio_secret_key: '',
+
+    // Manual HTG deposits
+    moncash_enabled: true,
+    moncash_number: '',
+    natcash_enabled: true,
+    natcash_number: '',
     
     // Fees & Affiliate
     card_order_fee_htg: 500,
@@ -322,6 +328,74 @@ export default function AdminSettings() {
               </div>
             </CardContent>
           )}
+        </Card>
+
+        {/* Manual HTG Deposits (MonCash/NatCash) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Smartphone size={20} className="text-[#EA580C]" />
+              {getText('Depo manyèl (HTG)', 'Dépôts manuels (HTG)', 'Manual deposits (HTG)')}
+            </CardTitle>
+            <CardDescription>
+              {getText(
+                'Jere nimewo MonCash/NatCash pou resevwa depo yo, epi aktive/deaktive yo.',
+                'Gérez les numéros MonCash/NatCash pour recevoir les dépôts, et activez/désactivez-les.',
+                'Manage MonCash/NatCash numbers for manual deposits and enable/disable them.'
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="border rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold">MonCash</p>
+                  <p className="text-sm text-stone-500 dark:text-stone-400">
+                    {getText('Mete nimewo a (ex: +509XXXXXXXX)', 'Numéro (ex: +509XXXXXXXX)', 'Number (e.g. +509XXXXXXXX)')}
+                  </p>
+                </div>
+                <Switch
+                  checked={!!settings.moncash_enabled}
+                  onCheckedChange={(checked) => setSettings({ ...settings, moncash_enabled: checked })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="moncash_number">{getText('Nimewo MonCash', 'Numéro MonCash', 'MonCash number')}</Label>
+                <Input
+                  id="moncash_number"
+                  placeholder="+50900000000"
+                  value={settings.moncash_number || ''}
+                  onChange={(e) => setSettings({ ...settings, moncash_number: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            <div className="border rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-semibold">NatCash</p>
+                  <p className="text-sm text-stone-500 dark:text-stone-400">
+                    {getText('Mete nimewo a (ex: +509XXXXXXXX)', 'Numéro (ex: +509XXXXXXXX)', 'Number (e.g. +509XXXXXXXX)')}
+                  </p>
+                </div>
+                <Switch
+                  checked={!!settings.natcash_enabled}
+                  onCheckedChange={(checked) => setSettings({ ...settings, natcash_enabled: checked })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="natcash_number">{getText('Nimewo NatCash', 'Numéro NatCash', 'NatCash number')}</Label>
+                <Input
+                  id="natcash_number"
+                  placeholder="+50900000000"
+                  value={settings.natcash_number || ''}
+                  onChange={(e) => setSettings({ ...settings, natcash_number: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+          </CardContent>
         </Card>
 
         {/* Fees & Affiliate Settings */}

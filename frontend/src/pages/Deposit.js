@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -20,19 +20,6 @@ import {
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-// Metòd depo: HTG = MonCash/NatCash sèlman, USD = Zelle/PayPal/USDT sèlman
-const depositMethods = {
-  HTG: [
-    { id: 'moncash', name: 'MonCash', icon: Smartphone },
-    { id: 'natcash', name: 'NatCash', icon: Smartphone }
-  ],
-  USD: [
-    { id: 'zelle', name: 'Zelle', icon: DollarSign },
-    { id: 'paypal', name: 'PayPal', icon: DollarSign },
-    { id: 'usdt', name: 'USDT (Plisio)', icon: Wallet }
-  ]
-};
-
 export default function Deposit() {
   const { t, language } = useLanguage();
   const { user } = useAuth();
@@ -42,37 +29,69 @@ export default function Deposit() {
   const [method, setMethod] = useState('');
   const [amount, setAmount] = useState('');
   const [proofImage, setProofImage] = useState('');
-  const [walletAddress, setWalletAddress] = useState('');
   const [loading, setLoading] = useState(false);
   const [createdDeposit, setCreatedDeposit] = useState(null);
   const [usdtNetworks, setUsdtNetworks] = useState([]);
   const [usdtNetwork, setUsdtNetwork] = useState('');
   const [usdtLoading, setUsdtLoading] = useState(false);
   const [usdtEnabled, setUsdtEnabled] = useState(false);
+  const [manualConfig, setManualConfig] = useState({
+    moncash_enabled: false,
+    moncash_number: null,
+    natcash_enabled: false,
+    natcash_number: null
+  });
+
+  const getText = useCallback((ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  }, [language]);
+
+  const fetchManualConfig = useCallback(async () => {
+    try {
+      const resp = await axios.get(`${API}/public/app-config`);
+      setManualConfig({
+        moncash_enabled: !!resp.data?.moncash_enabled,
+        moncash_number: resp.data?.moncash_number || null,
+        natcash_enabled: !!resp.data?.natcash_enabled,
+        natcash_number: resp.data?.natcash_number || null
+      });
+    } catch (e) {
+      setManualConfig({
+        moncash_enabled: false,
+        moncash_number: null,
+        natcash_enabled: false,
+        natcash_number: null
+      });
+    }
+  }, []);
 
   useEffect(() => {
-    const loadNetworks = async () => {
-      if (currency !== 'USD' || method !== 'usdt') return;
-      setUsdtLoading(true);
-      try {
-        const resp = await axios.get(`${API}/deposits/usdt-options`);
-        const nets = resp.data?.networks || [];
-        setUsdtEnabled(!!resp.data?.enabled);
-        setUsdtNetworks(nets);
-        // auto-select first if none selected
-        if (!usdtNetwork && nets.length > 0) {
-          setUsdtNetwork(nets[0].code);
-        }
-      } catch (e) {
-        setUsdtNetworks([]);
-        setUsdtEnabled(false);
-      } finally {
-        setUsdtLoading(false);
-      }
-    };
-    loadNetworks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    fetchManualConfig();
+  }, [fetchManualConfig]);
+
+  const loadNetworks = useCallback(async () => {
+    if (currency !== 'USD' || method !== 'usdt') return;
+    setUsdtLoading(true);
+    try {
+      const resp = await axios.get(`${API}/deposits/usdt-options`);
+      const nets = resp.data?.networks || [];
+      setUsdtEnabled(!!resp.data?.enabled);
+      setUsdtNetworks(nets);
+      // auto-select first if none selected
+      setUsdtNetwork((prev) => prev || (nets.length > 0 ? nets[0].code : ''));
+    } catch (e) {
+      setUsdtNetworks([]);
+      setUsdtEnabled(false);
+    } finally {
+      setUsdtLoading(false);
+    }
   }, [currency, method]);
+
+  useEffect(() => {
+    loadNetworks();
+  }, [loadNetworks]);
 
   // Reset USDT fields when method changes
   useEffect(() => {
@@ -83,11 +102,20 @@ export default function Deposit() {
     }
   }, [method]);
 
-  const getText = (ht, fr, en) => {
-    if (language === 'ht') return ht;
-    if (language === 'fr') return fr;
-    return en;
-  };
+  // Metòd depo: HTG = MonCash/NatCash (configurable), USD = Zelle/PayPal/USDT
+  const depositMethods = useMemo(() => {
+    const htg = [];
+    if (manualConfig.moncash_enabled) htg.push({ id: 'moncash', name: 'MonCash', icon: Smartphone });
+    if (manualConfig.natcash_enabled) htg.push({ id: 'natcash', name: 'NatCash', icon: Smartphone });
+    return {
+      HTG: htg,
+      USD: [
+        { id: 'zelle', name: 'Zelle', icon: DollarSign },
+        { id: 'paypal', name: 'PayPal', icon: DollarSign },
+        { id: 'usdt', name: 'USDT (Plisio)', icon: Wallet }
+      ]
+    };
+  }, [manualConfig.moncash_enabled, manualConfig.natcash_enabled]);
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -172,7 +200,15 @@ export default function Deposit() {
       <div>
         <h3 className="font-semibold text-stone-900 mb-4">{getText('Chwazi metòd', 'Choisir la méthode', 'Choose method')}</h3>
         <div className="space-y-3">
-          {depositMethods[currency].map((m) => {
+          {depositMethods[currency].length === 0 ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+              {getText(
+                'Pa gen metòd depo ki aktive pou HTG. Kontakte admin.',
+                'Aucune méthode de dépôt activée pour HTG. Contactez l’admin.',
+                'No HTG deposit methods are enabled. Contact admin.'
+              )}
+            </div>
+          ) : depositMethods[currency].map((m) => {
             const Icon = m.icon;
             return (
               <button
@@ -277,7 +313,25 @@ export default function Deposit() {
             </p>
             <p className="text-sm text-orange-700 mt-1">
               {currency === 'HTG' 
-                ? getText('Voye montan an nan nimewo sa a: +509 0000 0000', 'Envoyez le montant au numéro: +509 0000 0000', 'Send amount to: +509 0000 0000')
+                ? (
+                  method === 'moncash' && manualConfig.moncash_number
+                    ? getText(
+                      `Voye montan an nan MonCash: ${manualConfig.moncash_number}`,
+                      `Envoyez le montant sur MonCash: ${manualConfig.moncash_number}`,
+                      `Send the amount to MonCash: ${manualConfig.moncash_number}`
+                    )
+                    : method === 'natcash' && manualConfig.natcash_number
+                      ? getText(
+                        `Voye montan an nan NatCash: ${manualConfig.natcash_number}`,
+                        `Envoyez le montant sur NatCash: ${manualConfig.natcash_number}`,
+                        `Send the amount to NatCash: ${manualConfig.natcash_number}`
+                      )
+                      : getText(
+                        'Metòd sa pa configure. Kontakte admin.',
+                        'Méthode non configurée. Contactez l’admin.',
+                        'Method not configured. Contact admin.'
+                      )
+                )
                 : method === 'zelle' 
                   ? getText('Voye nan: payments@kayicom.com', 'Envoyez à: payments@kayicom.com', 'Send to: payments@kayicom.com')
                   : getText('Voye nan: payments@kayicom.com', 'Envoyez à: payments@kayicom.com', 'Send to: payments@kayicom.com')

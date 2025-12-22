@@ -577,6 +577,12 @@ class AdminSettingsUpdate(BaseModel):
     plisio_api_key: Optional[str] = None
     plisio_secret_key: Optional[str] = None
 
+    # Manual HTG deposit methods (MonCash/NatCash)
+    moncash_enabled: Optional[bool] = None
+    moncash_number: Optional[str] = None
+    natcash_enabled: Optional[bool] = None
+    natcash_number: Optional[str] = None
+
     # Fees & Affiliate (card-based)
     card_order_fee_htg: Optional[int] = None
     affiliate_reward_htg: Optional[int] = None
@@ -978,6 +984,25 @@ async def get_transaction_receipt_pdf(transaction_id: str, current_user: dict = 
 async def create_deposit(request: DepositRequest, current_user: dict = Depends(get_current_user)):
     if current_user["kyc_status"] != "approved":
         raise HTTPException(status_code=403, detail="KYC verification required for deposits")
+
+    # Validate manual HTG deposit methods toggles/config
+    method_lc = (request.method or "").strip().lower()
+    currency_uc = (request.currency or "").strip().upper()
+    if method_lc in {"moncash", "natcash"}:
+        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0}) or {}
+        if method_lc == "moncash":
+            if not bool(settings.get("moncash_enabled", False)):
+                raise HTTPException(status_code=400, detail="MonCash deposits are disabled")
+            if not (settings.get("moncash_number") or "").strip():
+                raise HTTPException(status_code=400, detail="MonCash number not configured")
+        if method_lc == "natcash":
+            if not bool(settings.get("natcash_enabled", False)):
+                raise HTTPException(status_code=400, detail="NatCash deposits are disabled")
+            if not (settings.get("natcash_number") or "").strip():
+                raise HTTPException(status_code=400, detail="NatCash number not configured")
+        # These are HTG-only methods
+        if currency_uc and currency_uc != "HTG":
+            raise HTTPException(status_code=400, detail="Invalid currency for this deposit method")
     
     deposit_id = str(uuid.uuid4())
     deposit = {
@@ -2629,6 +2654,10 @@ async def get_public_app_config():
         "card_order_fee_htg": int(settings.get("card_order_fee_htg", CARD_FEE_HTG)),
         "affiliate_reward_htg": int(settings.get("affiliate_reward_htg", 2000)),
         "affiliate_cards_required": int(settings.get("affiliate_cards_required", 5)),
+        "moncash_enabled": bool(settings.get("moncash_enabled", False)) and bool((settings.get("moncash_number") or "").strip()),
+        "moncash_number": (settings.get("moncash_number") or "").strip() or None,
+        "natcash_enabled": bool(settings.get("natcash_enabled", False)) and bool((settings.get("natcash_number") or "").strip()),
+        "natcash_number": (settings.get("natcash_number") or "").strip() or None,
     }
 
 @api_router.put("/admin/settings")
@@ -2680,6 +2709,12 @@ async def admin_diagnostics(admin: dict = Depends(get_admin_user)):
             "configured": bool(settings.get("plisio_api_key") and settings.get("plisio_secret_key")),
             "usdt_networks_cached": len(settings.get("plisio_usdt_networks_cache") or []) if isinstance(settings.get("plisio_usdt_networks_cache"), list) else 0,
         },
+        "manual_deposits": {
+            "moncash_enabled": bool(settings.get("moncash_enabled", False)),
+            "moncash_configured": bool((settings.get("moncash_number") or "").strip()),
+            "natcash_enabled": bool(settings.get("natcash_enabled", False)),
+            "natcash_configured": bool((settings.get("natcash_number") or "").strip()),
+        },
     }
     warnings = []
     if diagnostics["resend"]["enabled"] and not diagnostics["resend"]["configured"]:
@@ -2690,6 +2725,10 @@ async def admin_diagnostics(admin: dict = Depends(get_admin_user)):
         warnings.append("WhatsApp enabled but number not configured")
     if diagnostics["plisio"]["enabled"] and not diagnostics["plisio"]["configured"]:
         warnings.append("Plisio enabled but keys not configured")
+    if diagnostics["manual_deposits"]["moncash_enabled"] and not diagnostics["manual_deposits"]["moncash_configured"]:
+        warnings.append("MonCash enabled but number not configured")
+    if diagnostics["manual_deposits"]["natcash_enabled"] and not diagnostics["manual_deposits"]["natcash_configured"]:
+        warnings.append("NatCash enabled but number not configured")
     if not db_ok:
         warnings.append("MongoDB ping failed")
     return {"diagnostics": diagnostics, "warnings": warnings}
@@ -2796,6 +2835,10 @@ async def startup():
             "plisio_enabled": False,
             "plisio_api_key": "",
             "plisio_secret_key": "",
+            "moncash_enabled": True,
+            "moncash_number": "",
+            "natcash_enabled": True,
+            "natcash_number": "",
             "card_order_fee_htg": CARD_FEE_HTG,
             "affiliate_reward_htg": 2000,
             "affiliate_cards_required": 5,
