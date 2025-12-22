@@ -22,7 +22,8 @@ import {
   CreditCard,
   Phone,
   Home,
-  Bell
+  Bell,
+  MessageSquare
 } from 'lucide-react';
 
 export const AdminLayout = ({ children, title }) => {
@@ -44,7 +45,7 @@ export const AdminLayout = ({ children, title }) => {
   };
 
   const menuItems = [
-    { path: '/admin', icon: LayoutDashboard, label: getText('Tablo bò', 'Tableau de bord', 'Dashboard'), exact: true },
+    { path: '/admin', icon: LayoutDashboard, label: getText('Tablo de bò', 'Tableau de bord', 'Dashboard'), exact: true },
     { path: '/admin/users', icon: Users, label: getText('Kliyan', 'Clients', 'Clients') },
     { path: '/admin/kyc', icon: UserCheck, label: 'KYC' },
     { path: '/admin/deposits', icon: ArrowDownCircle, label: getText('Depo', 'Dépôts', 'Deposits') },
@@ -54,6 +55,7 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/rates', icon: RefreshCw, label: getText('To chanj', 'Taux de change', 'Exchange Rates') },
     { path: '/admin/fees', icon: DollarSign, label: getText('Frè', 'Frais', 'Fees') },
     { path: '/admin/bulk-email', icon: Mail, label: getText('Imèl', 'Emails', 'Emails') },
+    { path: '/admin/logs', icon: MessageSquare, label: getText('Mesaj', 'Journaux', 'Logs') },
     { path: '/admin/settings', icon: Settings, label: getText('Paramèt', 'Paramètres', 'Settings') },
   ];
 
@@ -132,7 +134,7 @@ export const AdminLayout = ({ children, title }) => {
             className="flex items-center gap-3 px-4 py-2.5 rounded-lg text-stone-400 hover:text-white hover:bg-white/10"
           >
             <ChevronLeft size={18} />
-            <span className="text-sm">{getText('Tablo bò kliyan', 'Dashboard client', 'Client Dashboard')}</span>
+            <span className="text-sm">{getText('Tablo de bò kliyan', 'Dashboard client', 'Client Dashboard')}</span>
           </Link>
           <button
             onClick={handleLogout}

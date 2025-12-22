@@ -39,7 +39,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
   const menuItems = [
     { path: '/', icon: Home, label: getText('Akèy', 'Accueil', 'Home') },
-    { path: '/dashboard', icon: LayoutDashboard, label: getText('Tablo bò', 'Tableau de bord', 'Dashboard') },
+    { path: '/dashboard', icon: LayoutDashboard, label: t('dashboard') },
     { path: '/deposit', icon: ArrowDownCircle, label: getText('Depoze', 'Déposer', 'Deposit') },
     { path: '/withdraw', icon: ArrowUpCircle, label: getText('Retire', 'Retirer', 'Withdraw') },
     { path: '/swap', icon: ArrowDownUp, label: 'Swap' },
