@@ -44,6 +44,7 @@ export default function Deposit() {
   const [proofImage, setProofImage] = useState('');
   const [walletAddress, setWalletAddress] = useState('');
   const [loading, setLoading] = useState(false);
+  const [createdDeposit, setCreatedDeposit] = useState(null);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -85,7 +86,8 @@ export default function Deposit() {
         network: method.includes('trc20') ? 'TRC-20' : method.includes('erc20') ? 'ERC-20' : null
       };
 
-      await axios.post(`${API}/deposits/create`, payload);
+      const resp = await axios.post(`${API}/deposits/create`, payload);
+      setCreatedDeposit(resp.data.deposit);
       toast.success(getText('Demann depo soumèt siksè!', 'Demande de dépôt soumise avec succès!', 'Deposit request submitted successfully!'));
       setStep(4);
     } catch (error) {
@@ -281,6 +283,30 @@ export default function Deposit() {
           `Your deposit request of ${currency === 'HTG' ? 'G' : '$'}${amount} ${currency} is pending validation.`
         )}
       </p>
+
+      {createdDeposit?.provider === 'plisio' && createdDeposit?.plisio_invoice_url && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-left">
+          <p className="font-semibold text-amber-800 mb-2">
+            {getText('Peye ak Plisio (USDT)', 'Payer avec Plisio (USDT)', 'Pay with Plisio (USDT)')}
+          </p>
+          <p className="text-sm text-amber-700 mb-3">
+            {getText(
+              'Klike sou lyen an pou fini peman an. Depo a ap valide otomatikman apre peman an konfime.',
+              'Cliquez sur le lien pour finaliser le paiement. Le dépôt sera validé automatiquement après confirmation.',
+              'Click the link to complete payment. Deposit will auto-validate after confirmation.'
+            )}
+          </p>
+          <a
+            href={createdDeposit.plisio_invoice_url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[#EA580C] font-medium hover:underline break-all"
+          >
+            {createdDeposit.plisio_invoice_url}
+          </a>
+        </div>
+      )}
+
       <Button onClick={() => { setStep(1); setAmount(''); setProofImage(''); setMethod(''); }} className="btn-primary">
         {getText('Nouvo depo', 'Nouveau dépôt', 'New deposit')}
       </Button>

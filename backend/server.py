@@ -15,6 +15,8 @@ import bcrypt
 from jose import jwt, JWTError
 import secrets
 import base64
+import hashlib
+import requests
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -37,6 +39,189 @@ security = HTTPBearer()
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Background tasks
+_plisio_poll_task: Optional[asyncio.Task] = None
+
+# ==================== PLISIO HELPERS ====================
+
+PLISIO_API_BASE = "https://plisio.net/api/v1"
+
+
+def _as_float(val, default: float = 0.0) -> float:
+    try:
+        return float(val)
+    except Exception:
+        return default
+
+
+def _is_truthy(v) -> bool:
+    return v is True or (isinstance(v, str) and v.lower() in {"1", "true", "yes", "on"})
+
+
+def _normalize_plisio_status(status: Optional[str]) -> str:
+    if not status:
+        return "unknown"
+    s = str(status).lower()
+    if s in {"completed", "confirmed", "success", "paid"}:
+        return "completed"
+    if s in {"pending", "processing", "new", "unconfirmed"}:
+        return "pending"
+    if s in {"expired", "error", "canceled", "cancelled", "failed"}:
+        return "failed"
+    return s
+
+
+async def _plisio_get_settings():
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0}) or {}
+    enabled = bool(settings.get("plisio_enabled", False))
+    api_key = settings.get("plisio_api_key") or ""
+    secret_key = settings.get("plisio_secret_key") or ""
+    return enabled, api_key.strip(), secret_key.strip(), settings
+
+
+async def _plisio_request(path: str, params: dict) -> dict:
+    """Plisio uses GET endpoints. Run in thread to avoid blocking."""
+    url = f"{PLISIO_API_BASE}{path}"
+
+    def _do():
+        r = requests.get(url, params=params, timeout=20)
+        r.raise_for_status()
+        return r.json()
+
+    return await asyncio.to_thread(_do)
+
+
+async def plisio_create_invoice(
+    *,
+    api_key: str,
+    amount: float,
+    source_currency: str,
+    crypto_currency: str,
+    order_number: str,
+    order_name: str,
+    callback_url: Optional[str] = None,
+    success_url: Optional[str] = None,
+    cancel_url: Optional[str] = None,
+):
+    params = {
+        "api_key": api_key,
+        "source_amount": amount,
+        "source_currency": source_currency,
+        "currency": crypto_currency,
+        "order_number": order_number,
+        "order_name": order_name,
+    }
+    if callback_url:
+        params["callback_url"] = callback_url
+    if success_url:
+        params["success_url"] = success_url
+    if cancel_url:
+        params["cancel_url"] = cancel_url
+
+    data = await _plisio_request("/invoices/new", params)
+    if data.get("status") != "success":
+        raise HTTPException(status_code=400, detail=data.get("data", {}).get("message") or "Plisio invoice creation failed")
+    return data.get("data") or {}
+
+
+async def plisio_get_operation(api_key: str, txn_id: str) -> Optional[dict]:
+    """Fetch operation/invoice info from Plisio for a given txn_id."""
+    # Plisio docs aren't exposed here; we try common filters and fall back to list search.
+    for params in (
+        {"api_key": api_key, "txn_id": txn_id},
+        {"api_key": api_key, "search": txn_id},
+        {"api_key": api_key},
+    ):
+        try:
+            resp = await _plisio_request("/operations", params)
+        except Exception:
+            continue
+        if resp.get("status") != "success":
+            continue
+        payload = resp.get("data")
+        if not payload:
+            continue
+        # Payload may be list, dict with items, or single dict.
+        if isinstance(payload, dict) and "items" in payload and isinstance(payload["items"], list):
+            items = payload["items"]
+        elif isinstance(payload, list):
+            items = payload
+        elif isinstance(payload, dict):
+            items = [payload]
+        else:
+            items = []
+        for item in items:
+            if str(item.get("txn_id") or item.get("id") or "") == str(txn_id):
+                return item
+        # If Plisio returned a single object without txn_id match but we filtered by txn_id, return it.
+        if params.get("txn_id") and items:
+            return items[0]
+    return None
+
+
+async def _finalize_deposit_as_completed(deposit: dict, *, provider_status: Optional[str] = None):
+    """Idempotently mark a deposit as completed and credit wallet."""
+    deposit_id = deposit["deposit_id"]
+    user_id = deposit["user_id"]
+    currency = (deposit.get("currency") or "").upper()
+    amount = _as_float(deposit.get("amount"), 0.0)
+    if amount <= 0:
+        return
+
+    # Only finalize if still pending_payment
+    res = await db.deposits.update_one(
+        {"deposit_id": deposit_id, "status": {"$in": ["pending_payment", "pending"]}},
+        {"$set": {"status": "completed", "processed_at": datetime.now(timezone.utc).isoformat(), "provider_status": provider_status}},
+    )
+    if res.modified_count == 0:
+        return
+
+    currency_key = f"wallet_{currency.lower()}"
+    await db.users.update_one({"user_id": user_id}, {"$inc": {currency_key: amount}})
+    await db.transactions.insert_one({
+        "transaction_id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "type": "deposit",
+        "amount": amount,
+        "currency": currency,
+        "reference_id": deposit_id,
+        "status": "completed",
+        "description": f"Deposit via {deposit.get('method')}",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+
+
+async def _plisio_poll_loop():
+    """Poll Plisio for pending_payment deposits and auto-credit when paid."""
+    while True:
+        try:
+            enabled, api_key, _secret, _settings = await _plisio_get_settings()
+            if enabled and api_key:
+                pending = await db.deposits.find(
+                    {"status": "pending_payment", "plisio_txn_id": {"$exists": True, "$ne": None}},
+                    {"_id": 0}
+                ).limit(200).to_list(200)
+                for dep in pending:
+                    txn_id = dep.get("plisio_txn_id")
+                    if not txn_id:
+                        continue
+                    op = await plisio_get_operation(api_key, str(txn_id))
+                    if not op:
+                        continue
+                    st = _normalize_plisio_status(op.get("status") or op.get("invoice_status") or op.get("state"))
+                    # Update provider status
+                    await db.deposits.update_one(
+                        {"deposit_id": dep["deposit_id"]},
+                        {"$set": {"provider_status": st, "provider_raw": op, "provider_checked_at": datetime.now(timezone.utc).isoformat()}}
+                    )
+                    if st == "completed":
+                        await _finalize_deposit_as_completed(dep, provider_status=st)
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            logger.error("Plisio poll loop error: %s", e)
+        await asyncio.sleep(60)
 
 # ==================== MODELS ====================
 
@@ -442,6 +627,48 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+
+    # Automatic USDT deposits via Plisio (if enabled + configured)
+    is_usdt = "usdt" in (request.method or "").lower()
+    if is_usdt:
+        enabled, api_key, _secret, _settings = await _plisio_get_settings()
+        if enabled and api_key:
+            crypto_currency = "USDT"
+            net = (request.network or "").upper()
+            if "TRC" in net or "TRON" in net or "TRC20" in (request.method or "").upper():
+                crypto_currency = "USDT.TRC20"
+            elif "ERC" in net or "ETH" in net or "ERC20" in (request.method or "").upper():
+                crypto_currency = "USDT.ERC20"
+
+            callback_url = os.environ.get("PLISIO_CALLBACK_URL")  # optional
+            success_url = os.environ.get("PLISIO_SUCCESS_URL") or os.environ.get("FRONTEND_URL")
+            cancel_url = os.environ.get("PLISIO_CANCEL_URL") or os.environ.get("FRONTEND_URL")
+
+            try:
+                invoice = await plisio_create_invoice(
+                    api_key=api_key,
+                    amount=float(request.amount),
+                    source_currency=request.currency.upper(),
+                    crypto_currency=crypto_currency,
+                    order_number=deposit_id,
+                    order_name=f"KAYICOM Deposit {deposit_id}",
+                    callback_url=callback_url,
+                    success_url=success_url,
+                    cancel_url=cancel_url,
+                )
+                deposit.update({
+                    "status": "pending_payment",
+                    "provider": "plisio",
+                    "plisio_txn_id": invoice.get("txn_id") or invoice.get("id"),
+                    "plisio_invoice_url": invoice.get("invoice_url") or invoice.get("invoice_url"),
+                    "plisio_wallet_hash": invoice.get("wallet_hash") or invoice.get("wallet"),
+                    "plisio_currency": crypto_currency,
+                    "provider_raw": invoice,
+                    "provider_checked_at": datetime.now(timezone.utc).isoformat()
+                })
+            except HTTPException:
+                # If Plisio fails, fall back to manual pending deposit
+                pass
     
     await db.deposits.insert_one(deposit)
     await log_action(current_user["user_id"], "deposit_request", {"amount": request.amount, "method": request.method})
@@ -449,6 +676,41 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
     if "_id" in deposit:
         del deposit["_id"]
     return {"deposit": deposit}
+
+
+@api_router.get("/deposits/{deposit_id}")
+async def get_deposit(deposit_id: str, current_user: dict = Depends(get_current_user)):
+    dep = await db.deposits.find_one({"deposit_id": deposit_id, "user_id": current_user["user_id"]}, {"_id": 0})
+    if not dep:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    return {"deposit": dep}
+
+
+@api_router.post("/deposits/{deposit_id}/sync")
+async def sync_deposit(deposit_id: str, current_user: dict = Depends(get_current_user)):
+    """Manually sync a Plisio deposit status (optional; background poll also runs)."""
+    dep = await db.deposits.find_one({"deposit_id": deposit_id, "user_id": current_user["user_id"]}, {"_id": 0})
+    if not dep:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    if dep.get("provider") != "plisio" or not dep.get("plisio_txn_id"):
+        return {"deposit": dep, "message": "No Plisio sync needed"}
+
+    enabled, api_key, _secret, _settings = await _plisio_get_settings()
+    if not (enabled and api_key):
+        raise HTTPException(status_code=400, detail="Plisio not enabled/configured")
+
+    op = await plisio_get_operation(api_key, str(dep["plisio_txn_id"]))
+    if op:
+        st = _normalize_plisio_status(op.get("status") or op.get("invoice_status") or op.get("state"))
+        await db.deposits.update_one(
+            {"deposit_id": dep["deposit_id"]},
+            {"$set": {"provider_status": st, "provider_raw": op, "provider_checked_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        if st == "completed":
+            await _finalize_deposit_as_completed(dep, provider_status=st)
+
+    dep2 = await db.deposits.find_one({"deposit_id": dep["deposit_id"]}, {"_id": 0})
+    return {"deposit": dep2, "message": "Synced"}
 
 @api_router.get("/deposits")
 async def get_deposits(
@@ -2027,6 +2289,15 @@ async def startup():
             "updated_at": datetime.now(timezone.utc).isoformat()
         })
 
+    # Start Plisio polling loop (auto-detect paid deposits)
+    global _plisio_poll_task
+    if _plisio_poll_task is None:
+        _plisio_poll_task = asyncio.create_task(_plisio_poll_loop())
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    global _plisio_poll_task
+    if _plisio_poll_task is not None:
+        _plisio_poll_task.cancel()
+        _plisio_poll_task = None
     client.close()
