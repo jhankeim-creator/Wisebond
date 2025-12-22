@@ -14,6 +14,7 @@ import {
   RefreshCw,
   DollarSign,
   Settings,
+  Wallet,
   Mail,
   LogOut,
   ChevronLeft,
@@ -22,7 +23,8 @@ import {
   CreditCard,
   Phone,
   Home,
-  Bell
+  Bell,
+  UserCog
 } from 'lucide-react';
 
 export const AdminLayout = ({ children, title }) => {
@@ -46,11 +48,13 @@ export const AdminLayout = ({ children, title }) => {
   const menuItems = [
     { path: '/admin', icon: LayoutDashboard, label: getText('Tablo bò', 'Tableau de bord', 'Dashboard'), exact: true },
     { path: '/admin/users', icon: Users, label: getText('Kliyan', 'Clients', 'Clients') },
+    { path: '/admin/team', icon: UserCog, label: getText('Ekip', 'Équipe', 'Team') },
     { path: '/admin/kyc', icon: UserCheck, label: 'KYC' },
     { path: '/admin/deposits', icon: ArrowDownCircle, label: getText('Depo', 'Dépôts', 'Deposits') },
     { path: '/admin/withdrawals', icon: ArrowUpCircle, label: getText('Retrè', 'Retraits', 'Withdrawals') },
     { path: '/admin/virtual-cards', icon: CreditCard, label: getText('Komand Kat', 'Commandes Cartes', 'Card Orders') },
     { path: '/admin/topup', icon: Phone, label: getText('Komand Minit', 'Commandes Minutes', 'Minute Orders') },
+    { path: '/admin/payment-methods', icon: Wallet, label: getText('Mwayen Peman', 'Paiements', 'Payments') },
     { path: '/admin/rates', icon: RefreshCw, label: getText('To chanj', 'Taux de change', 'Exchange Rates') },
     { path: '/admin/fees', icon: DollarSign, label: getText('Frè', 'Frais', 'Fees') },
     { path: '/admin/bulk-email', icon: Mail, label: getText('Imèl', 'Emails', 'Emails') },

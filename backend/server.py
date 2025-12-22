@@ -8,7 +8,7 @@ import logging
 import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Literal
 import uuid
 from datetime import datetime, timezone, timedelta
 import bcrypt
@@ -133,10 +133,65 @@ class WithdrawalLimitUpdate(BaseModel):
     waiting_hours: int
 
 class AdminSettingsUpdate(BaseModel):
+    # Email (Resend)
+    resend_enabled: Optional[bool] = None
     resend_api_key: Optional[str] = None
     sender_email: Optional[str] = None
+
+    # Live Chat (Crisp)
+    crisp_enabled: Optional[bool] = None
     crisp_website_id: Optional[str] = None
+
+    # WhatsApp
+    whatsapp_enabled: Optional[bool] = None
     whatsapp_number: Optional[str] = None
+
+    # USDT (Plisio) - demo credentials (optional)
+    plisio_enabled: Optional[bool] = None
+    plisio_api_key: Optional[str] = None
+    plisio_secret_key: Optional[str] = None
+
+    # Business config
+    card_order_fee_htg: Optional[int] = None
+    card_bonus_usd: Optional[float] = None
+    affiliate_reward_htg: Optional[int] = None
+    affiliate_cards_required: Optional[int] = None
+
+
+class PaymentMethodUpsert(BaseModel):
+    method_id: str = Field(..., description="Unique id like 'moncash', 'zelle', 'usdt_trc20'")
+    flow: Literal["deposit", "withdrawal"]
+    currencies: List[Literal["HTG", "USD"]] = Field(default_factory=list)
+    display_name: str
+    enabled: bool = True
+    sort_order: int = 0
+    # What the user should see (instructions, recipient address/number/email, etc.)
+    public: Dict[str, Any] = Field(default_factory=dict)
+    # Secrets/admin-only credentials (API keys, logins, etc.)
+    private: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PaymentMethodPublicResponse(BaseModel):
+    method_id: str
+    flow: Literal["deposit", "withdrawal"]
+    currencies: List[Literal["HTG", "USD"]]
+    display_name: str
+    enabled: bool
+    sort_order: int
+    public: Dict[str, Any]
+
+
+class TeamMemberCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    phone: str
+    role: Optional[str] = "admin"
+
+
+class TeamMemberUpdate(BaseModel):
+    is_active: Optional[bool] = None
+    role: Optional[str] = None
 
 class BulkEmailRequest(BaseModel):
     subject: str
@@ -229,11 +284,23 @@ async def log_action(user_id: str, action: str, details: dict):
     }
     await db.logs.insert_one(log_entry)
 
+async def get_main_settings() -> dict:
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    return settings or {}
+
+def setting_bool(settings: dict, key: str, default: bool = False) -> bool:
+    value = settings.get(key, default)
+    return bool(value)
+
 async def send_email(to_email: str, subject: str, html_content: str):
     try:
-        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-        resend_key = settings.get("resend_api_key") if settings else os.environ.get("RESEND_API_KEY")
-        sender = settings.get("sender_email") if settings else os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+        settings = await get_main_settings()
+        if settings and not setting_bool(settings, "resend_enabled", False):
+            logger.info("Email sending disabled in settings")
+            return False
+
+        resend_key = settings.get("resend_api_key") or os.environ.get("RESEND_API_KEY")
+        sender = settings.get("sender_email") or os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
         
         if not resend_key:
             logger.warning("Resend API key not configured")
@@ -473,17 +540,28 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
     
     # Calculate fees
     fee = 0
-    fee_config = await db.fees.find_one({
-        "method": request.method,
-        "min_amount": {"$lte": request.amount},
-        "max_amount": {"$gte": request.amount}
-    }, {"_id": 0})
-    
-    if fee_config:
-        if fee_config.get("fee_type") == "percentage":
-            fee = request.amount * (fee_config["fee_value"] / 100)
-        else:
-            fee = fee_config["fee_value"]
+    if request.method == "card":
+        # Card withdrawal fees are configured in /admin/card-fees (range based)
+        if target_currency != "USD":
+            raise HTTPException(status_code=400, detail="Card withdrawals are only available in USD")
+        card_fee_doc = await db.card_fees.find_one(
+            {"min_amount": {"$lte": request.amount}, "max_amount": {"$gte": request.amount}},
+            {"_id": 0}
+        )
+        if card_fee_doc:
+            fee = float(card_fee_doc.get("fee", 0))
+    else:
+        fee_config = await db.fees.find_one({
+            "method": request.method,
+            "min_amount": {"$lte": request.amount},
+            "max_amount": {"$gte": request.amount}
+        }, {"_id": 0})
+        
+        if fee_config:
+            if fee_config.get("fee_type") == "percentage":
+                fee = request.amount * (fee_config["fee_value"] / 100)
+            else:
+                fee = fee_config["fee_value"]
     
     withdrawal_id = str(uuid.uuid4())
     withdrawal = {
@@ -557,7 +635,8 @@ async def get_withdrawals(
 async def get_withdrawal_fees():
     fees = await db.fees.find({}, {"_id": 0}).to_list(100)
     limits = await db.withdrawal_limits.find({}, {"_id": 0}).to_list(100)
-    return {"fees": fees, "limits": limits}
+    card_fees = await db.card_fees.find({}, {"_id": 0}).sort("min_amount", 1).to_list(100)
+    return {"fees": fees, "limits": limits, "card_fees": card_fees}
 
 # ==================== SWAP ROUTES ====================
 
@@ -882,8 +961,9 @@ async def withdraw_affiliate_earnings(current_user: dict = Depends(get_current_u
 
 # ==================== VIRTUAL CARD ROUTES (Manual Third-Party System) ====================
 
-CARD_FEE_HTG = 500  # Card order fee in HTG
-CARD_BONUS_USD = 5  # $5 USD bonus for approved cards
+# Defaults; real values can be overridden in /admin/settings
+DEFAULT_CARD_FEE_HTG = 500
+DEFAULT_CARD_BONUS_USD = 5
 
 @api_router.get("/virtual-cards")
 async def get_virtual_cards(current_user: dict = Depends(get_current_user)):
@@ -917,13 +997,16 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
     if current_user["kyc_status"] != "approved":
         raise HTTPException(status_code=403, detail="KYC verification required")
     
-    if current_user.get("wallet_htg", 0) < CARD_FEE_HTG:
-        raise HTTPException(status_code=400, detail=f"Insufficient balance. Card fee is {CARD_FEE_HTG} HTG")
+    settings = await get_main_settings()
+    card_fee_htg = int(settings.get("card_order_fee_htg", DEFAULT_CARD_FEE_HTG))
+
+    if current_user.get("wallet_htg", 0) < card_fee_htg:
+        raise HTTPException(status_code=400, detail=f"Insufficient balance. Card fee is {card_fee_htg} HTG")
     
     # Deduct fee
     await db.users.update_one(
         {"user_id": current_user["user_id"]},
-        {"$inc": {"wallet_htg": -CARD_FEE_HTG}}
+        {"$inc": {"wallet_htg": -card_fee_htg}}
     )
     
     # Create card order (manual process - admin will approve/reject)
@@ -932,7 +1015,7 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
         "user_id": current_user["user_id"],
         "client_id": current_user["client_id"],
         "card_email": request.card_email.lower(),
-        "fee": CARD_FEE_HTG,
+        "fee": card_fee_htg,
         "status": "pending",  # pending, approved, rejected
         "admin_notes": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -947,7 +1030,7 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
         "transaction_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
         "type": "card_order",
-        "amount": -CARD_FEE_HTG,
+        "amount": -card_fee_htg,
         "currency": "HTG",
         "status": "completed",
         "description": "Virtual card order fee",
@@ -1005,10 +1088,12 @@ async def admin_process_card_order(
     )
     
     if action == "approve":
+        settings = await get_main_settings()
+        card_bonus_usd = float(settings.get("card_bonus_usd", DEFAULT_CARD_BONUS_USD))
         # Add $5 USD bonus to user's wallet
         await db.users.update_one(
             {"user_id": order["user_id"]},
-            {"$inc": {"wallet_usd": CARD_BONUS_USD}}
+            {"$inc": {"wallet_usd": card_bonus_usd}}
         )
         
         # Create bonus transaction
@@ -1016,7 +1101,7 @@ async def admin_process_card_order(
             "transaction_id": str(uuid.uuid4()),
             "user_id": order["user_id"],
             "type": "card_bonus",
-            "amount": CARD_BONUS_USD,
+            "amount": card_bonus_usd,
             "currency": "USD",
             "status": "completed",
             "description": "Virtual card approval bonus",
@@ -1031,14 +1116,14 @@ async def admin_process_card_order(
         # Refund the fee if rejected
         await db.users.update_one(
             {"user_id": order["user_id"]},
-            {"$inc": {"wallet_htg": CARD_FEE_HTG}}
+            {"$inc": {"wallet_htg": float(order.get("fee", DEFAULT_CARD_FEE_HTG))}}
         )
         
         await db.transactions.insert_one({
             "transaction_id": str(uuid.uuid4()),
             "user_id": order["user_id"],
             "type": "card_order_refund",
-            "amount": CARD_FEE_HTG,
+            "amount": float(order.get("fee", DEFAULT_CARD_FEE_HTG)),
             "currency": "HTG",
             "status": "completed",
             "description": "Virtual card order refund (rejected)",
@@ -1054,6 +1139,10 @@ async def process_card_affiliate_reward(affiliate_code: str):
     referrer = await db.users.find_one({"affiliate_code": affiliate_code}, {"_id": 0})
     if not referrer:
         return
+
+    settings = await get_main_settings()
+    cards_required = int(settings.get("affiliate_cards_required", 5))
+    reward_unit_htg = int(settings.get("affiliate_reward_htg", 2000))
     
     # Count referrals with approved card orders
     referrals = await db.users.find(
@@ -1072,16 +1161,17 @@ async def process_card_affiliate_reward(affiliate_code: str):
     
     # Check if we've hit a new milestone of 5
     rewarded_count = referrer.get("affiliate_cards_rewarded", 0)
-    new_rewards = (cards_count // 5) - rewarded_count
+    milestones = (cards_count // max(cards_required, 1))
+    new_rewards = milestones - rewarded_count
     
     if new_rewards > 0:
-        reward_amount = new_rewards * 2000  # 2000 HTG per 5 cards
+        reward_amount = new_rewards * reward_unit_htg  # HTG per milestone
         
         await db.users.update_one(
             {"user_id": referrer["user_id"]},
             {
                 "$inc": {"affiliate_earnings": reward_amount},
-                "$set": {"affiliate_cards_rewarded": cards_count // 5}
+                "$set": {"affiliate_cards_rewarded": milestones}
             }
         )
         
@@ -1093,7 +1183,7 @@ async def process_card_affiliate_reward(affiliate_code: str):
             "amount": reward_amount,
             "currency": "HTG",
             "status": "completed",
-            "description": f"Affiliate reward for {new_rewards * 5} card orders",
+            "description": f"Affiliate reward for {new_rewards * max(cards_required, 1)} card orders",
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         
@@ -1518,10 +1608,12 @@ async def admin_process_withdrawal(
     
     if action == "reject":
         # Refund the amount
-        currency_key = f"wallet_{withdrawal['currency'].lower()}"
+        refund_currency = (withdrawal.get("source_currency") or withdrawal.get("currency") or "usd").lower()
+        currency_key = f"wallet_{refund_currency}"
+        refund_amount = float(withdrawal.get("amount_deducted", withdrawal.get("amount", 0)))
         await db.users.update_one(
             {"user_id": withdrawal["user_id"]},
-            {"$inc": {currency_key: withdrawal["amount"]}}
+            {"$inc": {currency_key: refund_amount}}
         )
     else:
         # Process affiliate commission if applicable
@@ -1671,28 +1763,37 @@ async def admin_update_withdrawal_limit(limit: WithdrawalLimitUpdate, admin: dic
 # Settings Admin
 @api_router.get("/admin/settings")
 async def admin_get_settings(admin: dict = Depends(get_admin_user)):
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not settings:
-        settings = {
-            "setting_id": "main",
-            "resend_enabled": False,
-            "resend_api_key": "",
-            "sender_email": "",
-            "crisp_enabled": False,
-            "crisp_website_id": "",
-            "whatsapp_enabled": False,
-            "whatsapp_number": "",
-            "plisio_enabled": False,
-            "plisio_api_key": "",
-            "plisio_secret_key": ""
-        }
+    defaults = {
+        "setting_id": "main",
+        # Email (Resend)
+        "resend_enabled": False,
+        "resend_api_key": "",
+        "sender_email": "",
+        # Live Chat (Crisp)
+        "crisp_enabled": False,
+        "crisp_website_id": "",
+        # WhatsApp
+        "whatsapp_enabled": False,
+        "whatsapp_number": "",
+        # USDT (Plisio)
+        "plisio_enabled": False,
+        "plisio_api_key": "",
+        "plisio_secret_key": "",
+        # Business config
+        "card_order_fee_htg": 500,
+        "card_bonus_usd": 5,
+        "affiliate_reward_htg": 2000,
+        "affiliate_cards_required": 5,
+    }
+    stored = await get_main_settings()
+    settings = {**defaults, **stored}
     return {"settings": settings}
 
 # Public endpoint for chat settings (no auth required)
 @api_router.get("/public/chat-settings")
 async def get_public_chat_settings():
     """Get chat settings for public display (Crisp/WhatsApp)"""
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    settings = await get_main_settings()
     if not settings:
         return {
             "crisp_enabled": False,
@@ -1700,12 +1801,23 @@ async def get_public_chat_settings():
             "whatsapp_enabled": False,
             "whatsapp_number": None
         }
-    
+
     return {
         "crisp_enabled": settings.get("crisp_enabled", False),
         "crisp_website_id": settings.get("crisp_website_id") if settings.get("crisp_enabled") else None,
         "whatsapp_enabled": settings.get("whatsapp_enabled", False),
         "whatsapp_number": settings.get("whatsapp_number") if settings.get("whatsapp_enabled") else None
+    }
+
+# Public app config (no auth required) - safe values only
+@api_router.get("/public/app-config")
+async def get_public_app_config():
+    settings = await get_main_settings()
+    return {
+        "card_order_fee_htg": int(settings.get("card_order_fee_htg", 500)),
+        "card_bonus_usd": float(settings.get("card_bonus_usd", 5)),
+        "affiliate_reward_htg": int(settings.get("affiliate_reward_htg", 2000)),
+        "affiliate_cards_required": int(settings.get("affiliate_cards_required", 5)),
     }
 
 @api_router.put("/admin/settings")
@@ -1722,6 +1834,293 @@ async def admin_update_settings(settings: AdminSettingsUpdate, admin: dict = Dep
     await log_action(admin["user_id"], "settings_update", {"fields_updated": list(update_doc.keys())})
     
     return {"message": "Settings updated"}
+
+# ==================== PAYMENT METHODS (Admin + Public) ====================
+
+@api_router.get("/admin/payment-methods")
+async def admin_get_payment_methods(
+    flow: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    query: Dict[str, Any] = {}
+    if flow:
+        query["flow"] = flow
+    methods = await db.payment_methods.find(query, {"_id": 0}).sort([("flow", 1), ("sort_order", 1), ("display_name", 1)]).to_list(500)
+    return {"methods": methods}
+
+@api_router.put("/admin/payment-methods")
+async def admin_upsert_payment_method(method: PaymentMethodUpsert, admin: dict = Depends(get_admin_user)):
+    doc = method.model_dump()
+    now = datetime.now(timezone.utc).isoformat()
+    doc["updated_at"] = now
+    doc["updated_by"] = admin["user_id"]
+    await db.payment_methods.update_one(
+        {"flow": doc["flow"], "method_id": doc["method_id"]},
+        {"$set": doc, "$setOnInsert": {"created_at": now}},
+        upsert=True
+    )
+    saved = await db.payment_methods.find_one({"flow": doc["flow"], "method_id": doc["method_id"]}, {"_id": 0})
+    await log_action(admin["user_id"], "payment_method_upsert", {"flow": doc["flow"], "method_id": doc["method_id"]})
+    return {"method": saved}
+
+@api_router.delete("/admin/payment-methods/{flow}/{method_id}")
+async def admin_delete_payment_method(flow: str, method_id: str, admin: dict = Depends(get_admin_user)):
+    result = await db.payment_methods.delete_one({"flow": flow, "method_id": method_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+    await log_action(admin["user_id"], "payment_method_delete", {"flow": flow, "method_id": method_id})
+    return {"message": "Payment method deleted"}
+
+@api_router.post("/admin/payment-methods/seed")
+async def admin_seed_payment_methods(admin: dict = Depends(get_admin_user)):
+    """Create/update a default demo set of payment methods."""
+    now = datetime.now(timezone.utc).isoformat()
+    defaults: List[dict] = [
+        # Deposits - HTG
+        {
+            "flow": "deposit",
+            "method_id": "moncash",
+            "display_name": "MonCash",
+            "currencies": ["HTG"],
+            "enabled": True,
+            "sort_order": 10,
+            "public": {
+                "recipient": "+509 0000 0000",
+                "instructions": "Voye montan an sou MonCash epi telechaje prèv peman an."
+            },
+            "private": {}
+        },
+        {
+            "flow": "deposit",
+            "method_id": "natcash",
+            "display_name": "NatCash",
+            "currencies": ["HTG"],
+            "enabled": True,
+            "sort_order": 20,
+            "public": {
+                "recipient": "+509 0000 0000",
+                "instructions": "Voye montan an sou NatCash epi telechaje prèv peman an."
+            },
+            "private": {}
+        },
+        # Deposits - USD
+        {
+            "flow": "deposit",
+            "method_id": "zelle",
+            "display_name": "Zelle",
+            "currencies": ["USD"],
+            "enabled": True,
+            "sort_order": 30,
+            "public": {
+                "recipient": "payments@kayicom.com",
+                "instructions": "Voye peman an via Zelle sou adrès sa a epi telechaje prèv peman an."
+            },
+            "private": {}
+        },
+        {
+            "flow": "deposit",
+            "method_id": "paypal",
+            "display_name": "PayPal",
+            "currencies": ["USD"],
+            "enabled": True,
+            "sort_order": 40,
+            "public": {
+                "recipient": "payments@kayicom.com",
+                "instructions": "Voye peman an via PayPal sou email sa a epi telechaje prèv peman an."
+            },
+            "private": {}
+        },
+        {
+            "flow": "deposit",
+            "method_id": "usdt_trc20",
+            "display_name": "USDT (TRC-20)",
+            "currencies": ["USD"],
+            "enabled": True,
+            "sort_order": 50,
+            "public": {
+                "network": "TRC-20",
+                "address": "TRx1234567890abcdefghijklmnop",
+                "instructions": "Voye USDT sou adrès sa a sou rezo TRC-20."
+            },
+            "private": {}
+        },
+        {
+            "flow": "deposit",
+            "method_id": "usdt_erc20",
+            "display_name": "USDT (ERC-20)",
+            "currencies": ["USD"],
+            "enabled": True,
+            "sort_order": 60,
+            "public": {
+                "network": "ERC-20",
+                "address": "0x1234567890abcdef1234567890abcdef12345678",
+                "instructions": "Voye USDT sou adrès sa a sou rezo ERC-20."
+            },
+            "private": {}
+        },
+        # Withdrawals
+        {
+            "flow": "withdrawal",
+            "method_id": "moncash",
+            "display_name": "MonCash",
+            "currencies": ["HTG"],
+            "enabled": True,
+            "sort_order": 10,
+            "public": {"placeholder": "Nimewo telefòn MonCash"},
+            "private": {}
+        },
+        {
+            "flow": "withdrawal",
+            "method_id": "natcash",
+            "display_name": "NatCash",
+            "currencies": ["HTG"],
+            "enabled": True,
+            "sort_order": 20,
+            "public": {"placeholder": "Nimewo telefòn NatCash"},
+            "private": {}
+        },
+        {
+            "flow": "withdrawal",
+            "method_id": "card",
+            "display_name": "Kat Vityèl",
+            "currencies": ["USD"],
+            "enabled": True,
+            "sort_order": 25,
+            "public": {"placeholder": "Email kat vityèl ou", "onlyField": "email"},
+            "private": {}
+        },
+        {
+            "flow": "withdrawal",
+            "method_id": "zelle",
+            "display_name": "Zelle",
+            "currencies": ["USD"],
+            "enabled": True,
+            "sort_order": 30,
+            "public": {"placeholder": "Email ou telefòn Zelle"},
+            "private": {}
+        },
+        {
+            "flow": "withdrawal",
+            "method_id": "paypal",
+            "display_name": "PayPal",
+            "currencies": ["USD"],
+            "enabled": True,
+            "sort_order": 40,
+            "public": {"placeholder": "Email PayPal"},
+            "private": {}
+        },
+        {
+            "flow": "withdrawal",
+            "method_id": "usdt",
+            "display_name": "USDT",
+            "currencies": ["USD"],
+            "enabled": True,
+            "sort_order": 50,
+            "public": {"placeholder": "Adrès USDT (TRC-20 ou ERC-20)"},
+            "private": {}
+        },
+        {
+            "flow": "withdrawal",
+            "method_id": "bank_usa",
+            "display_name": "Bank USA",
+            "currencies": ["USD"],
+            "enabled": True,
+            "sort_order": 60,
+            "public": {"placeholder": "Routing + Account Number"},
+            "private": {}
+        },
+    ]
+
+    upserted = 0
+    for d in defaults:
+        d["enabled"] = bool(d.get("enabled", True))
+        d["updated_at"] = now
+        d["updated_by"] = admin["user_id"]
+        await db.payment_methods.update_one(
+            {"flow": d["flow"], "method_id": d["method_id"]},
+            {"$set": d, "$setOnInsert": {"created_at": now}},
+            upsert=True
+        )
+        upserted += 1
+
+    await log_action(admin["user_id"], "payment_method_seed", {"count": upserted})
+    return {"message": f"Seeded {upserted} payment methods"}
+
+@api_router.get("/public/payment-methods", response_model=List[PaymentMethodPublicResponse])
+async def public_get_payment_methods(
+    flow: str = Query(..., description="deposit|withdrawal"),
+    currency: Optional[str] = Query(default=None, description="HTG|USD")
+):
+    query: Dict[str, Any] = {"flow": flow, "enabled": True}
+    if currency:
+        query["currencies"] = currency.upper()
+    docs = await db.payment_methods.find(query, {"_id": 0, "private": 0}).sort([("sort_order", 1), ("display_name", 1)]).to_list(200)
+    normalized: List[PaymentMethodPublicResponse] = []
+    for d in docs:
+        d.setdefault("sort_order", 0)
+        d.setdefault("public", {})
+        d.setdefault("currencies", [])
+        d.setdefault("enabled", True)
+        normalized.append(PaymentMethodPublicResponse(**d))
+    return normalized
+
+# ==================== TEAM (Admin Users) ====================
+
+@api_router.get("/admin/team")
+async def admin_get_team(admin: dict = Depends(get_admin_user)):
+    team = await db.users.find({"is_admin": True}, {"_id": 0, "password_hash": 0}).sort("created_at", -1).to_list(200)
+    return {"team": team}
+
+@api_router.post("/admin/team")
+async def admin_create_team_member(member: TeamMemberCreate, admin: dict = Depends(get_admin_user)):
+    existing = await db.users.find_one({"email": member.email.lower()}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user_id = str(uuid.uuid4())
+    admin_doc = {
+        "user_id": user_id,
+        "client_id": generate_client_id(),
+        "email": member.email.lower(),
+        "password_hash": hash_password(member.password),
+        "full_name": member.full_name,
+        "phone": member.phone,
+        "language": "fr",
+        "kyc_status": "approved",
+        "wallet_htg": 0.0,
+        "wallet_usd": 0.0,
+        "affiliate_code": generate_affiliate_code(),
+        "affiliate_earnings": 0.0,
+        "referred_by": None,
+        "is_active": True,
+        "is_admin": True,
+        "admin_role": member.role or "admin",
+        "two_factor_enabled": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(admin_doc)
+    await log_action(admin["user_id"], "team_create", {"user_id": user_id, "email": member.email.lower(), "role": member.role})
+    admin_doc.pop("password_hash", None)
+    return {"member": admin_doc}
+
+@api_router.patch("/admin/team/{user_id}")
+async def admin_update_team_member(user_id: str, update: TeamMemberUpdate, admin: dict = Depends(get_admin_user)):
+    target = await db.users.find_one({"user_id": user_id, "is_admin": True}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Team member not found")
+
+    update_doc: Dict[str, Any] = {}
+    if update.is_active is not None:
+        update_doc["is_active"] = update.is_active
+    if update.role is not None:
+        update_doc["admin_role"] = update.role
+    if not update_doc:
+        return {"message": "No changes"}
+
+    await db.users.update_one({"user_id": user_id}, {"$set": update_doc})
+    await log_action(admin["user_id"], "team_update", {"user_id": user_id, **update_doc})
+    saved = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    return {"member": saved}
 
 # Bulk Email Admin
 @api_router.post("/admin/bulk-email")
@@ -1801,6 +2200,7 @@ async def startup():
     await db.deposits.create_index([("user_id", 1), ("status", 1)])
     await db.withdrawals.create_index([("user_id", 1), ("status", 1)])
     await db.kyc.create_index("user_id", unique=True)
+    await db.payment_methods.create_index([("flow", 1), ("method_id", 1)], unique=True)
     
     # Create default admin if not exists
     admin = await db.users.find_one({"is_admin": True}, {"_id": 0})

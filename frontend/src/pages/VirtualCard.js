@@ -30,6 +30,7 @@ export default function VirtualCard() {
   
   const [cardOrders, setCardOrders] = useState([]);
   const [cardDeposits, setCardDeposits] = useState([]);
+  const [appConfig, setAppConfig] = useState({ card_order_fee_htg: 500, card_bonus_usd: 5 });
   const [loading, setLoading] = useState(true);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [ordering, setOrdering] = useState(false);
@@ -47,12 +48,14 @@ export default function VirtualCard() {
 
   const fetchData = async () => {
     try {
-      const [ordersRes, depositsRes] = await Promise.all([
+      const [ordersRes, depositsRes, configRes] = await Promise.all([
         axios.get(`${API}/virtual-cards/orders`),
-        axios.get(`${API}/virtual-cards/deposits`)
+        axios.get(`${API}/virtual-cards/deposits`),
+        axios.get(`${API}/public/app-config`).catch(() => ({ data: { card_order_fee_htg: 500, card_bonus_usd: 5 } }))
       ]);
       setCardOrders(ordersRes.data.orders || []);
       setCardDeposits(depositsRes.data.deposits || []);
+      setAppConfig(configRes.data || { card_order_fee_htg: 500, card_bonus_usd: 5 });
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -81,7 +84,8 @@ export default function VirtualCard() {
     }
   };
 
-  const cardFee = 500; // 500 HTG for card
+  const cardFee = appConfig?.card_order_fee_htg ?? 500;
+  const cardBonusUsd = appConfig?.card_bonus_usd ?? 5;
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -153,7 +157,11 @@ export default function VirtualCard() {
                   </p>
                   <div className="bg-white/10 rounded-lg p-3 mb-3">
                     <p className="text-emerald-300 font-semibold flex items-center gap-2">
-                      🎁 {getText('Bonis: $5 USD sou premye kat ou!', 'Bonus: $5 USD sur votre première carte!', 'Bonus: $5 USD on your first card!')}
+                      🎁 {getText(
+                        `Bonis: $${cardBonusUsd} USD sou premye kat ou!`,
+                        `Bonus: $${cardBonusUsd} USD sur votre première carte!`,
+                        `Bonus: $${cardBonusUsd} USD on your first card!`
+                      )}
                     </p>
                   </div>
                   <div className="bg-red-500/20 border border-red-300/30 rounded-lg p-3">

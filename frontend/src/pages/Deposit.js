@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -19,8 +19,8 @@ import {
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-// Metòd depo: HTG = MonCash/NatCash sèlman, USD = Zelle/PayPal/USDT sèlman
-const depositMethods = {
+// Metòd depo (fallback si admin pa configure yo)
+const fallbackDepositMethods = {
   HTG: [
     { id: 'moncash', name: 'MonCash', icon: Smartphone },
     { id: 'natcash', name: 'NatCash', icon: Smartphone }
@@ -44,12 +44,47 @@ export default function Deposit() {
   const [proofImage, setProofImage] = useState('');
   const [walletAddress, setWalletAddress] = useState('');
   const [loading, setLoading] = useState(false);
+  const [availableMethods, setAvailableMethods] = useState(fallbackDepositMethods);
+  const [methodMeta, setMethodMeta] = useState({});
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
     if (language === 'fr') return fr;
     return en;
   };
+
+  const getMethodIcon = (methodId) => {
+    if (methodId === 'moncash' || methodId === 'natcash') return Smartphone;
+    if (methodId.startsWith('usdt')) return Wallet;
+    return DollarSign;
+  };
+
+  const fetchPaymentMethods = async (cur) => {
+    try {
+      const res = await axios.get(`${API}/public/payment-methods?flow=deposit&currency=${cur}`);
+      const list = Array.isArray(res.data) ? res.data : [];
+      if (list.length === 0) return;
+
+      const metaById = {};
+      const mapped = list
+        .slice()
+        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+        .map((m) => {
+          metaById[m.method_id] = m;
+          return { id: m.method_id, name: m.display_name, icon: getMethodIcon(m.method_id) };
+        });
+
+      setMethodMeta((prev) => ({ ...prev, ...metaById }));
+      setAvailableMethods((prev) => ({ ...prev, [cur]: mapped }));
+    } catch (e) {
+      // Silent fallback to hardcoded demo methods
+    }
+  };
+
+  useEffect(() => {
+    fetchPaymentMethods(currency);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currency]);
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -122,7 +157,7 @@ export default function Deposit() {
       <div>
         <h3 className="font-semibold text-stone-900 mb-4">{getText('Chwazi metòd', 'Choisir la méthode', 'Choose method')}</h3>
         <div className="space-y-3">
-          {depositMethods[currency].map((m) => {
+          {(availableMethods[currency] || fallbackDepositMethods[currency]).map((m) => {
             const Icon = m.icon;
             return (
               <button
@@ -191,7 +226,7 @@ export default function Deposit() {
                 )}
               </p>
               <code className="block bg-white rounded p-2 mt-2 text-xs break-all">
-                TRx1234567890abcdefghijklmnop
+                {methodMeta[method]?.public?.address || 'TRx1234567890abcdefghijklmnop'}
               </code>
               <div className="mt-3">
                 <Label>{getText('Adrès retou ou (opsyonèl)', 'Votre adresse de retour (optionnel)', 'Your return address (optional)')}</Label>
@@ -209,15 +244,18 @@ export default function Deposit() {
         <div className="space-y-4">
           <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
             <p className="font-medium text-orange-800">
-              {getText('Enstriksyon', 'Instructions', 'Instructions')} {depositMethods[currency].find(m => m.id === method)?.name}
+              {getText('Enstriksyon', 'Instructions', 'Instructions')} {(availableMethods[currency] || fallbackDepositMethods[currency]).find(m => m.id === method)?.name}
             </p>
             <p className="text-sm text-orange-700 mt-1">
-              {currency === 'HTG' 
-                ? getText('Voye montan an nan nimewo sa a: +509 0000 0000', 'Envoyez le montant au numéro: +509 0000 0000', 'Send amount to: +509 0000 0000')
-                : method === 'zelle' 
-                  ? getText('Voye nan: payments@kayicom.com', 'Envoyez à: payments@kayicom.com', 'Send to: payments@kayicom.com')
-                  : getText('Voye nan: payments@kayicom.com', 'Envoyez à: payments@kayicom.com', 'Send to: payments@kayicom.com')
-              }
+              {(() => {
+                const meta = methodMeta[method]?.public || {};
+                const recipient = meta.recipient || meta.email || meta.number || meta.account || '';
+                const instructions = meta.instructions || '';
+                if (recipient && instructions) return `${instructions} (${recipient})`;
+                if (instructions) return instructions;
+                if (recipient) return `${getText('Voye sou', 'Envoyez à', 'Send to')}: ${recipient}`;
+                return getText('Suiv enstriksyon yo epi telechaje prèv peman an.', 'Suivez les instructions et téléchargez la preuve.', 'Follow instructions and upload proof.');
+              })()}
             </p>
           </div>
 
