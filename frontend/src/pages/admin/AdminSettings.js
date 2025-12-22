@@ -101,9 +101,9 @@ export default function AdminSettings() {
       const resp = await axios.post(`${API}/admin/purge-old-records?days=7`);
       const r = resp.data?.result;
       toast.success(getText(
-        `Netwayaj fèt: ${r.deleted_deposits} depo, ${r.deleted_withdrawals} retrè efase`,
-        `Nettoyage effectué: ${r.deleted_deposits} dépôts, ${r.deleted_withdrawals} retraits supprimés`,
-        `Cleanup done: deleted ${r.deleted_deposits} deposits, ${r.deleted_withdrawals} withdrawals`
+        `Netwayaj fèt: ${r.deleted_deposits} depo, ${r.deleted_withdrawals} retrè, ${r.deleted_transactions} tranzaksyon efase`,
+        `Nettoyage effectué: ${r.deleted_deposits} dépôts, ${r.deleted_withdrawals} retraits, ${r.deleted_transactions} transactions supprimés`,
+        `Cleanup done: deleted ${r.deleted_deposits} deposits, ${r.deleted_withdrawals} withdrawals, ${r.deleted_transactions} transactions`
       ));
     } catch (e) {
       toast.error(getText('Erè pandan netwayaj', 'Erreur nettoyage', 'Cleanup error'));
@@ -403,7 +403,7 @@ export default function AdminSettings() {
             </Button>
 
             <Button variant="outline" onClick={purgeOldRecords}>
-              {getText('Efase depo/retrè ki depase 7 jou', 'Supprimer dépôts/retraits > 7 jours', 'Delete deposits/withdrawals older than 7 days')}
+              {getText('Efase istorik ki depase 7 jou', 'Supprimer l’historique > 7 jours', 'Delete history older than 7 days')}
             </Button>
 
             {diagnostics && (

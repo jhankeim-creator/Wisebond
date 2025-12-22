@@ -328,7 +328,7 @@ async def _plisio_poll_loop():
 
 
 async def _purge_old_records(days: int = 7) -> dict:
-    """Delete deposits/withdrawals older than N days (excluding pending)."""
+    """Delete history older than N days (excluding pending)."""
     if days <= 0:
         days = 7
     cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
@@ -341,11 +341,16 @@ async def _purge_old_records(days: int = 7) -> dict:
         "created_at": {"$lt": cutoff},
         "status": {"$in": ["completed", "rejected"]}
     })
+    tx_res = await db.transactions.delete_many({
+        "created_at": {"$lt": cutoff},
+        "status": {"$in": ["completed", "pending", "rejected", "failed", "cancelled"]}
+    })
     return {
         "days": days,
         "cutoff": cutoff,
         "deleted_deposits": deposit_res.deleted_count,
-        "deleted_withdrawals": withdrawal_res.deleted_count
+        "deleted_withdrawals": withdrawal_res.deleted_count,
+        "deleted_transactions": tx_res.deleted_count
     }
 
 
