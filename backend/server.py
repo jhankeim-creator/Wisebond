@@ -582,6 +582,22 @@ class AdminSettingsUpdate(BaseModel):
     affiliate_reward_htg: Optional[int] = None
     affiliate_cards_required: Optional[int] = None
 
+
+# ==================== TEAM / ADMIN ROLES ====================
+
+ADMIN_ROLES = ["owner", "admin", "support", "finance", "viewer"]
+TEAM_MANAGE_ROLES = {"owner", "admin"}
+
+
+class AdminTeamMemberCreate(BaseModel):
+    email: EmailStr
+    role: str = Field(default="admin")
+
+
+class AdminTeamMemberUpdate(BaseModel):
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+
 class BulkEmailRequest(BaseModel):
     subject: str
     html_content: str
@@ -666,6 +682,18 @@ async def get_admin_user(current_user: dict = Depends(get_current_user)):
     if not current_user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
+
+
+def _admin_role(user: dict) -> str:
+    role = (user.get("admin_role") or "").strip().lower()
+    if not role and user.get("is_admin"):
+        return "admin"
+    return role or "viewer"
+
+
+def _require_team_manage(admin: dict):
+    if _admin_role(admin) not in TEAM_MANAGE_ROLES:
+        raise HTTPException(status_code=403, detail="Insufficient permissions to manage team")
 
 async def log_action(user_id: str, action: str, details: dict):
     log_entry = {
@@ -2028,6 +2056,109 @@ async def admin_get_user(user_id: str, admin: dict = Depends(get_admin_user)):
     transactions = await db.transactions.find({"user_id": user_id}, {"_id": 0}).sort("created_at", -1).limit(20).to_list(20)
     
     return {"user": user, "kyc": kyc, "recent_transactions": transactions}
+
+
+# ==================== ADMIN TEAM (Manage Team) ====================
+
+@api_router.get("/admin/team/roles")
+async def admin_get_team_roles(admin: dict = Depends(get_admin_user)):
+    return {"roles": ADMIN_ROLES}
+
+
+@api_router.get("/admin/team")
+async def admin_get_team(admin: dict = Depends(get_admin_user)):
+    projection = {
+        "_id": 0,
+        "password_hash": 0,
+        "reset_token": 0,
+        "reset_token_expires": 0,
+    }
+    team = await db.users.find({"is_admin": True}, projection).sort("created_at", -1).limit(200).to_list(200)
+    return {"team": team}
+
+
+@api_router.post("/admin/team")
+async def admin_add_team_member(payload: AdminTeamMemberCreate, admin: dict = Depends(get_admin_user)):
+    _require_team_manage(admin)
+    role = (payload.role or "").strip().lower()
+    if role not in ADMIN_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid role")
+    if role == "owner" and _admin_role(admin) != "owner":
+        raise HTTPException(status_code=403, detail="Only an owner can assign the owner role")
+
+    target = await db.users.find_one({"email": payload.email.lower()}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found. Ask the user to register first.")
+
+    await db.users.update_one(
+        {"user_id": target["user_id"]},
+        {"$set": {"is_admin": True, "admin_role": role, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    await log_action(admin["user_id"], "team_member_added", {"target_user": target["user_id"], "role": role})
+    updated = await db.users.find_one({"user_id": target["user_id"]}, {"_id": 0, "password_hash": 0})
+    return {"member": updated}
+
+
+@api_router.patch("/admin/team/{user_id}")
+async def admin_update_team_member(user_id: str, payload: AdminTeamMemberUpdate, admin: dict = Depends(get_admin_user)):
+    _require_team_manage(admin)
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not target.get("is_admin"):
+        raise HTTPException(status_code=400, detail="Target user is not an admin")
+
+    current_role = _admin_role(target)
+    update_doc: Dict[str, object] = {"updated_at": datetime.now(timezone.utc).isoformat()}
+
+    if payload.role is not None:
+        new_role = (payload.role or "").strip().lower()
+        if new_role not in ADMIN_ROLES:
+            raise HTTPException(status_code=400, detail="Invalid role")
+        if new_role == "owner" and _admin_role(admin) != "owner":
+            raise HTTPException(status_code=403, detail="Only an owner can assign the owner role")
+        if current_role == "owner" and new_role != "owner" and _admin_role(admin) != "owner":
+            raise HTTPException(status_code=403, detail="Only an owner can change an owner's role")
+
+        if current_role == "owner" and new_role != "owner":
+            owners_count = await db.users.count_documents({"is_admin": True, "admin_role": "owner"})
+            if owners_count <= 1:
+                raise HTTPException(status_code=400, detail="Cannot remove the last owner")
+
+        update_doc["admin_role"] = new_role
+
+    if payload.is_active is not None:
+        update_doc["is_active"] = bool(payload.is_active)
+
+    await db.users.update_one({"user_id": user_id}, {"$set": update_doc})
+    await log_action(admin["user_id"], "team_member_updated", {"target_user": user_id, "changes": update_doc})
+    updated = await db.users.find_one({"user_id": user_id}, {"_id": 0, "password_hash": 0})
+    return {"member": updated}
+
+
+@api_router.delete("/admin/team/{user_id}")
+async def admin_remove_team_member(user_id: str, admin: dict = Depends(get_admin_user)):
+    _require_team_manage(admin)
+    target = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not target.get("is_admin"):
+        return {"message": "User is not an admin"}
+
+    target_role = _admin_role(target)
+    if target_role == "owner" and _admin_role(admin) != "owner":
+        raise HTTPException(status_code=403, detail="Only an owner can remove an owner")
+    if target_role == "owner":
+        owners_count = await db.users.count_documents({"is_admin": True, "admin_role": "owner"})
+        if owners_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot remove the last owner")
+
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"is_admin": False, "admin_role": None, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    await log_action(admin["user_id"], "team_member_removed", {"target_user": user_id})
+    return {"message": "Team member removed"}
 
 @api_router.patch("/admin/users/{user_id}/status")
 async def admin_update_user_status(user_id: str, update: UserStatusUpdate, admin: dict = Depends(get_admin_user)):
