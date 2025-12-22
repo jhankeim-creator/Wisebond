@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,11 +20,8 @@ export default function AdminKYC() {
   const [rejectReason, setRejectReason] = useState('');
   const [processing, setProcessing] = useState(false);
 
-  useEffect(() => {
-    fetchSubmissions();
-  }, [filter]);
-
-  const fetchSubmissions = async () => {
+  const fetchSubmissions = useCallback(async () => {
+    setLoading(true);
     try {
       let url = `${API}/admin/kyc`;
       if (filter !== 'all') url += `?status=${filter}`;
@@ -35,7 +32,11 @@ export default function AdminKYC() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    fetchSubmissions();
+  }, [fetchSubmissions]);
 
   const viewKyc = async (kycId) => {
     try {

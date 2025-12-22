@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -20,11 +20,7 @@ export default function AdminVirtualCards() {
   const [processing, setProcessing] = useState(false);
   const [adminNotes, setAdminNotes] = useState('');
 
-  useEffect(() => {
-    fetchOrders();
-  }, [filter]);
-
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     setLoading(true);
     try {
       let url = `${API}/admin/virtual-card-orders`;
@@ -36,7 +32,11 @@ export default function AdminVirtualCards() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
   const handleProcess = async (action) => {
     setProcessing(true);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,11 +18,8 @@ export default function AdminDeposits() {
   const [showModal, setShowModal] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  useEffect(() => {
-    fetchDeposits();
-  }, [filter]);
-
-  const fetchDeposits = async () => {
+  const fetchDeposits = useCallback(async () => {
+    setLoading(true);
     try {
       let url = `${API}/admin/deposits`;
       if (filter !== 'all') url += `?status=${filter}`;
@@ -33,7 +30,11 @@ export default function AdminDeposits() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    fetchDeposits();
+  }, [fetchDeposits]);
 
   const handleProcess = async (action) => {
     setProcessing(true);

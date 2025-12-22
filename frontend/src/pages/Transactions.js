@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -25,11 +25,7 @@ export default function Transactions() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState({ currency: 'all', type: 'all' });
 
-  useEffect(() => {
-    fetchTransactions();
-  }, [filter]);
-
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     try {
       let url = `${API}/wallet/transactions?limit=100`;
       if (filter.currency !== 'all') url += `&currency=${filter.currency}`;
@@ -42,7 +38,11 @@ export default function Transactions() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
 
   const formatCurrency = (amount, currency) => {
     if (currency === 'USD') {
