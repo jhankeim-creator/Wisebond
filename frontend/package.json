@@ -8,7 +8,8 @@
     "postcss": "^8.4.49",
     "semver": "^7.6.0",
     "braces": "^3.0.3",
-    "micromatch": "^4.0.8"
+    "micromatch": "^4.0.8",
+    "webpack-dev-server": "^5.2.1"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
