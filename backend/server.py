@@ -133,10 +133,28 @@ class WithdrawalLimitUpdate(BaseModel):
     waiting_hours: int
 
 class AdminSettingsUpdate(BaseModel):
+    # Email (Resend)
+    resend_enabled: Optional[bool] = None
     resend_api_key: Optional[str] = None
     sender_email: Optional[str] = None
+
+    # Live Chat (Crisp)
+    crisp_enabled: Optional[bool] = None
     crisp_website_id: Optional[str] = None
+
+    # WhatsApp
+    whatsapp_enabled: Optional[bool] = None
     whatsapp_number: Optional[str] = None
+
+    # USDT (Plisio)
+    plisio_enabled: Optional[bool] = None
+    plisio_api_key: Optional[str] = None
+    plisio_secret_key: Optional[str] = None
+
+    # Fees & Affiliate (optional, UI-configurable)
+    card_order_fee_htg: Optional[int] = None
+    affiliate_reward_htg: Optional[int] = None
+    affiliate_cards_required: Optional[int] = None
 
 class BulkEmailRequest(BaseModel):
     subject: str
@@ -232,8 +250,13 @@ async def log_action(user_id: str, action: str, details: dict):
 async def send_email(to_email: str, subject: str, html_content: str):
     try:
         settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-        resend_key = settings.get("resend_api_key") if settings else os.environ.get("RESEND_API_KEY")
-        sender = settings.get("sender_email") if settings else os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+        # Backward-compatible: only block if explicitly disabled
+        if settings and ("resend_enabled" in settings) and (not settings["resend_enabled"]):
+            logger.info("Resend email disabled in settings")
+            return False
+
+        resend_key = (settings.get("resend_api_key") if settings else None) or os.environ.get("RESEND_API_KEY")
+        sender = (settings.get("sender_email") if settings else None) or os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
         
         if not resend_key:
             logger.warning("Resend API key not configured")
