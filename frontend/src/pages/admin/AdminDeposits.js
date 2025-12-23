@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,11 +18,8 @@ export default function AdminDeposits() {
   const [showModal, setShowModal] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  useEffect(() => {
-    fetchDeposits();
-  }, [filter]);
-
-  const fetchDeposits = async () => {
+  const fetchDeposits = useCallback(async () => {
+    setLoading(true);
     try {
       let url = `${API}/admin/deposits`;
       if (filter !== 'all') url += `?status=${filter}`;
@@ -33,7 +30,11 @@ export default function AdminDeposits() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    fetchDeposits();
+  }, [fetchDeposits]);
 
   const handleProcess = async (action) => {
     setProcessing(true);
@@ -46,6 +47,26 @@ export default function AdminDeposits() {
       toast.error('Erreur lors du traitement');
     } finally {
       setProcessing(false);
+    }
+  };
+
+  const viewDeposit = async (depositId) => {
+    try {
+      const response = await axios.get(`${API}/admin/deposits/${depositId}`);
+      setSelectedDeposit(response.data.deposit);
+      setShowModal(true);
+    } catch (error) {
+      toast.error('Erreur lors du chargement');
+    }
+  };
+
+  const syncProvider = async () => {
+    try {
+      const resp = await axios.post(`${API}/admin/deposits/${selectedDeposit.deposit_id}/sync-provider`);
+      setSelectedDeposit(resp.data.deposit);
+      toast.success('Mise à jour effectuée');
+    } catch (e) {
+      toast.error('Erreur lors du sync');
     }
   };
 
@@ -124,7 +145,7 @@ export default function AdminDeposits() {
                           <Button 
                             size="sm" 
                             variant="outline"
-                            onClick={() => { setSelectedDeposit(deposit); setShowModal(true); }}
+                            onClick={() => viewDeposit(deposit.deposit_id)}
                           >
                             <Eye size={16} className="mr-2" />
                             Voir
@@ -167,6 +188,32 @@ export default function AdminDeposits() {
                     <p>{new Date(selectedDeposit.created_at).toLocaleString()}</p>
                   </div>
                 </div>
+
+                {selectedDeposit.provider === 'plisio' && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <p className="font-medium text-amber-800 mb-2">Plisio</p>
+                    <div className="text-sm space-y-1">
+                      <div><span className="text-slate-600">Status:</span> <span className="font-semibold">{selectedDeposit.provider_status || selectedDeposit.status}</span></div>
+                      <div><span className="text-slate-600">Txn:</span> <code className="text-xs bg-white p-1 rounded">{selectedDeposit.plisio_txn_id || '-'}</code></div>
+                      {selectedDeposit.plisio_invoice_url && (
+                        <div>
+                          <span className="text-slate-600">Invoice URL:</span>{' '}
+                          <a className="text-[#EA580C] hover:underline break-all" href={selectedDeposit.plisio_invoice_url} target="_blank" rel="noreferrer">
+                            {selectedDeposit.plisio_invoice_url}
+                          </a>
+                        </div>
+                      )}
+                      {selectedDeposit.plisio_currency && (
+                        <div><span className="text-slate-600">Network:</span> <span className="font-semibold">{selectedDeposit.plisio_currency}</span></div>
+                      )}
+                    </div>
+                    <div className="mt-3">
+                      <Button variant="outline" size="sm" onClick={syncProvider}>
+                        Sync Plisio
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {selectedDeposit.proof_image && (
                   <div>

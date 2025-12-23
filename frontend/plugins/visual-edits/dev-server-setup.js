@@ -33,18 +33,18 @@ function setupDevServer(config) {
     const isAllowedOrigin = (origin) => {
       if (!origin) return false;
 
+      const extraAllowedOrigins = (process.env.VISUAL_EDIT_ALLOWED_ORIGINS || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
       // Allow localhost and 127.0.0.1 on any port
       if (origin.match(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/)) {
         return true;
       }
 
-      // Allow all emergent.sh subdomains
-      if (origin.match(/^https:\/\/([a-zA-Z0-9-]+\.)*emergent\.sh$/)) {
-        return true;
-      }
-
-      // Allow all emergentagent.com subdomains
-      if (origin.match(/^https:\/\/([a-zA-Z0-9-]+\.)*emergentagent\.com$/)) {
+      // Optional allowlist via env (exact origin matches)
+      if (extraAllowedOrigins.includes(origin)) {
         return true;
       }
 
@@ -473,8 +473,8 @@ function setupDevServer(config) {
           const timestamp = Date.now();
           try {
             // Use -c flag for per-invocation git config to avoid modifying any config
-            execSync(`git -c user.name="visual-edit" -c user.email="support@emergent.sh" add "${targetFile}"`);
-            execSync(`git -c user.name="visual-edit" -c user.email="support@emergent.sh" commit -m "visual_edit_${timestamp}"`);
+            execSync(`git -c user.name="visual-edit" -c user.email="visual-edit@kayicom.local" add "${targetFile}"`);
+            execSync(`git -c user.name="visual-edit" -c user.email="visual-edit@kayicom.local" commit -m "visual_edit_${timestamp}"`);
           } catch (gitError) {
             console.error(`Git commit failed: ${gitError.message}`);
             // Continue even if git fails - file write succeeded

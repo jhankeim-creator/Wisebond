@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,11 +18,8 @@ export default function AdminWithdrawals() {
   const [showModal, setShowModal] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  useEffect(() => {
-    fetchWithdrawals();
-  }, [filter]);
-
-  const fetchWithdrawals = async () => {
+  const fetchWithdrawals = useCallback(async () => {
+    setLoading(true);
     try {
       let url = `${API}/admin/withdrawals`;
       if (filter !== 'all') url += `?status=${filter}`;
@@ -33,7 +30,11 @@ export default function AdminWithdrawals() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    fetchWithdrawals();
+  }, [fetchWithdrawals]);
 
   const handleProcess = async (action) => {
     setProcessing(true);
@@ -47,6 +48,11 @@ export default function AdminWithdrawals() {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const fmt = (amount, currency) => {
+    if (currency === 'HTG') return `G ${Number(amount || 0).toLocaleString()}`;
+    return `$${Number(amount || 0).toFixed(2)}`;
   };
 
   return (
@@ -109,9 +115,9 @@ export default function AdminWithdrawals() {
                     withdrawals.map((w) => (
                       <tr key={w.withdrawal_id}>
                         <td className="font-mono text-sm">{w.client_id}</td>
-                        <td>${w.amount?.toFixed(2)}</td>
-                        <td className="text-red-500">-${w.fee?.toFixed(2)}</td>
-                        <td className="font-semibold text-emerald-600">${w.net_amount?.toFixed(2)}</td>
+                        <td>{fmt(w.amount, w.currency)}</td>
+                        <td className="text-red-500">-{fmt(w.fee, w.currency)}</td>
+                        <td className="font-semibold text-emerald-600">{fmt(w.net_amount, w.currency)}</td>
                         <td className="capitalize">{w.method?.replace('_', ' ')}</td>
                         <td className="max-w-[150px] truncate">{w.destination}</td>
                         <td>{new Date(w.created_at).toLocaleDateString()}</td>
@@ -157,17 +163,23 @@ export default function AdminWithdrawals() {
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">Montant brut</p>
-                    <p className="font-semibold">${selectedWithdrawal.amount?.toFixed(2)}</p>
+                    <p className="font-semibold">{fmt(selectedWithdrawal.amount, selectedWithdrawal.currency)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">Frais</p>
-                    <p className="text-red-500">-${selectedWithdrawal.fee?.toFixed(2)}</p>
+                    <p className="text-red-500">-{fmt(selectedWithdrawal.fee, selectedWithdrawal.currency)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">Montant net</p>
-                    <p className="font-semibold text-emerald-600">${selectedWithdrawal.net_amount?.toFixed(2)}</p>
+                    <p className="font-semibold text-emerald-600">{fmt(selectedWithdrawal.net_amount, selectedWithdrawal.currency)}</p>
                   </div>
                 </div>
+
+                {selectedWithdrawal.source_currency && selectedWithdrawal.source_currency !== selectedWithdrawal.currency && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                    Déduit du solde {selectedWithdrawal.source_currency}: {fmt(selectedWithdrawal.amount_deducted, selectedWithdrawal.source_currency)} (conversion)
+                  </div>
+                )}
 
                 <div>
                   <p className="text-sm text-slate-500">Méthode</p>

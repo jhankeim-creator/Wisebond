@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { 
@@ -19,20 +20,6 @@ import {
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
-// Metòd depo: HTG = MonCash/NatCash sèlman, USD = Zelle/PayPal/USDT sèlman
-const depositMethods = {
-  HTG: [
-    { id: 'moncash', name: 'MonCash', icon: Smartphone },
-    { id: 'natcash', name: 'NatCash', icon: Smartphone }
-  ],
-  USD: [
-    { id: 'zelle', name: 'Zelle', icon: DollarSign },
-    { id: 'paypal', name: 'PayPal', icon: DollarSign },
-    { id: 'usdt_trc20', name: 'USDT (TRC-20)', icon: Wallet },
-    { id: 'usdt_erc20', name: 'USDT (ERC-20)', icon: Wallet }
-  ]
-};
-
 export default function Deposit() {
   const { t, language } = useLanguage();
   const { user } = useAuth();
@@ -42,14 +29,93 @@ export default function Deposit() {
   const [method, setMethod] = useState('');
   const [amount, setAmount] = useState('');
   const [proofImage, setProofImage] = useState('');
-  const [walletAddress, setWalletAddress] = useState('');
   const [loading, setLoading] = useState(false);
+  const [createdDeposit, setCreatedDeposit] = useState(null);
+  const [usdtNetworks, setUsdtNetworks] = useState([]);
+  const [usdtNetwork, setUsdtNetwork] = useState('');
+  const [usdtLoading, setUsdtLoading] = useState(false);
+  const [usdtEnabled, setUsdtEnabled] = useState(false);
+  const [manualConfig, setManualConfig] = useState({
+    moncash_enabled: false,
+    moncash_number: null,
+    natcash_enabled: false,
+    natcash_number: null
+  });
 
-  const getText = (ht, fr, en) => {
+  const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
     if (language === 'fr') return fr;
     return en;
-  };
+  }, [language]);
+
+  const fetchManualConfig = useCallback(async () => {
+    try {
+      const resp = await axios.get(`${API}/public/app-config`);
+      setManualConfig({
+        moncash_enabled: !!resp.data?.moncash_enabled,
+        moncash_number: resp.data?.moncash_number || null,
+        natcash_enabled: !!resp.data?.natcash_enabled,
+        natcash_number: resp.data?.natcash_number || null
+      });
+    } catch (e) {
+      setManualConfig({
+        moncash_enabled: false,
+        moncash_number: null,
+        natcash_enabled: false,
+        natcash_number: null
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchManualConfig();
+  }, [fetchManualConfig]);
+
+  const loadNetworks = useCallback(async () => {
+    if (currency !== 'USD' || method !== 'usdt') return;
+    setUsdtLoading(true);
+    try {
+      const resp = await axios.get(`${API}/deposits/usdt-options`);
+      const nets = resp.data?.networks || [];
+      setUsdtEnabled(!!resp.data?.enabled);
+      setUsdtNetworks(nets);
+      // auto-select first if none selected
+      setUsdtNetwork((prev) => prev || (nets.length > 0 ? nets[0].code : ''));
+    } catch (e) {
+      setUsdtNetworks([]);
+      setUsdtEnabled(false);
+    } finally {
+      setUsdtLoading(false);
+    }
+  }, [currency, method]);
+
+  useEffect(() => {
+    loadNetworks();
+  }, [loadNetworks]);
+
+  // Reset USDT fields when method changes
+  useEffect(() => {
+    if (method !== 'usdt') {
+      setUsdtNetwork('');
+      setUsdtNetworks([]);
+      setUsdtEnabled(false);
+    }
+  }, [method]);
+
+  // Metòd depo: HTG = MonCash/NatCash (configurable), USD = Zelle/PayPal/USDT
+  const depositMethods = useMemo(() => {
+    const htg = [];
+    if (manualConfig.moncash_enabled) htg.push({ id: 'moncash', name: 'MonCash', icon: Smartphone });
+    if (manualConfig.natcash_enabled) htg.push({ id: 'natcash', name: 'NatCash', icon: Smartphone });
+    return {
+      HTG: htg,
+      USD: [
+        { id: 'zelle', name: 'Zelle', icon: DollarSign },
+        { id: 'paypal', name: 'PayPal', icon: DollarSign },
+        { id: 'usdt', name: 'USDT (Plisio)', icon: Wallet }
+      ]
+    };
+  }, [manualConfig.moncash_enabled, manualConfig.natcash_enabled]);
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -68,7 +134,18 @@ export default function Deposit() {
       return;
     }
 
-    if (!method.includes('usdt') && !proofImage) {
+    if (method === 'usdt') {
+      if (!usdtEnabled) {
+        toast.error(getText('Plisio pa aktive (admin dwe mete kle yo)', 'Plisio non activé (admin doit mettre les clés)', 'Plisio not enabled (admin must set keys)'));
+        return;
+      }
+      if (!usdtNetwork) {
+        toast.error(getText('Chwazi rezo USDT la', 'Choisissez le réseau USDT', 'Select USDT network'));
+        return;
+      }
+    }
+
+    if (method !== 'usdt' && !proofImage) {
       toast.error(getText('Telechaje prèv peman an', 'Veuillez télécharger la preuve de paiement', 'Please upload payment proof'));
       return;
     }
@@ -80,12 +157,13 @@ export default function Deposit() {
         amount: parseFloat(amount),
         currency,
         method,
-        proof_image: proofImage || null,
-        wallet_address: method.includes('usdt') ? walletAddress : null,
-        network: method.includes('trc20') ? 'TRC-20' : method.includes('erc20') ? 'ERC-20' : null
+        proof_image: method === 'usdt' ? null : (proofImage || null),
+        wallet_address: method === 'usdt' ? null : null,
+        network: method === 'usdt' ? usdtNetwork : null
       };
 
-      await axios.post(`${API}/deposits/create`, payload);
+      const resp = await axios.post(`${API}/deposits/create`, payload);
+      setCreatedDeposit(resp.data.deposit);
       toast.success(getText('Demann depo soumèt siksè!', 'Demande de dépôt soumise avec succès!', 'Deposit request submitted successfully!'));
       setStep(4);
     } catch (error) {
@@ -122,7 +200,15 @@ export default function Deposit() {
       <div>
         <h3 className="font-semibold text-stone-900 mb-4">{getText('Chwazi metòd', 'Choisir la méthode', 'Choose method')}</h3>
         <div className="space-y-3">
-          {depositMethods[currency].map((m) => {
+          {depositMethods[currency].length === 0 ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+              {getText(
+                'Pa gen metòd depo ki aktive pou HTG. Kontakte admin.',
+                'Aucune méthode de dépôt activée pour HTG. Contactez l’admin.',
+                'No HTG deposit methods are enabled. Contact admin.'
+              )}
+            </div>
+          ) : depositMethods[currency].map((m) => {
             const Icon = m.icon;
             return (
               <button
@@ -177,30 +263,44 @@ export default function Deposit() {
         </div>
       </div>
 
-      {method.includes('usdt') ? (
+      {method === 'usdt' ? (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="text-amber-500 mt-0.5" size={20} />
             <div>
-              <p className="font-medium text-amber-800">{getText('Enstriksyon USDT', 'Instructions USDT', 'USDT Instructions')}</p>
+              <p className="font-medium text-amber-800">{getText('Enstriksyon USDT (Plisio)', 'Instructions USDT (Plisio)', 'USDT Instructions (Plisio)')}</p>
               <p className="text-sm text-amber-700 mt-1">
                 {getText(
-                  `Voye USDT ou nan adrès sa a sou rezo ${method.includes('trc20') ? 'TRC-20' : 'ERC-20'}:`,
-                  `Envoyez votre USDT à l'adresse suivante sur le réseau ${method.includes('trc20') ? 'TRC-20' : 'ERC-20'}:`,
-                  `Send your USDT to this address on ${method.includes('trc20') ? 'TRC-20' : 'ERC-20'} network:`
+                  'Chwazi rezo a, epi n ap kreye yon lyen peman otomatik. Depo a ap valide otomatikman apre peman an konfime.',
+                  'Choisissez le réseau, puis nous créerons un lien de paiement automatique. Le dépôt sera validé automatiquement après confirmation.',
+                  'Select the network and we will generate an automatic payment link. Deposit will auto-validate after confirmation.'
                 )}
               </p>
-              <code className="block bg-white rounded p-2 mt-2 text-xs break-all">
-                TRx1234567890abcdefghijklmnop
-              </code>
               <div className="mt-3">
-                <Label>{getText('Adrès retou ou (opsyonèl)', 'Votre adresse de retour (optionnel)', 'Your return address (optional)')}</Label>
-                <Input 
-                  placeholder={getText('Adrès USDT ou', 'Votre adresse USDT', 'Your USDT address')}
-                  value={walletAddress}
-                  onChange={(e) => setWalletAddress(e.target.value)}
-                  className="mt-1"
-                />
+                <Label>{getText('Rezo USDT', 'Réseau USDT', 'USDT Network')}</Label>
+                {usdtLoading ? (
+                  <div className="text-sm text-stone-600 mt-2">{getText('Chajman rezo yo...', 'Chargement des réseaux...', 'Loading networks...')}</div>
+                ) : (
+                  <Select value={usdtNetwork} onValueChange={setUsdtNetwork}>
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder={getText('Chwazi rezo a', 'Choisir le réseau', 'Select network')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {usdtNetworks.map((n) => (
+                        <SelectItem key={n.code} value={n.code}>{n.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                {!usdtLoading && usdtNetworks.length === 0 && (
+                  <p className="text-sm text-amber-700 mt-2">
+                    {getText(
+                      'Plisio pa disponib kounye a. Kontakte admin pou aktive li.',
+                      'Plisio n’est pas disponible pour le moment. Contactez l’admin pour l’activer.',
+                      'Plisio is not available right now. Ask admin to enable it.'
+                    )}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -213,7 +313,25 @@ export default function Deposit() {
             </p>
             <p className="text-sm text-orange-700 mt-1">
               {currency === 'HTG' 
-                ? getText('Voye montan an nan nimewo sa a: +509 0000 0000', 'Envoyez le montant au numéro: +509 0000 0000', 'Send amount to: +509 0000 0000')
+                ? (
+                  method === 'moncash' && manualConfig.moncash_number
+                    ? getText(
+                      `Voye montan an nan MonCash: ${manualConfig.moncash_number}`,
+                      `Envoyez le montant sur MonCash: ${manualConfig.moncash_number}`,
+                      `Send the amount to MonCash: ${manualConfig.moncash_number}`
+                    )
+                    : method === 'natcash' && manualConfig.natcash_number
+                      ? getText(
+                        `Voye montan an nan NatCash: ${manualConfig.natcash_number}`,
+                        `Envoyez le montant sur NatCash: ${manualConfig.natcash_number}`,
+                        `Send the amount to NatCash: ${manualConfig.natcash_number}`
+                      )
+                      : getText(
+                        'Metòd sa pa configure. Kontakte admin.',
+                        'Méthode non configurée. Contactez l’admin.',
+                        'Method not configured. Contact admin.'
+                      )
+                )
                 : method === 'zelle' 
                   ? getText('Voye nan: payments@kayicom.com', 'Envoyez à: payments@kayicom.com', 'Send to: payments@kayicom.com')
                   : getText('Voye nan: payments@kayicom.com', 'Envoyez à: payments@kayicom.com', 'Send to: payments@kayicom.com')
@@ -281,6 +399,51 @@ export default function Deposit() {
           `Your deposit request of ${currency === 'HTG' ? 'G' : '$'}${amount} ${currency} is pending validation.`
         )}
       </p>
+
+      {createdDeposit?.provider === 'plisio' && createdDeposit?.plisio_invoice_url && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-left">
+          <p className="font-semibold text-amber-800 mb-2">
+            {getText('Peye ak Plisio (USDT)', 'Payer avec Plisio (USDT)', 'Pay with Plisio (USDT)')}
+          </p>
+          <p className="text-sm text-amber-700 mb-3">
+            {getText(
+              'Klike sou lyen an pou fini peman an. Depo a ap valide otomatikman apre peman an konfime.',
+              'Cliquez sur le lien pour finaliser le paiement. Le dépôt sera validé automatiquement après confirmation.',
+              'Click the link to complete payment. Deposit will auto-validate after confirmation.'
+            )}
+          </p>
+          <a
+            href={createdDeposit.plisio_invoice_url}
+            target="_blank"
+            rel="noreferrer"
+            className="text-[#EA580C] font-medium hover:underline break-all"
+          >
+            {createdDeposit.plisio_invoice_url}
+          </a>
+          <div className="mt-4 flex gap-3">
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const resp = await axios.post(`${API}/deposits/${createdDeposit.deposit_id}/sync`);
+                  setCreatedDeposit(resp.data.deposit);
+                  toast.success(getText('Mizajou fèt', 'Mise à jour effectuée', 'Updated'));
+                } catch (e) {
+                  toast.error(getText('Erè pandan sync', 'Erreur sync', 'Sync error'));
+                }
+              }}
+            >
+              {getText('Verifye peman an', 'Vérifier le paiement', 'Check payment')}
+            </Button>
+          </div>
+          {createdDeposit.provider_status && (
+            <p className="text-sm text-stone-700 mt-3">
+              {getText('Estati', 'Statut', 'Status')}: <span className="font-semibold">{createdDeposit.provider_status}</span>
+            </p>
+          )}
+        </div>
+      )}
+
       <Button onClick={() => { setStep(1); setAmount(''); setProofImage(''); setMethod(''); }} className="btn-primary">
         {getText('Nouvo depo', 'Nouveau dépôt', 'New deposit')}
       </Button>

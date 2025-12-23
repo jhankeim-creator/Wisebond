@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,22 +11,21 @@ import {
   ArrowUpCircle, 
   Send, 
   RefreshCw,
-  Filter
+  Filter,
+  FileDown
 } from 'lucide-react';
+import { jsPDF } from 'jspdf';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function Transactions() {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState({ currency: 'all', type: 'all' });
 
-  useEffect(() => {
-    fetchTransactions();
-  }, [filter]);
-
-  const fetchTransactions = async () => {
+  const fetchTransactions = useCallback(async () => {
     try {
       let url = `${API}/wallet/transactions?limit=100`;
       if (filter.currency !== 'all') url += `&currency=${filter.currency}`;
@@ -38,7 +38,11 @@ export default function Transactions() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [filter]);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
 
   const formatCurrency = (amount, currency) => {
     if (currency === 'USD') {
@@ -71,6 +75,68 @@ export default function Transactions() {
       rejected: 'status-badge status-rejected'
     };
     return styles[status] || 'status-badge';
+  };
+
+  const downloadReceipt = async (tx) => {
+    // Prefer server-generated official PDF if available
+    try {
+      const resp = await axios.get(`${API}/wallet/transactions/${tx.transaction_id}/receipt.pdf`, {
+        responseType: 'blob'
+      });
+      const blob = new Blob([resp.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `KAYICOM-receipt-${tx.reference_id || tx.transaction_id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      return;
+    } catch (e) {
+      // Fallback to client-generated PDF
+    }
+
+    const doc = new jsPDF();
+    const now = new Date();
+
+    const title = "KAYICOM Wallet";
+    const tagline = "Yon satisfaksyon ak bon jan sèvis garanti.";
+    const receiptId = tx.reference_id || tx.transaction_id;
+
+    doc.setFontSize(18);
+    doc.text(title, 14, 18);
+    doc.setFontSize(10);
+    doc.text(tagline, 14, 24);
+
+    doc.setFontSize(12);
+    doc.text("Receipt / Resi", 14, 36);
+    doc.setFontSize(10);
+    doc.text(`Generated: ${now.toLocaleString()}`, 14, 42);
+
+    doc.setFontSize(11);
+    let y = 54;
+    const line = (label, value) => {
+      doc.text(`${label}:`, 14, y);
+      doc.text(String(value ?? "-"), 60, y);
+      y += 7;
+    };
+
+    line("Client ID", user?.client_id || "-");
+    line("Name", user?.full_name || "-");
+    line("Transaction ID", tx.transaction_id);
+    line("Reference", receiptId);
+    line("Type", tx.type);
+    line("Status", tx.status);
+    line("Currency", tx.currency);
+    line("Amount", formatCurrency(tx.amount, tx.currency));
+    line("Date", new Date(tx.created_at).toLocaleString());
+    if (tx.description) line("Description", tx.description);
+
+    doc.setFontSize(9);
+    doc.text("Note: This receipt is generated automatically.", 14, 285);
+
+    doc.save(`KAYICOM-receipt-${receiptId}.pdf`);
   };
 
   return (
@@ -159,13 +225,23 @@ export default function Transactions() {
                         )}
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="flex items-center gap-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => downloadReceipt(tx)}
+                        title="Download receipt"
+                      >
+                        <FileDown size={16} />
+                      </Button>
+                      <div className="text-right">
                       <p className={`font-semibold ${tx.amount >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                         {tx.amount >= 0 ? '+' : ''}{formatCurrency(tx.amount, tx.currency)}
                       </p>
                       <span className={getStatusBadge(tx.status)}>
                         {t(tx.status)}
                       </span>
+                      </div>
                     </div>
                   </div>
                 ))}
