@@ -25,6 +25,7 @@ import Affiliate from "@/pages/Affiliate";
 import Settings from "@/pages/Settings";
 import VirtualCard from "@/pages/VirtualCard";
 import TopUp from "@/pages/TopUp";
+import AgentDeposit from "@/pages/AgentDeposit";
 
 // Admin Pages
 import AdminDashboard from "@/pages/admin/AdminDashboard";
@@ -40,6 +41,8 @@ import AdminVirtualCards from "@/pages/admin/AdminVirtualCards";
 import AdminTopUp from "@/pages/admin/AdminTopUp";
 import AdminLogs from "@/pages/admin/AdminLogs";
 import AdminTeam from "@/pages/admin/AdminTeam";
+import AdminAgentSettings from "@/pages/admin/AdminAgentSettings";
+import AdminAgentDeposits from "@/pages/admin/AdminAgentDeposits";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -104,6 +107,7 @@ function AppRoutes() {
       <Route path="/affiliate" element={<ProtectedRoute><Affiliate /></ProtectedRoute>} />
       <Route path="/virtual-card" element={<ProtectedRoute><VirtualCard /></ProtectedRoute>} />
       <Route path="/topup" element={<ProtectedRoute><TopUp /></ProtectedRoute>} />
+      <Route path="/agent-deposit" element={<ProtectedRoute><AgentDeposit /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       
       {/* Admin Routes */}
@@ -120,6 +124,8 @@ function AppRoutes() {
       <Route path="/admin/topup" element={<ProtectedRoute adminOnly><AdminTopUp /></ProtectedRoute>} />
       <Route path="/admin/logs" element={<ProtectedRoute adminOnly><AdminLogs /></ProtectedRoute>} />
       <Route path="/admin/team" element={<ProtectedRoute adminOnly><AdminTeam /></ProtectedRoute>} />
+      <Route path="/admin/agent-settings" element={<ProtectedRoute adminOnly><AdminAgentSettings /></ProtectedRoute>} />
+      <Route path="/admin/agent-deposits" element={<ProtectedRoute adminOnly><AdminAgentDeposits /></ProtectedRoute>} />
       
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
