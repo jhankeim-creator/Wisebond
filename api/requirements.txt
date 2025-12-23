@@ -1,9 +1,29 @@
-fastapi==0.110.1
-motor==3.3.1
-pymongo==4.5.0
-bcrypt==4.1.3
-python-jose[cryptography]==3.5.0
-pydantic[email]==2.12.5
-python-dotenv==1.2.1
-resend==2.19.0
-starlette==0.37.2
+# KAYICOM API - Python Dependencies for Vercel Serverless
+# Updated: December 2024
+
+# Web Framework
+fastapi==0.115.6
+starlette==0.41.3
+uvicorn==0.32.1
+
+# Database
+motor==3.6.0
+pymongo==4.10.1
+
+# Authentication & Security
+bcrypt==4.2.1
+python-jose[cryptography]==3.3.0
+cryptography==44.0.0
+
+# Data Validation
+pydantic[email]==2.10.3
+email-validator==2.2.0
+
+# Environment & Utils
+python-dotenv==1.0.1
+
+# Email
+resend==2.5.0
+
+# PDF Generation (for receipts)
+reportlab==4.2.5
