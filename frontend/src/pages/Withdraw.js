@@ -19,7 +19,7 @@ import {
   Smartphone
 } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 // Metòd retrè separe pa deviz
 // HTG: MonCash, NatCash sèlman

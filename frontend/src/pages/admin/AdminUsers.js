@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import { Search, Eye, Ban, DollarSign, RefreshCw, UserX, CheckCircle } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminUsers() {
   const { getText } = useLanguage();

@@ -17,7 +17,7 @@ import {
   DollarSign
 } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 const countries = [
   { code: 'US', name: 'USA', flag: '🇺🇸', rates: [{ minutes: 30, price: 5 }, { minutes: 60, price: 9 }, { minutes: 120, price: 15 }] },

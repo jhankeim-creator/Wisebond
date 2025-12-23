@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MessageCircle } from 'lucide-react';
 import axios from 'axios';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export const LiveChat = () => {
   const [settings, setSettings] = useState(null);

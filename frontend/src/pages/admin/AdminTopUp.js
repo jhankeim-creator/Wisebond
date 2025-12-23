@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import { Check, X, Eye, RefreshCw, Phone } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminTopUp() {
   const [orders, setOrders] = useState([]);
