@@ -24,7 +24,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 // Metòd retrè separe pa deviz
 // HTG: MonCash, NatCash sèlman
 // USD: Zelle, PayPal, USDT, Bank USA, Kat Vityèl
-const withdrawalMethodsByTargetCurrency = {
+const fallbackWithdrawalMethodsByTargetCurrency = {
   HTG: [
     { id: 'moncash', name: 'MonCash', icon: Smartphone, placeholder: 'Nimewo telefòn MonCash' },
     { id: 'natcash', name: 'NatCash', icon: Smartphone, placeholder: 'Nimewo telefòn NatCash' }
@@ -48,9 +48,12 @@ export default function Withdraw() {
   const [destination, setDestination] = useState('');
   const [cardEmail, setCardEmail] = useState('');
   const [fees, setFees] = useState([]);
+  const [cardFees, setCardFees] = useState([]);
   const [limits, setLimits] = useState([]);
   const [rates, setRates] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [availableMethods, setAvailableMethods] = useState(fallbackWithdrawalMethodsByTargetCurrency);
+  const [methodMeta, setMethodMeta] = useState({});
   
   // Currency selection for cross-currency withdrawal
   const [sourceCurrency, setSourceCurrency] = useState('HTG');
@@ -70,6 +73,7 @@ export default function Withdraw() {
   // Reset method when target currency changes
   useEffect(() => {
     setMethod('');
+    fetchPaymentMethods(targetCurrency);
   }, [targetCurrency]);
 
   const fetchFeesAndLimits = async () => {
@@ -77,8 +81,46 @@ export default function Withdraw() {
       const response = await axios.get(`${API}/withdrawals/fees`);
       setFees(response.data.fees);
       setLimits(response.data.limits);
+      setCardFees(response.data.card_fees || []);
     } catch (error) {
       console.error('Error fetching fees:', error);
+    }
+  };
+
+  const getMethodIcon = (methodId) => {
+    if (methodId === 'moncash' || methodId === 'natcash') return Smartphone;
+    if (methodId === 'bank_usa') return Building;
+    if (methodId === 'card') return CreditCard;
+    if (methodId === 'usdt') return Wallet;
+    return DollarSign;
+  };
+
+  const fetchPaymentMethods = async (cur) => {
+    try {
+      const res = await axios.get(`${API}/public/payment-methods?flow=withdrawal&currency=${cur}`);
+      const list = Array.isArray(res.data) ? res.data : [];
+      if (list.length === 0) return;
+
+      const metaById = {};
+      const mapped = list
+        .slice()
+        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+        .map((m) => {
+          metaById[m.method_id] = m;
+          const pub = m.public || {};
+          return {
+            id: m.method_id,
+            name: m.display_name,
+            icon: getMethodIcon(m.method_id),
+            placeholder: pub.placeholder,
+            onlyField: pub.onlyField
+          };
+        });
+
+      setMethodMeta((prev) => ({ ...prev, ...metaById }));
+      setAvailableMethods((prev) => ({ ...prev, [cur]: mapped }));
+    } catch (e) {
+      // Silent fallback
     }
   };
 
@@ -93,6 +135,12 @@ export default function Withdraw() {
 
   const calculateFee = () => {
     if (!method || !amount) return 0;
+
+    if (method === 'card') {
+      const amt = parseFloat(amount);
+      const range = (cardFees || []).find((f) => amt >= f.min_amount && amt <= f.max_amount);
+      return range ? Number(range.fee || 0) : 0;
+    }
     
     const feeConfig = fees.find(f => 
       f.method === method && 
@@ -177,7 +225,7 @@ export default function Withdraw() {
   const fee = calculateFee();
   const netAmount = parseFloat(amount || 0) - fee;
 
-  const currentMethods = withdrawalMethodsByTargetCurrency[targetCurrency] || [];
+  const currentMethods = availableMethods[targetCurrency] || fallbackWithdrawalMethodsByTargetCurrency[targetCurrency] || [];
 
   const renderStep1 = () => (
     <div className="space-y-6">
