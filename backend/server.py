@@ -208,11 +208,17 @@ class AgentDepositRequest(BaseModel):
     amount_htg_received: float  # Amount in Gourdes received from client
     proof_image: Optional[str] = None  # Payment proof image
 
+class CommissionTier(BaseModel):
+    min: float  # Minimum amount
+    max: float  # Maximum amount
+    commission: float  # Commission amount or percentage
+    is_percentage: bool = False  # If true, commission is a percentage
+
 class AgentSettingsUpdate(BaseModel):
     agent_deposit_enabled: Optional[bool] = None
     agent_rate_usd_to_htg: Optional[float] = None  # Rate for how many HTG per 1 USD
     agent_whatsapp_notifications: Optional[bool] = None
-    # Note: Commission is now tiered (fixed amounts based on deposit size), not configurable
+    commission_tiers: Optional[List[dict]] = None  # List of commission tiers
 
 class AgentRechargeRequest(BaseModel):
     agent_user_id: str
@@ -454,68 +460,73 @@ async def send_whatsapp_notification(phone_number: str, message: str):
             pass
         return False
 
-def calculate_agent_commission(amount_usd: float) -> float:
-    """
-    Calculate agent commission based on tiered structure:
-    $5 – $19 → $1
-    $20 – $39 → $1.2
-    $40 – $99 → $1.3
-    $100 – $199 → $1.8
-    $200 – $299 → $3
-    $300 – $399 → $4.5
-    $400 – $499 → $5
-    $500 – $599 → $6
-    $600 – $1499 → $7
-    $1500+ → 1%
-    """
+# Default commission tiers (can be overridden in database)
+DEFAULT_COMMISSION_TIERS = [
+    {"min": 5, "max": 19.99, "commission": 1.0, "is_percentage": False},
+    {"min": 20, "max": 39.99, "commission": 1.2, "is_percentage": False},
+    {"min": 40, "max": 99.99, "commission": 1.3, "is_percentage": False},
+    {"min": 100, "max": 199.99, "commission": 1.8, "is_percentage": False},
+    {"min": 200, "max": 299.99, "commission": 3.0, "is_percentage": False},
+    {"min": 300, "max": 399.99, "commission": 4.5, "is_percentage": False},
+    {"min": 400, "max": 499.99, "commission": 5.0, "is_percentage": False},
+    {"min": 500, "max": 599.99, "commission": 6.0, "is_percentage": False},
+    {"min": 600, "max": 1499.99, "commission": 7.0, "is_percentage": False},
+    {"min": 1500, "max": 999999, "commission": 1.0, "is_percentage": True}  # 1%
+]
+
+async def get_commission_tiers():
+    """Get commission tiers from database or return defaults"""
+    settings = await db.agent_settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if settings and settings.get("commission_tiers"):
+        return settings.get("commission_tiers")
+    return DEFAULT_COMMISSION_TIERS
+
+async def calculate_agent_commission_async(amount_usd: float) -> float:
+    """Calculate agent commission based on configurable tiered structure"""
     if amount_usd < 5:
         return 0.0
-    elif amount_usd < 20:
-        return 1.0
-    elif amount_usd < 40:
-        return 1.2
-    elif amount_usd < 100:
-        return 1.3
-    elif amount_usd < 200:
-        return 1.8
-    elif amount_usd < 300:
-        return 3.0
-    elif amount_usd < 400:
-        return 4.5
-    elif amount_usd < 500:
-        return 5.0
-    elif amount_usd < 600:
-        return 6.0
-    elif amount_usd < 1500:
-        return 7.0
-    else:
-        # 1% for $1500 and above
-        return round(amount_usd * 0.01, 2)
+    
+    tiers = await get_commission_tiers()
+    
+    for tier in tiers:
+        if tier["min"] <= amount_usd <= tier["max"]:
+            if tier.get("is_percentage", False):
+                return round(amount_usd * (tier["commission"] / 100), 2)
+            else:
+                return tier["commission"]
+    
+    # Fallback: 1% for any amount not covered
+    return round(amount_usd * 0.01, 2)
 
-def get_commission_tier(amount_usd: float) -> str:
+def calculate_agent_commission_sync(amount_usd: float, tiers: list) -> float:
+    """Synchronous version for use when tiers are already loaded"""
+    if amount_usd < 5:
+        return 0.0
+    
+    for tier in tiers:
+        if tier["min"] <= amount_usd <= tier["max"]:
+            if tier.get("is_percentage", False):
+                return round(amount_usd * (tier["commission"] / 100), 2)
+            else:
+                return tier["commission"]
+    
+    return round(amount_usd * 0.01, 2)
+
+async def get_commission_tier_label(amount_usd: float) -> str:
     """Get the commission tier description for display"""
     if amount_usd < 5:
         return "Pa kalifye (minimòm $5)"
-    elif amount_usd < 20:
-        return "$5-$19 → $1"
-    elif amount_usd < 40:
-        return "$20-$39 → $1.2"
-    elif amount_usd < 100:
-        return "$40-$99 → $1.3"
-    elif amount_usd < 200:
-        return "$100-$199 → $1.8"
-    elif amount_usd < 300:
-        return "$200-$299 → $3"
-    elif amount_usd < 400:
-        return "$300-$399 → $4.5"
-    elif amount_usd < 500:
-        return "$400-$499 → $5"
-    elif amount_usd < 600:
-        return "$500-$599 → $6"
-    elif amount_usd < 1500:
-        return "$600-$1499 → $7"
-    else:
-        return "$1500+ → 1%"
+    
+    tiers = await get_commission_tiers()
+    
+    for tier in tiers:
+        if tier["min"] <= amount_usd <= tier["max"]:
+            if tier.get("is_percentage", False):
+                return f"${tier['min']}+ → {tier['commission']}%"
+            else:
+                return f"${tier['min']}-${tier['max']:.0f} → ${tier['commission']}"
+    
+    return "1%"
 
 async def get_agent_user(current_user: dict = Depends(get_current_user)):
     """Verify user is an approved agent"""
@@ -1524,29 +1535,41 @@ async def get_agent_settings():
     """Get public agent deposit settings (rates and commission tiers)"""
     settings = await db.agent_settings.find_one({"setting_id": "main"}, {"_id": 0})
     
-    commission_tiers = [
-        {"range": "$5-$19", "commission": "$1"},
-        {"range": "$20-$39", "commission": "$1.2"},
-        {"range": "$40-$99", "commission": "$1.3"},
-        {"range": "$100-$199", "commission": "$1.8"},
-        {"range": "$200-$299", "commission": "$3"},
-        {"range": "$300-$399", "commission": "$4.5"},
-        {"range": "$400-$499", "commission": "$5"},
-        {"range": "$500-$599", "commission": "$6"},
-        {"range": "$600-$1499", "commission": "$7"},
-        {"range": "$1500+", "commission": "1%"}
-    ]
+    # Get commission tiers from settings or use defaults
+    raw_tiers = settings.get("commission_tiers", DEFAULT_COMMISSION_TIERS) if settings else DEFAULT_COMMISSION_TIERS
+    
+    # Format tiers for display
+    display_tiers = []
+    for tier in raw_tiers:
+        if tier.get("is_percentage", False):
+            display_tiers.append({
+                "range": f"${tier['min']}+",
+                "commission": f"{tier['commission']}%",
+                "min": tier["min"],
+                "max": tier["max"],
+                "value": tier["commission"],
+                "is_percentage": True
+            })
+        else:
+            display_tiers.append({
+                "range": f"${tier['min']}-${tier['max']:.0f}",
+                "commission": f"${tier['commission']}",
+                "min": tier["min"],
+                "max": tier["max"],
+                "value": tier["commission"],
+                "is_percentage": False
+            })
     
     if not settings:
         return {
             "enabled": False,
             "rate_usd_to_htg": 135.0,
-            "commission_tiers": commission_tiers
+            "commission_tiers": display_tiers
         }
     return {
         "enabled": settings.get("agent_deposit_enabled", False),
         "rate_usd_to_htg": settings.get("agent_rate_usd_to_htg", 135.0),
-        "commission_tiers": commission_tiers
+        "commission_tiers": display_tiers
     }
 
 @api_router.post("/agent/register")
@@ -1618,8 +1641,8 @@ async def create_agent_deposit(request: AgentDepositRequest, current_user: dict 
     
     # Calculate expected HTG and tiered commission
     expected_htg = request.amount_usd * rate_usd_to_htg
-    commission_usd = calculate_agent_commission(request.amount_usd)
-    commission_tier = get_commission_tier(request.amount_usd)
+    commission_usd = await calculate_agent_commission_async(request.amount_usd)
+    commission_tier = await get_commission_tier_label(request.amount_usd)
     
     deposit_id = str(uuid.uuid4())
     agent_deposit = {
@@ -1700,6 +1723,15 @@ async def get_agent_dashboard(current_user: dict = Depends(get_agent_user)):
     # Get settings for current rates
     settings = await db.agent_settings.find_one({"setting_id": "main"}, {"_id": 0})
     
+    # Get commission tiers
+    raw_tiers = settings.get("commission_tiers", DEFAULT_COMMISSION_TIERS) if settings else DEFAULT_COMMISSION_TIERS
+    display_tiers = []
+    for tier in raw_tiers:
+        if tier.get("is_percentage", False):
+            display_tiers.append({"range": f"${tier['min']}+", "commission": f"{tier['commission']}%"})
+        else:
+            display_tiers.append({"range": f"${tier['min']}-${tier['max']:.0f}", "commission": f"${tier['commission']}"})
+    
     return {
         "total_deposits": len(deposits),
         "pending_deposits": len(pending),
@@ -1709,18 +1741,7 @@ async def get_agent_dashboard(current_user: dict = Depends(get_agent_user)):
         "total_commission_earned": total_commission,
         "agent_wallet_usd": current_user.get("agent_wallet_usd", 0),
         "current_rate": settings.get("agent_rate_usd_to_htg", 135.0) if settings else 135.0,
-        "commission_tiers": [
-            {"range": "$5-$19", "commission": "$1"},
-            {"range": "$20-$39", "commission": "$1.2"},
-            {"range": "$40-$99", "commission": "$1.3"},
-            {"range": "$100-$199", "commission": "$1.8"},
-            {"range": "$200-$299", "commission": "$3"},
-            {"range": "$300-$399", "commission": "$4.5"},
-            {"range": "$400-$499", "commission": "$5"},
-            {"range": "$500-$599", "commission": "$6"},
-            {"range": "$600-$1499", "commission": "$7"},
-            {"range": "$1500+", "commission": "1%"}
-        ]
+        "commission_tiers": display_tiers
     }
 
 # Admin: Get all agent requests
@@ -1898,22 +1919,13 @@ async def admin_get_agent_settings(admin: dict = Depends(get_admin_user)):
             "setting_id": "main",
             "agent_deposit_enabled": False,
             "agent_rate_usd_to_htg": 135.0,
-            "agent_whatsapp_notifications": True
+            "agent_whatsapp_notifications": True,
+            "commission_tiers": DEFAULT_COMMISSION_TIERS
         }
     
-    # Add commission tiers info (fixed, not configurable)
-    settings["commission_tiers"] = [
-        {"range": "$5-$19", "commission": "$1"},
-        {"range": "$20-$39", "commission": "$1.2"},
-        {"range": "$40-$99", "commission": "$1.3"},
-        {"range": "$100-$199", "commission": "$1.8"},
-        {"range": "$200-$299", "commission": "$3"},
-        {"range": "$300-$399", "commission": "$4.5"},
-        {"range": "$400-$499", "commission": "$5"},
-        {"range": "$500-$599", "commission": "$6"},
-        {"range": "$600-$1499", "commission": "$7"},
-        {"range": "$1500+", "commission": "1%"}
-    ]
+    # Ensure commission tiers exist (use defaults if not set)
+    if not settings.get("commission_tiers"):
+        settings["commission_tiers"] = DEFAULT_COMMISSION_TIERS
     
     return {"settings": settings}
 

@@ -242,19 +242,20 @@ export default function AgentDeposit() {
   // Calculate expected values
   const expectedHTG = settings ? (parseFloat(amountUSD) || 0) * settings.rate_usd_to_htg : 0;
   
-  // Calculate tiered commission
+  // Calculate tiered commission using settings from API
   const calculateCommission = (amount) => {
-    if (!amount || amount < 5) return 0;
-    if (amount < 20) return 1.0;
-    if (amount < 40) return 1.2;
-    if (amount < 100) return 1.3;
-    if (amount < 200) return 1.8;
-    if (amount < 300) return 3.0;
-    if (amount < 400) return 4.5;
-    if (amount < 500) return 5.0;
-    if (amount < 600) return 6.0;
-    if (amount < 1500) return 7.0;
-    return amount * 0.01; // 1% for $1500+
+    if (!amount || amount < 5 || !settings?.commission_tiers) return 0;
+    
+    for (const tier of settings.commission_tiers) {
+      if (amount >= tier.min && amount <= tier.max) {
+        if (tier.is_percentage) {
+          return amount * (tier.value / 100);
+        }
+        return tier.value;
+      }
+    }
+    // Fallback: 1% for any amount not covered
+    return amount * 0.01;
   };
   
   const commission = calculateCommission(parseFloat(amountUSD) || 0);
@@ -553,18 +554,7 @@ export default function AgentDeposit() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-sm">
-                {[
-                  { range: '$5-$19', commission: '$1' },
-                  { range: '$20-$39', commission: '$1.2' },
-                  { range: '$40-$99', commission: '$1.3' },
-                  { range: '$100-$199', commission: '$1.8' },
-                  { range: '$200-$299', commission: '$3' },
-                  { range: '$300-$399', commission: '$4.5' },
-                  { range: '$400-$499', commission: '$5' },
-                  { range: '$500-$599', commission: '$6' },
-                  { range: '$600-$1499', commission: '$7' },
-                  { range: '$1500+', commission: '1%' }
-                ].map((tier, idx) => (
+                {(settings.commission_tiers || []).map((tier, idx) => (
                   <div key={idx} className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg p-2 text-center">
                     <p className="text-xs text-emerald-600 dark:text-emerald-400">{tier.range}</p>
                     <p className="font-bold text-emerald-700 dark:text-emerald-300">{tier.commission}</p>

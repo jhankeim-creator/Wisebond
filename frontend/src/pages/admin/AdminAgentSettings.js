@@ -7,12 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Save, Users, DollarSign, Percent, Bell, RefreshCw, Plus, Flag } from 'lucide-react';
+import { Save, Users, DollarSign, Percent, Bell, RefreshCw, Plus, Flag, Trash2, Edit2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
@@ -242,7 +242,7 @@ export default function AdminAgentSettings() {
                   </div>
                 </div>
 
-                {/* Commission Tiers (Fixed) */}
+                {/* Commission Tiers (Editable) */}
                 <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-xl p-4">
                   <h3 className="font-semibold text-emerald-800 dark:text-emerald-300 mb-3 flex items-center gap-2">
                     <Percent size={18} />
@@ -250,30 +250,112 @@ export default function AdminAgentSettings() {
                   </h3>
                   <p className="text-sm text-emerald-700 dark:text-emerald-400 mb-4">
                     {getText(
-                      'Komisyon fiks baze sou montan depo a (pa ka modifye)',
-                      'Commission fixe basée sur le montant du dépôt (non modifiable)',
-                      'Fixed commission based on deposit amount (not configurable)'
+                      'Modifye komisyon pou chak nivo depo',
+                      'Modifier la commission pour chaque niveau de dépôt',
+                      'Modify commission for each deposit level'
                     )}
                   </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-sm">
-                    {[
-                      { range: '$5-$19', commission: '$1' },
-                      { range: '$20-$39', commission: '$1.2' },
-                      { range: '$40-$99', commission: '$1.3' },
-                      { range: '$100-$199', commission: '$1.8' },
-                      { range: '$200-$299', commission: '$3' },
-                      { range: '$300-$399', commission: '$4.5' },
-                      { range: '$400-$499', commission: '$5' },
-                      { range: '$500-$599', commission: '$6' },
-                      { range: '$600-$1499', commission: '$7' },
-                      { range: '$1500+', commission: '1%' }
-                    ].map((tier, idx) => (
-                      <div key={idx} className="bg-white dark:bg-stone-800 border border-emerald-300 dark:border-emerald-600 rounded-lg p-2 text-center">
-                        <p className="text-xs text-emerald-600 dark:text-emerald-400">{tier.range}</p>
-                        <p className="font-bold text-emerald-700 dark:text-emerald-300">{tier.commission}</p>
+                  
+                  {/* Commission Tiers Table */}
+                  <div className="space-y-2 mb-4">
+                    <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300 px-2">
+                      <div className="col-span-2">{getText('Min ($)', 'Min ($)', 'Min ($)')}</div>
+                      <div className="col-span-2">{getText('Max ($)', 'Max ($)', 'Max ($)')}</div>
+                      <div className="col-span-3">{getText('Komisyon', 'Commission', 'Commission')}</div>
+                      <div className="col-span-3">{getText('Pousantaj?', 'Pourcentage?', 'Percentage?')}</div>
+                      <div className="col-span-2"></div>
+                    </div>
+                    
+                    {(settings.commission_tiers || []).map((tier, idx) => (
+                      <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-white dark:bg-stone-800 border border-emerald-200 dark:border-emerald-600 rounded-lg p-2">
+                        <div className="col-span-2">
+                          <Input
+                            type="number"
+                            value={tier.min}
+                            onChange={(e) => {
+                              const newTiers = [...settings.commission_tiers];
+                              newTiers[idx] = {...newTiers[idx], min: parseFloat(e.target.value) || 0};
+                              setSettings({...settings, commission_tiers: newTiers});
+                            }}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <Input
+                            type="number"
+                            value={tier.max}
+                            onChange={(e) => {
+                              const newTiers = [...settings.commission_tiers];
+                              newTiers[idx] = {...newTiers[idx], max: parseFloat(e.target.value) || 0};
+                              setSettings({...settings, commission_tiers: newTiers});
+                            }}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div className="col-span-3">
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm">{tier.is_percentage ? '%' : '$'}</span>
+                            <Input
+                              type="number"
+                              step="0.1"
+                              value={tier.commission}
+                              onChange={(e) => {
+                                const newTiers = [...settings.commission_tiers];
+                                newTiers[idx] = {...newTiers[idx], commission: parseFloat(e.target.value) || 0};
+                                setSettings({...settings, commission_tiers: newTiers});
+                              }}
+                              className="h-8 text-sm"
+                            />
+                          </div>
+                        </div>
+                        <div className="col-span-3 flex items-center gap-2">
+                          <Checkbox
+                            checked={tier.is_percentage || false}
+                            onCheckedChange={(checked) => {
+                              const newTiers = [...settings.commission_tiers];
+                              newTiers[idx] = {...newTiers[idx], is_percentage: checked};
+                              setSettings({...settings, commission_tiers: newTiers});
+                            }}
+                          />
+                          <span className="text-xs">{tier.is_percentage ? '%' : getText('Fiks', 'Fixe', 'Fixed')}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const newTiers = settings.commission_tiers.filter((_, i) => i !== idx);
+                              setSettings({...settings, commission_tiers: newTiers});
+                            }}
+                            className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>
+                  
+                  {/* Add New Tier Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const lastTier = settings.commission_tiers?.[settings.commission_tiers.length - 1];
+                      const newMin = lastTier ? lastTier.max + 0.01 : 5;
+                      setSettings({
+                        ...settings,
+                        commission_tiers: [
+                          ...(settings.commission_tiers || []),
+                          { min: newMin, max: newMin + 100, commission: 1, is_percentage: false }
+                        ]
+                      });
+                    }}
+                    className="w-full border-dashed border-emerald-400 text-emerald-600 hover:bg-emerald-50"
+                  >
+                    <Plus size={16} className="mr-2" />
+                    {getText('Ajoute Nivo', 'Ajouter Niveau', 'Add Tier')}
+                  </Button>
                 </div>
 
                 {/* WhatsApp Notifications */}
