@@ -196,6 +196,29 @@ class AgentSettingsUpdate(BaseModel):
     agent_commission_percentage: Optional[float] = None  # Commission percentage for agents
     agent_whatsapp_notifications: Optional[bool] = None
 
+class AgentRechargeRequest(BaseModel):
+    agent_user_id: str
+    amount_usd: float
+    reason: str
+
+class ClientReportRequest(BaseModel):
+    client_phone_or_id: str
+    reason: str
+    details: Optional[str] = None
+
+class ClientLookupRequest(BaseModel):
+    identifier: str  # Phone or client ID
+
+class UserInfoUpdate(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    full_name: Optional[str] = None
+
+class CardApprovalWithDetails(BaseModel):
+    card_name: Optional[str] = None
+    card_last4: Optional[str] = None
+    admin_notes: Optional[str] = None
+
 # ==================== HELPERS ====================
 
 def generate_client_id():
@@ -1056,6 +1079,8 @@ async def admin_process_card_order(
     order_id: str,
     action: str,
     admin_notes: Optional[str] = None,
+    card_name: Optional[str] = None,
+    card_last4: Optional[str] = None,
     admin: dict = Depends(get_admin_user)
 ):
     order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
@@ -1070,14 +1095,23 @@ async def admin_process_card_order(
     
     new_status = "approved" if action == "approve" else "rejected"
     
+    update_doc = {
+        "status": new_status,
+        "admin_notes": admin_notes,
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_by": admin["user_id"]
+    }
+    
+    # Add card details if approving
+    if action == "approve":
+        if card_name:
+            update_doc["card_name"] = card_name
+        if card_last4:
+            update_doc["card_last4"] = card_last4
+    
     await db.virtual_card_orders.update_one(
         {"order_id": order_id},
-        {"$set": {
-            "status": new_status,
-            "admin_notes": admin_notes,
-            "processed_at": datetime.now(timezone.utc).isoformat(),
-            "processed_by": admin["user_id"]
-        }}
+        {"$set": update_doc}
     )
     
     if action == "approve":
@@ -1709,6 +1743,219 @@ async def admin_get_agents(admin: dict = Depends(get_admin_user)):
     
     return {"agents": agents}
 
+# Agent: Lookup client by phone or ID
+@api_router.post("/agent/lookup-client")
+async def agent_lookup_client(request: ClientLookupRequest, current_user: dict = Depends(get_agent_user)):
+    """Look up a client by phone number or client ID"""
+    client_identifier = request.identifier.strip()
+    
+    client = await db.users.find_one({
+        "$or": [
+            {"phone": {"$regex": client_identifier, "$options": "i"}},
+            {"client_id": {"$regex": f"^{client_identifier}$", "$options": "i"}}
+        ]
+    }, {"_id": 0, "password_hash": 0})
+    
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    return {
+        "found": True,
+        "client_id": client["client_id"],
+        "full_name": client["full_name"],
+        "phone": client.get("phone"),
+        "kyc_status": client.get("kyc_status")
+    }
+
+# Agent: Report a problematic client
+@api_router.post("/agent/report-client")
+async def agent_report_client(request: ClientReportRequest, current_user: dict = Depends(get_agent_user)):
+    """Agent reports a problematic client"""
+    
+    # Find the client
+    client_identifier = request.client_phone_or_id.strip()
+    client = await db.users.find_one({
+        "$or": [
+            {"phone": {"$regex": client_identifier, "$options": "i"}},
+            {"client_id": {"$regex": f"^{client_identifier}$", "$options": "i"}}
+        ]
+    }, {"_id": 0})
+    
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    report = {
+        "report_id": str(uuid.uuid4()),
+        "agent_id": current_user["user_id"],
+        "agent_client_id": current_user["client_id"],
+        "agent_name": current_user["full_name"],
+        "reported_client_id": client["client_id"],
+        "reported_client_user_id": client["user_id"],
+        "reported_client_name": client["full_name"],
+        "reported_client_phone": client.get("phone"),
+        "reason": request.reason,
+        "details": request.details,
+        "status": "pending",  # pending, reviewed, resolved
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.client_reports.insert_one(report)
+    await log_action(current_user["user_id"], "client_report", {
+        "reported_client_id": client["client_id"],
+        "reason": request.reason
+    })
+    
+    if "_id" in report:
+        del report["_id"]
+    return {"report": report, "message": "Report submitted successfully"}
+
+# Agent: Get reports history
+@api_router.get("/agent/reports")
+async def agent_get_reports(current_user: dict = Depends(get_agent_user)):
+    """Get agent's submitted reports"""
+    reports = await db.client_reports.find(
+        {"agent_id": current_user["user_id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    return {"reports": reports}
+
+# Agent: Download transaction history (last 7 days)
+@api_router.get("/agent/export-history")
+async def agent_export_history(current_user: dict = Depends(get_agent_user)):
+    """Export agent deposit history for last 7 days"""
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    
+    deposits = await db.agent_deposits.find(
+        {
+            "agent_id": current_user["user_id"],
+            "created_at": {"$gte": seven_days_ago.isoformat()}
+        },
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(1000)
+    
+    # Format for export
+    export_data = []
+    for d in deposits:
+        export_data.append({
+            "date": d["created_at"],
+            "client_name": d["client_name"],
+            "client_id": d["client_id"],
+            "amount_usd": d["amount_usd"],
+            "amount_htg_received": d["amount_htg_received"],
+            "commission_usd": d["commission_usd"],
+            "status": d["status"]
+        })
+    
+    return {
+        "history": export_data,
+        "period_start": seven_days_ago.isoformat(),
+        "period_end": datetime.now(timezone.utc).isoformat(),
+        "total_deposits": len(export_data),
+        "total_usd": sum(d["amount_usd"] for d in export_data if d["status"] == "approved"),
+        "total_commission": sum(d["commission_usd"] for d in export_data if d["status"] == "approved")
+    }
+
+# Admin: Recharge agent account
+@api_router.post("/admin/recharge-agent")
+async def admin_recharge_agent(request: AgentRechargeRequest, admin: dict = Depends(get_admin_user)):
+    """Admin recharges an agent's USD wallet"""
+    agent = await db.users.find_one({"user_id": request.agent_user_id, "is_agent": True}, {"_id": 0})
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Add to agent's main USD wallet
+    await db.users.update_one(
+        {"user_id": request.agent_user_id},
+        {"$inc": {"wallet_usd": request.amount_usd}}
+    )
+    
+    # Create transaction record
+    await db.transactions.insert_one({
+        "transaction_id": str(uuid.uuid4()),
+        "user_id": request.agent_user_id,
+        "type": "admin_agent_recharge",
+        "amount": request.amount_usd,
+        "currency": "USD",
+        "status": "completed",
+        "description": f"Agent recharge by admin: {request.reason}",
+        "admin_id": admin["user_id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await log_action(admin["user_id"], "agent_recharge", {
+        "agent_id": request.agent_user_id,
+        "amount": request.amount_usd,
+        "reason": request.reason
+    })
+    
+    return {"message": f"Successfully recharged ${request.amount_usd} to agent's wallet"}
+
+# Admin: Get client reports
+@api_router.get("/admin/client-reports")
+async def admin_get_client_reports(
+    status: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    query = {}
+    if status:
+        query["status"] = status
+    
+    reports = await db.client_reports.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return {"reports": reports}
+
+# Admin: Update client report status
+@api_router.patch("/admin/client-reports/{report_id}")
+async def admin_update_report_status(
+    report_id: str,
+    status: str,
+    admin: dict = Depends(get_admin_user)
+):
+    if status not in ["pending", "reviewed", "resolved"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
+    await db.client_reports.update_one(
+        {"report_id": report_id},
+        {"$set": {
+            "status": status,
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+            "reviewed_by": admin["user_id"]
+        }}
+    )
+    
+    return {"message": "Report status updated"}
+
+# Admin: Update user info (email, phone)
+@api_router.patch("/admin/users/{user_id}/info")
+async def admin_update_user_info(
+    user_id: str,
+    update: UserInfoUpdate,
+    admin: dict = Depends(get_admin_user)
+):
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    update_doc = {}
+    if update.email:
+        # Check if email is already taken
+        existing = await db.users.find_one({"email": update.email.lower(), "user_id": {"$ne": user_id}})
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already in use")
+        update_doc["email"] = update.email.lower()
+    if update.phone:
+        update_doc["phone"] = update.phone
+    if update.full_name:
+        update_doc["full_name"] = update.full_name
+    
+    if update_doc:
+        await db.users.update_one({"user_id": user_id}, {"$set": update_doc})
+        await log_action(admin["user_id"], "user_info_update", {
+            "target_user": user_id,
+            "fields_updated": list(update_doc.keys())
+        })
+    
+    return {"message": "User info updated successfully"}
+
 # Agent: Withdraw commission
 @api_router.post("/agent/withdraw-commission")
 async def agent_withdraw_commission(current_user: dict = Depends(get_agent_user)):
@@ -2286,6 +2533,89 @@ async def admin_send_bulk_email(request: BulkEmailRequest, admin: dict = Depends
     })
     
     return {"message": f"Emails sent: {success_count} success, {fail_count} failed"}
+
+# Admin: Update card details (after approval)
+@api_router.patch("/admin/virtual-card-orders/{order_id}/details")
+async def admin_update_card_details(
+    order_id: str,
+    card_name: Optional[str] = None,
+    card_last4: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    update_doc = {}
+    if card_name:
+        update_doc["card_name"] = card_name
+    if card_last4:
+        update_doc["card_last4"] = card_last4
+    
+    if update_doc:
+        await db.virtual_card_orders.update_one(
+            {"order_id": order_id},
+            {"$set": update_doc}
+        )
+    
+    return {"message": "Card details updated"}
+
+# Admin: Purge old records (older than X days)
+@api_router.post("/admin/purge-old-records")
+async def admin_purge_old_records(
+    days: int = 7,
+    admin: dict = Depends(get_admin_user)
+):
+    """Delete completed/rejected records older than X days"""
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    
+    # Delete old agent deposits (keep pending ones)
+    agent_result = await db.agent_deposits.delete_many({
+        "status": {"$in": ["approved", "rejected"]},
+        "created_at": {"$lt": cutoff_date}
+    })
+    
+    # Delete old deposits (keep pending ones)
+    deposits_result = await db.deposits.delete_many({
+        "status": {"$in": ["completed", "rejected"]},
+        "created_at": {"$lt": cutoff_date}
+    })
+    
+    # Delete old withdrawals (keep pending ones)
+    withdrawals_result = await db.withdrawals.delete_many({
+        "status": {"$in": ["completed", "rejected"]},
+        "created_at": {"$lt": cutoff_date}
+    })
+    
+    # Delete old transactions
+    transactions_result = await db.transactions.delete_many({
+        "created_at": {"$lt": cutoff_date}
+    })
+    
+    # Delete old logs
+    logs_result = await db.logs.delete_many({
+        "timestamp": {"$lt": cutoff_date}
+    })
+    
+    await log_action(admin["user_id"], "purge_old_records", {
+        "days": days,
+        "deleted_agent_deposits": agent_result.deleted_count,
+        "deleted_deposits": deposits_result.deleted_count,
+        "deleted_withdrawals": withdrawals_result.deleted_count,
+        "deleted_transactions": transactions_result.deleted_count,
+        "deleted_logs": logs_result.deleted_count
+    })
+    
+    return {
+        "message": f"Purged records older than {days} days",
+        "result": {
+            "deleted_agent_deposits": agent_result.deleted_count,
+            "deleted_deposits": deposits_result.deleted_count,
+            "deleted_withdrawals": withdrawals_result.deleted_count,
+            "deleted_transactions": transactions_result.deleted_count,
+            "deleted_logs": logs_result.deleted_count
+        }
+    }
 
 # Logs Admin
 @api_router.get("/admin/logs")
