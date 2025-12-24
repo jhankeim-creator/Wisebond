@@ -145,6 +145,18 @@ class AdminSettingsUpdate(BaseModel):
     # WhatsApp
     whatsapp_enabled: Optional[bool] = None
     whatsapp_number: Optional[str] = None
+    whatsapp_api_provider: Optional[str] = None  # "callmebot", "ultramsg", "waha"
+    
+    # CallMeBot (free, user must activate first)
+    callmebot_api_key: Optional[str] = None
+    
+    # UltraMsg (paid, easy to use)
+    ultramsg_instance_id: Optional[str] = None
+    ultramsg_token: Optional[str] = None
+    
+    # WAHA (self-hosted)
+    waha_api_url: Optional[str] = None
+    waha_session: Optional[str] = None
 
     # USDT (Plisio)
     plisio_enabled: Optional[bool] = None
@@ -155,6 +167,12 @@ class AdminSettingsUpdate(BaseModel):
     card_order_fee_htg: Optional[int] = None
     affiliate_reward_htg: Optional[int] = None
     affiliate_cards_required: Optional[int] = None
+    
+    # Manual HTG deposits
+    moncash_enabled: Optional[bool] = None
+    moncash_number: Optional[str] = None
+    natcash_enabled: Optional[bool] = None
+    natcash_number: Optional[str] = None
 
 class BulkEmailRequest(BaseModel):
     subject: str
@@ -315,11 +333,13 @@ async def send_email(to_email: str, subject: str, html_content: str):
         return False
 
 async def send_whatsapp_notification(phone_number: str, message: str):
-    """Send WhatsApp notification using WhatsApp Business API or fallback to WhatsApp link generation"""
+    """Send WhatsApp notification using configured API provider"""
+    import httpx
+    
     try:
         settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
         if not settings or not settings.get("whatsapp_enabled"):
-            logger.info("WhatsApp notifications disabled")
+            logger.info("WhatsApp notifications disabled in settings")
             return False
         
         # Clean phone number (remove spaces, dashes)
@@ -327,22 +347,111 @@ async def send_whatsapp_notification(phone_number: str, message: str):
         if not clean_phone.startswith("+"):
             clean_phone = "+509" + clean_phone  # Default to Haiti
         
-        # For now, we'll just log the notification
-        # In production, you would integrate with WhatsApp Business API
-        logger.info(f"WhatsApp notification to {clean_phone}: {message}")
+        # Remove + for API calls
+        phone_for_api = clean_phone.replace("+", "")
+        
+        notification_id = str(uuid.uuid4())
+        notification_status = "pending"
+        api_response = None
+        
+        # Check which WhatsApp API provider is configured
+        whatsapp_provider = settings.get("whatsapp_api_provider", "callmebot")
+        
+        if whatsapp_provider == "ultramsg" and settings.get("ultramsg_instance_id") and settings.get("ultramsg_token"):
+            # UltraMsg API
+            instance_id = settings.get("ultramsg_instance_id")
+            token = settings.get("ultramsg_token")
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://api.ultramsg.com/{instance_id}/messages/chat",
+                    data={
+                        "token": token,
+                        "to": clean_phone,
+                        "body": message
+                    },
+                    timeout=30.0
+                )
+                api_response = response.text
+                if response.status_code == 200:
+                    notification_status = "sent"
+                    logger.info(f"WhatsApp sent via UltraMsg to {clean_phone}")
+                else:
+                    notification_status = "failed"
+                    logger.error(f"UltraMsg error: {response.text}")
+        
+        elif whatsapp_provider == "callmebot" or (not settings.get("ultramsg_instance_id")):
+            # CallMeBot API (free, requires user to activate first)
+            # User must first send: "I allow callmebot to send me messages" to +34 644 71 67 43
+            api_key = settings.get("callmebot_api_key")
+            
+            if api_key:
+                encoded_message = message.replace(" ", "+").replace("\n", "%0A")
+                url = f"https://api.callmebot.com/whatsapp.php?phone={phone_for_api}&text={encoded_message}&apikey={api_key}"
+                
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(url, timeout=30.0)
+                    api_response = response.text
+                    if response.status_code == 200 and "Message queued" in response.text:
+                        notification_status = "sent"
+                        logger.info(f"WhatsApp sent via CallMeBot to {clean_phone}")
+                    else:
+                        notification_status = "failed"
+                        logger.error(f"CallMeBot error: {response.text}")
+            else:
+                # No API key configured - just log
+                logger.warning(f"No WhatsApp API configured. Message to {clean_phone}: {message}")
+                notification_status = "not_configured"
+        
+        elif whatsapp_provider == "waha" and settings.get("waha_api_url"):
+            # WAHA (WhatsApp HTTP API) - self-hosted solution
+            waha_url = settings.get("waha_api_url")
+            waha_session = settings.get("waha_session", "default")
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{waha_url}/api/sendText",
+                    json={
+                        "chatId": f"{phone_for_api}@c.us",
+                        "text": message,
+                        "session": waha_session
+                    },
+                    timeout=30.0
+                )
+                api_response = response.text
+                if response.status_code == 200 or response.status_code == 201:
+                    notification_status = "sent"
+                    logger.info(f"WhatsApp sent via WAHA to {clean_phone}")
+                else:
+                    notification_status = "failed"
+                    logger.error(f"WAHA error: {response.text}")
         
         # Store notification for tracking
         await db.whatsapp_notifications.insert_one({
-            "notification_id": str(uuid.uuid4()),
+            "notification_id": notification_id,
             "phone_number": clean_phone,
             "message": message,
-            "status": "pending",
+            "status": notification_status,
+            "provider": whatsapp_provider,
+            "api_response": api_response,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         
-        return True
+        return notification_status == "sent"
     except Exception as e:
         logger.error(f"Failed to send WhatsApp notification: {e}")
+        # Store failed notification
+        try:
+            await db.whatsapp_notifications.insert_one({
+                "notification_id": str(uuid.uuid4()),
+                "phone_number": phone_number,
+                "message": message,
+                "status": "error",
+                "error": str(e),
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        except:
+            pass
         return False
 
 async def get_agent_user(current_user: dict = Depends(get_current_user)):
@@ -2633,6 +2742,68 @@ async def admin_get_logs(
     
     logs = await db.logs.find(query, {"_id": 0}).sort("timestamp", -1).limit(limit).to_list(limit)
     return {"logs": logs}
+
+# ==================== WHATSAPP NOTIFICATIONS ====================
+
+@api_router.get("/admin/whatsapp-notifications")
+async def admin_get_whatsapp_notifications(
+    status: Optional[str] = None,
+    limit: int = Query(default=50, le=200),
+    admin: dict = Depends(get_admin_user)
+):
+    """Get WhatsApp notification history"""
+    query = {}
+    if status:
+        query["status"] = status
+    
+    notifications = await db.whatsapp_notifications.find(
+        query, {"_id": 0}
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    
+    # Get stats
+    total = await db.whatsapp_notifications.count_documents({})
+    sent = await db.whatsapp_notifications.count_documents({"status": "sent"})
+    failed = await db.whatsapp_notifications.count_documents({"status": "failed"})
+    pending = await db.whatsapp_notifications.count_documents({"status": "pending"})
+    
+    return {
+        "notifications": notifications,
+        "stats": {
+            "total": total,
+            "sent": sent,
+            "failed": failed,
+            "pending": pending
+        }
+    }
+
+class TestWhatsAppRequest(BaseModel):
+    phone_number: str
+    message: str = "Tès notifikasyon WhatsApp depi KAYICOM"
+
+@api_router.post("/admin/test-whatsapp")
+async def admin_test_whatsapp(
+    request: TestWhatsAppRequest,
+    admin: dict = Depends(get_admin_user)
+):
+    """Test WhatsApp notification sending"""
+    success = await send_whatsapp_notification(request.phone_number, request.message)
+    
+    # Log the test
+    await db.logs.insert_one({
+        "log_id": str(uuid.uuid4()),
+        "user_id": admin["user_id"],
+        "action": "whatsapp_test",
+        "details": {
+            "phone": request.phone_number,
+            "success": success
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    if success:
+        return {"success": True, "message": "Mesaj WhatsApp voye avèk siksè"}
+    else:
+        return {"success": False, "message": "Echèk voye mesaj WhatsApp. Verifye konfigirasyon API a."}
 
 # ==================== MAIN ROUTES ====================
 
