@@ -211,8 +211,8 @@ class AgentDepositRequest(BaseModel):
 class AgentSettingsUpdate(BaseModel):
     agent_deposit_enabled: Optional[bool] = None
     agent_rate_usd_to_htg: Optional[float] = None  # Rate for how many HTG per 1 USD
-    agent_commission_percentage: Optional[float] = None  # Commission percentage for agents
     agent_whatsapp_notifications: Optional[bool] = None
+    # Note: Commission is now tiered (fixed amounts based on deposit size), not configurable
 
 class AgentRechargeRequest(BaseModel):
     agent_user_id: str
@@ -453,6 +453,69 @@ async def send_whatsapp_notification(phone_number: str, message: str):
         except:
             pass
         return False
+
+def calculate_agent_commission(amount_usd: float) -> float:
+    """
+    Calculate agent commission based on tiered structure:
+    $5 – $19 → $1
+    $20 – $39 → $1.2
+    $40 – $99 → $1.3
+    $100 – $199 → $1.8
+    $200 – $299 → $3
+    $300 – $399 → $4.5
+    $400 – $499 → $5
+    $500 – $599 → $6
+    $600 – $1499 → $7
+    $1500+ → 1%
+    """
+    if amount_usd < 5:
+        return 0.0
+    elif amount_usd < 20:
+        return 1.0
+    elif amount_usd < 40:
+        return 1.2
+    elif amount_usd < 100:
+        return 1.3
+    elif amount_usd < 200:
+        return 1.8
+    elif amount_usd < 300:
+        return 3.0
+    elif amount_usd < 400:
+        return 4.5
+    elif amount_usd < 500:
+        return 5.0
+    elif amount_usd < 600:
+        return 6.0
+    elif amount_usd < 1500:
+        return 7.0
+    else:
+        # 1% for $1500 and above
+        return round(amount_usd * 0.01, 2)
+
+def get_commission_tier(amount_usd: float) -> str:
+    """Get the commission tier description for display"""
+    if amount_usd < 5:
+        return "Pa kalifye (minimòm $5)"
+    elif amount_usd < 20:
+        return "$5-$19 → $1"
+    elif amount_usd < 40:
+        return "$20-$39 → $1.2"
+    elif amount_usd < 100:
+        return "$40-$99 → $1.3"
+    elif amount_usd < 200:
+        return "$100-$199 → $1.8"
+    elif amount_usd < 300:
+        return "$200-$299 → $3"
+    elif amount_usd < 400:
+        return "$300-$399 → $4.5"
+    elif amount_usd < 500:
+        return "$400-$499 → $5"
+    elif amount_usd < 600:
+        return "$500-$599 → $6"
+    elif amount_usd < 1500:
+        return "$600-$1499 → $7"
+    else:
+        return "$1500+ → 1%"
 
 async def get_agent_user(current_user: dict = Depends(get_current_user)):
     """Verify user is an approved agent"""
@@ -1458,18 +1521,32 @@ async def admin_process_topup_order(
 
 @api_router.get("/agent/settings")
 async def get_agent_settings():
-    """Get public agent deposit settings (rates)"""
+    """Get public agent deposit settings (rates and commission tiers)"""
     settings = await db.agent_settings.find_one({"setting_id": "main"}, {"_id": 0})
+    
+    commission_tiers = [
+        {"range": "$5-$19", "commission": "$1"},
+        {"range": "$20-$39", "commission": "$1.2"},
+        {"range": "$40-$99", "commission": "$1.3"},
+        {"range": "$100-$199", "commission": "$1.8"},
+        {"range": "$200-$299", "commission": "$3"},
+        {"range": "$300-$399", "commission": "$4.5"},
+        {"range": "$400-$499", "commission": "$5"},
+        {"range": "$500-$599", "commission": "$6"},
+        {"range": "$600-$1499", "commission": "$7"},
+        {"range": "$1500+", "commission": "1%"}
+    ]
+    
     if not settings:
-        settings = {
-            "agent_deposit_enabled": False,
-            "agent_rate_usd_to_htg": 135.0,
-            "agent_commission_percentage": 2.0
+        return {
+            "enabled": False,
+            "rate_usd_to_htg": 135.0,
+            "commission_tiers": commission_tiers
         }
     return {
         "enabled": settings.get("agent_deposit_enabled", False),
         "rate_usd_to_htg": settings.get("agent_rate_usd_to_htg", 135.0),
-        "commission_percentage": settings.get("agent_commission_percentage", 2.0)
+        "commission_tiers": commission_tiers
     }
 
 @api_router.post("/agent/register")
@@ -1536,13 +1613,13 @@ async def create_agent_deposit(request: AgentDepositRequest, current_user: dict 
     if client["user_id"] == current_user["user_id"]:
         raise HTTPException(status_code=400, detail="Cannot deposit for yourself")
     
-    # Get rate and commission from settings
+    # Get rate from settings
     rate_usd_to_htg = settings.get("agent_rate_usd_to_htg", 135.0)
-    commission_percentage = settings.get("agent_commission_percentage", 2.0)
     
-    # Calculate expected HTG and commission
+    # Calculate expected HTG and tiered commission
     expected_htg = request.amount_usd * rate_usd_to_htg
-    commission_usd = request.amount_usd * (commission_percentage / 100)
+    commission_usd = calculate_agent_commission(request.amount_usd)
+    commission_tier = get_commission_tier(request.amount_usd)
     
     deposit_id = str(uuid.uuid4())
     agent_deposit = {
@@ -1560,7 +1637,7 @@ async def create_agent_deposit(request: AgentDepositRequest, current_user: dict 
         "amount_htg_received": request.amount_htg_received,
         "expected_htg": expected_htg,
         "rate_used": rate_usd_to_htg,
-        "commission_percentage": commission_percentage,
+        "commission_tier": commission_tier,
         "commission_usd": commission_usd,
         "proof_image": request.proof_image,
         "status": "pending",
@@ -1632,7 +1709,18 @@ async def get_agent_dashboard(current_user: dict = Depends(get_agent_user)):
         "total_commission_earned": total_commission,
         "agent_wallet_usd": current_user.get("agent_wallet_usd", 0),
         "current_rate": settings.get("agent_rate_usd_to_htg", 135.0) if settings else 135.0,
-        "commission_percentage": settings.get("agent_commission_percentage", 2.0) if settings else 2.0
+        "commission_tiers": [
+            {"range": "$5-$19", "commission": "$1"},
+            {"range": "$20-$39", "commission": "$1.2"},
+            {"range": "$40-$99", "commission": "$1.3"},
+            {"range": "$100-$199", "commission": "$1.8"},
+            {"range": "$200-$299", "commission": "$3"},
+            {"range": "$300-$399", "commission": "$4.5"},
+            {"range": "$400-$499", "commission": "$5"},
+            {"range": "$500-$599", "commission": "$6"},
+            {"range": "$600-$1499", "commission": "$7"},
+            {"range": "$1500+", "commission": "1%"}
+        ]
     }
 
 # Admin: Get all agent requests
@@ -1810,9 +1898,23 @@ async def admin_get_agent_settings(admin: dict = Depends(get_admin_user)):
             "setting_id": "main",
             "agent_deposit_enabled": False,
             "agent_rate_usd_to_htg": 135.0,
-            "agent_commission_percentage": 2.0,
             "agent_whatsapp_notifications": True
         }
+    
+    # Add commission tiers info (fixed, not configurable)
+    settings["commission_tiers"] = [
+        {"range": "$5-$19", "commission": "$1"},
+        {"range": "$20-$39", "commission": "$1.2"},
+        {"range": "$40-$99", "commission": "$1.3"},
+        {"range": "$100-$199", "commission": "$1.8"},
+        {"range": "$200-$299", "commission": "$3"},
+        {"range": "$300-$399", "commission": "$4.5"},
+        {"range": "$400-$499", "commission": "$5"},
+        {"range": "$500-$599", "commission": "$6"},
+        {"range": "$600-$1499", "commission": "$7"},
+        {"range": "$1500+", "commission": "1%"}
+    ]
+    
     return {"settings": settings}
 
 @api_router.put("/admin/agent-settings")

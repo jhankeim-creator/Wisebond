@@ -314,7 +314,7 @@ export default function AdminAgentDeposits() {
                   </div>
                   <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-4">
                     <p className="text-sm text-purple-600 dark:text-purple-400">{getText('Komisyon Ajan', 'Commission Agent', 'Agent Commission')}</p>
-                    <p className="text-xl font-bold text-purple-600">${selectedDeposit.commission_usd?.toFixed(2)} ({selectedDeposit.commission_percentage}%)</p>
+                    <p className="text-xl font-bold text-purple-600">${selectedDeposit.commission_usd?.toFixed(2)} <span className="text-sm font-normal">({selectedDeposit.commission_tier || 'Tiered'})</span></p>
                   </div>
                 </div>
 

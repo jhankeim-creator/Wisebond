@@ -241,7 +241,23 @@ export default function AgentDeposit() {
 
   // Calculate expected values
   const expectedHTG = settings ? (parseFloat(amountUSD) || 0) * settings.rate_usd_to_htg : 0;
-  const commission = settings ? (parseFloat(amountUSD) || 0) * (settings.commission_percentage / 100) : 0;
+  
+  // Calculate tiered commission
+  const calculateCommission = (amount) => {
+    if (!amount || amount < 5) return 0;
+    if (amount < 20) return 1.0;
+    if (amount < 40) return 1.2;
+    if (amount < 100) return 1.3;
+    if (amount < 200) return 1.8;
+    if (amount < 300) return 3.0;
+    if (amount < 400) return 4.5;
+    if (amount < 500) return 5.0;
+    if (amount < 600) return 6.0;
+    if (amount < 1500) return 7.0;
+    return amount * 0.01; // 1% for $1500+
+  };
+  
+  const commission = calculateCommission(parseFloat(amountUSD) || 0);
 
   const handleSubmitDeposit = async () => {
     if (!clientIdentifier || !amountUSD || !amountHTG) {
@@ -346,7 +362,7 @@ export default function AgentDeposit() {
                       {getText('Avantaj Ajan', 'Avantages Agent', 'Agent Benefits')}
                     </h4>
                     <ul className="text-sm text-emerald-700 dark:text-emerald-400 space-y-1">
-                      <li>✓ {getText(`Komisyon ${settings.commission_percentage}% sou chak depo`, `Commission ${settings.commission_percentage}% sur chaque dépôt`, `${settings.commission_percentage}% commission on each deposit`)}</li>
+                      <li>✓ {getText('Komisyon sou chak depo (jiska $7 oswa 1%)', 'Commission sur chaque dépôt (jusqu\'à $7 ou 1%)', 'Commission on each deposit (up to $7 or 1%)')}</li>
                       <li>✓ {getText('Retire komisyon ou dirèkteman nan bous ou', 'Retirez votre commission directement dans votre portefeuille', 'Withdraw commission directly to your wallet')}</li>
                       <li>✓ {getText('Tablo de bò pou swiv depo ou yo', 'Tableau de bord pour suivre vos dépôts', 'Dashboard to track your deposits')}</li>
                     </ul>
@@ -518,9 +534,42 @@ export default function AgentDeposit() {
                   <Wallet className="text-emerald-600" size={24} />
                   <div>
                     <p className="text-sm text-emerald-700 dark:text-emerald-400">{getText('Komisyon ou', 'Votre Commission', 'Your Commission')}</p>
-                    <p className="text-xl font-bold text-emerald-600">{settings.commission_percentage}%</p>
+                    <p className="text-sm font-bold text-emerald-600">{getText('$1 - $7 oswa 1%', '$1 - $7 ou 1%', '$1 - $7 or 1%')}</p>
                   </div>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Commission Tiers Card */}
+        {isAgent && settings && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Wallet className="text-emerald-600" size={20} />
+                {getText('Griy Komisyon', 'Grille de Commission', 'Commission Tiers')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-sm">
+                {[
+                  { range: '$5-$19', commission: '$1' },
+                  { range: '$20-$39', commission: '$1.2' },
+                  { range: '$40-$99', commission: '$1.3' },
+                  { range: '$100-$199', commission: '$1.8' },
+                  { range: '$200-$299', commission: '$3' },
+                  { range: '$300-$399', commission: '$4.5' },
+                  { range: '$400-$499', commission: '$5' },
+                  { range: '$500-$599', commission: '$6' },
+                  { range: '$600-$1499', commission: '$7' },
+                  { range: '$1500+', commission: '1%' }
+                ].map((tier, idx) => (
+                  <div key={idx} className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-lg p-2 text-center">
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400">{tier.range}</p>
+                    <p className="font-bold text-emerald-700 dark:text-emerald-300">{tier.commission}</p>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

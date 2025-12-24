@@ -21,8 +21,8 @@ export default function AdminAgentSettings() {
   const [settings, setSettings] = useState({
     agent_deposit_enabled: false,
     agent_rate_usd_to_htg: 135.0,
-    agent_commission_percentage: 2.0,
-    agent_whatsapp_notifications: true
+    agent_whatsapp_notifications: true,
+    commission_tiers: []
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -178,10 +178,10 @@ export default function AdminAgentSettings() {
                   <Percent className="text-emerald-600 dark:text-emerald-400" size={20} />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-stone-900 dark:text-white">
-                    {settings.agent_commission_percentage}%
+                  <p className="text-lg font-bold text-stone-900 dark:text-white">
+                    $1 - $7 / 1%
                   </p>
-                  <p className="text-sm text-stone-500 dark:text-stone-400">{getText('Komisyon Ajan', 'Commission Agent', 'Agent Commission')}</p>
+                  <p className="text-sm text-stone-500 dark:text-stone-400">{getText('Komisyon Pa Nivo', 'Commission par Niveau', 'Tiered Commission')}</p>
                 </div>
               </div>
             </CardContent>
@@ -242,36 +242,38 @@ export default function AdminAgentSettings() {
                   </div>
                 </div>
 
-                {/* Commission Configuration */}
+                {/* Commission Tiers (Fixed) */}
                 <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-xl p-4">
                   <h3 className="font-semibold text-emerald-800 dark:text-emerald-300 mb-3 flex items-center gap-2">
                     <Percent size={18} />
-                    {getText('Komisyon Ajan', 'Commission Agent', 'Agent Commission')}
+                    {getText('Griy Komisyon Ajan', 'Grille de Commission Agent', 'Agent Commission Tiers')}
                   </h3>
                   <p className="text-sm text-emerald-700 dark:text-emerald-400 mb-4">
                     {getText(
-                      'Pousantaj komisyon ajan an ap resevwa sou chak depo',
-                      'Pourcentage de commission que l\'agent reçoit sur chaque dépôt',
-                      'Commission percentage the agent receives on each deposit'
+                      'Komisyon fiks baze sou montan depo a (pa ka modifye)',
+                      'Commission fixe basée sur le montant du dépôt (non modifiable)',
+                      'Fixed commission based on deposit amount (not configurable)'
                     )}
                   </p>
-                  <div className="flex items-center gap-3">
-                    <Input
-                      type="number"
-                      step="0.1"
-                      value={settings.agent_commission_percentage}
-                      onChange={(e) => setSettings({...settings, agent_commission_percentage: parseFloat(e.target.value)})}
-                      className="w-24 text-lg font-semibold"
-                    />
-                    <span className="text-lg font-bold">%</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-sm">
+                    {[
+                      { range: '$5-$19', commission: '$1' },
+                      { range: '$20-$39', commission: '$1.2' },
+                      { range: '$40-$99', commission: '$1.3' },
+                      { range: '$100-$199', commission: '$1.8' },
+                      { range: '$200-$299', commission: '$3' },
+                      { range: '$300-$399', commission: '$4.5' },
+                      { range: '$400-$499', commission: '$5' },
+                      { range: '$500-$599', commission: '$6' },
+                      { range: '$600-$1499', commission: '$7' },
+                      { range: '$1500+', commission: '1%' }
+                    ].map((tier, idx) => (
+                      <div key={idx} className="bg-white dark:bg-stone-800 border border-emerald-300 dark:border-emerald-600 rounded-lg p-2 text-center">
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400">{tier.range}</p>
+                        <p className="font-bold text-emerald-700 dark:text-emerald-300">{tier.commission}</p>
+                      </div>
+                    ))}
                   </div>
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
-                    {getText(
-                      `Egzanp: Si ajan an fè yon depo $100, li ap resevwa $${(100 * settings.agent_commission_percentage / 100).toFixed(2)} komisyon`,
-                      `Exemple: Si l'agent fait un dépôt de $100, il recevra $${(100 * settings.agent_commission_percentage / 100).toFixed(2)} de commission`,
-                      `Example: If agent makes a $100 deposit, they receive $${(100 * settings.agent_commission_percentage / 100).toFixed(2)} commission`
-                    )}
-                  </p>
                 </div>
 
                 {/* WhatsApp Notifications */}
