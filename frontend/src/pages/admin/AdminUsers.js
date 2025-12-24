@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Search, Eye, Ban, DollarSign, RefreshCw, UserX, CheckCircle } from 'lucide-react';
+import { Search, Eye, Ban, DollarSign, RefreshCw, UserX, CheckCircle, Edit, Save } from 'lucide-react';
+import { Label } from '@/components/ui/label';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
@@ -19,6 +20,9 @@ export default function AdminUsers() {
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ email: '', phone: '', full_name: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -42,9 +46,35 @@ export default function AdminUsers() {
     try {
       const response = await axios.get(`${API}/admin/users/${userId}`);
       setSelectedUser(response.data);
+      setEditForm({
+        email: response.data.user.email || '',
+        phone: response.data.user.phone || '',
+        full_name: response.data.user.full_name || ''
+      });
+      setEditing(false);
       setShowModal(true);
     } catch (error) {
       toast.error(getText('Erè pandan chajman', 'Erreur lors du chargement', 'Error loading'));
+    }
+  };
+
+  const saveUserInfo = async () => {
+    if (!selectedUser) return;
+    
+    setSavingEdit(true);
+    try {
+      await axios.patch(`${API}/admin/users/${selectedUser.user.user_id}/info`, editForm);
+      toast.success(getText('Enfòmasyon kliyan mete ajou!', 'Informations client mises à jour!', 'Client info updated!'));
+      setEditing(false);
+      
+      // Refresh the user data
+      const response = await axios.get(`${API}/admin/users/${selectedUser.user.user_id}`);
+      setSelectedUser(response.data);
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || getText('Erè pandan mizajou', 'Erreur lors de la mise à jour', 'Error updating'));
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -203,54 +233,119 @@ export default function AdminUsers() {
         <Dialog open={showModal} onOpenChange={setShowModal}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>{getText('Detay Kliyan', 'Détails du client', 'Client Details')}</DialogTitle>
+              <DialogTitle className="flex items-center justify-between">
+                <span>{getText('Detay Kliyan', 'Détails du client', 'Client Details')}</span>
+                {selectedUser && !editing && (
+                  <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                    <Edit size={16} className="mr-2" />
+                    {getText('Modifye', 'Modifier', 'Edit')}
+                  </Button>
+                )}
+              </DialogTitle>
             </DialogHeader>
             {selectedUser && (
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-slate-500">{getText('Non konplè', 'Nom complet', 'Full name')}</p>
-                    <p className="font-medium">{selectedUser.user.full_name}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500">Client ID</p>
-                    <p className="font-mono">{selectedUser.user.client_id}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500">{getText('Imèl', 'Email', 'Email')}</p>
-                    <p>{selectedUser.user.email}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500">{getText('Telefòn', 'Téléphone', 'Phone')}</p>
-                    <p>{selectedUser.user.phone || '-'}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500">{getText('Balans USD', 'Solde USD', 'USD Balance')}</p>
-                    <p className="font-semibold text-emerald-600">${selectedUser.user.wallet_usd?.toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500">{getText('Balans HTG', 'Solde HTG', 'HTG Balance')}</p>
-                    <p className="font-semibold text-blue-600">G {selectedUser.user.wallet_htg?.toLocaleString()}</p>
-                  </div>
-                </div>
-                
-                <div className="border-t pt-4">
-                  <h4 className="font-semibold mb-2">{getText('Dènye Tranzaksyon', 'Transactions récentes', 'Recent Transactions')}</h4>
-                  {selectedUser.recent_transactions?.length > 0 ? (
-                    <div className="space-y-2 max-h-48 overflow-y-auto">
-                      {selectedUser.recent_transactions.map((tx) => (
-                        <div key={tx.transaction_id} className="flex justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded">
-                          <span className="capitalize">{tx.type.replace('_', ' ')}</span>
-                          <span className={tx.amount >= 0 ? 'text-emerald-600' : 'text-red-500'}>
-                            {tx.amount >= 0 ? '+' : ''}{tx.currency === 'USD' ? '$' : 'G '}{Math.abs(tx.amount).toFixed(2)}
-                          </span>
-                        </div>
-                      ))}
+                {editing ? (
+                  /* Edit Mode */
+                  <div className="space-y-4">
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3 mb-4">
+                      <p className="text-sm text-amber-700 dark:text-amber-300">
+                        {getText('Modifye enfòmasyon kliyan an', 'Modifier les informations du client', 'Edit client information')}
+                      </p>
                     </div>
-                  ) : (
-                    <p className="text-slate-500">{getText('Pa gen tranzaksyon', 'Aucune transaction', 'No transactions')}</p>
-                  )}
-                </div>
+                    
+                    <div>
+                      <Label>{getText('Non konplè', 'Nom complet', 'Full name')}</Label>
+                      <Input
+                        value={editForm.full_name}
+                        onChange={(e) => setEditForm({...editForm, full_name: e.target.value})}
+                        className="mt-1"
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label>{getText('Imèl', 'Email', 'Email')}</Label>
+                      <Input
+                        type="email"
+                        value={editForm.email}
+                        onChange={(e) => setEditForm({...editForm, email: e.target.value})}
+                        className="mt-1"
+                      />
+                    </div>
+                    
+                    <div>
+                      <Label>{getText('Telefòn', 'Téléphone', 'Phone')}</Label>
+                      <Input
+                        value={editForm.phone}
+                        onChange={(e) => setEditForm({...editForm, phone: e.target.value})}
+                        className="mt-1"
+                        placeholder="+509 00 00 0000"
+                      />
+                    </div>
+                    
+                    <div className="flex gap-4 pt-4 border-t">
+                      <Button variant="outline" onClick={() => setEditing(false)} className="flex-1">
+                        {getText('Anile', 'Annuler', 'Cancel')}
+                      </Button>
+                      <Button 
+                        onClick={saveUserInfo}
+                        disabled={savingEdit}
+                        className="flex-1 bg-emerald-500 hover:bg-emerald-600"
+                      >
+                        <Save size={16} className="mr-2" />
+                        {savingEdit ? getText('Anrejistreman...', 'Enregistrement...', 'Saving...') : getText('Anrejistre', 'Enregistrer', 'Save')}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  /* View Mode */
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-slate-500">{getText('Non konplè', 'Nom complet', 'Full name')}</p>
+                        <p className="font-medium">{selectedUser.user.full_name}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-500">Client ID</p>
+                        <p className="font-mono">{selectedUser.user.client_id}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-500">{getText('Imèl', 'Email', 'Email')}</p>
+                        <p>{selectedUser.user.email}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-500">{getText('Telefòn', 'Téléphone', 'Phone')}</p>
+                        <p>{selectedUser.user.phone || '-'}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-500">{getText('Balans USD', 'Solde USD', 'USD Balance')}</p>
+                        <p className="font-semibold text-emerald-600">${selectedUser.user.wallet_usd?.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-500">{getText('Balans HTG', 'Solde HTG', 'HTG Balance')}</p>
+                        <p className="font-semibold text-blue-600">G {selectedUser.user.wallet_htg?.toLocaleString()}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="border-t pt-4">
+                      <h4 className="font-semibold mb-2">{getText('Dènye Tranzaksyon', 'Transactions récentes', 'Recent Transactions')}</h4>
+                      {selectedUser.recent_transactions?.length > 0 ? (
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {selectedUser.recent_transactions.map((tx) => (
+                            <div key={tx.transaction_id} className="flex justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded">
+                              <span className="capitalize">{tx.type.replace('_', ' ')}</span>
+                              <span className={tx.amount >= 0 ? 'text-emerald-600' : 'text-red-500'}>
+                                {tx.amount >= 0 ? '+' : ''}{tx.currency === 'USD' ? '$' : 'G '}{Math.abs(tx.amount).toFixed(2)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-slate-500">{getText('Pa gen tranzaksyon', 'Aucune transaction', 'No transactions')}</p>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </DialogContent>

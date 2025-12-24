@@ -225,11 +225,18 @@ export default function VirtualCard() {
                     {cardOrders.map((order) => (
                       <div key={order.order_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-stone-100 rounded-lg flex items-center justify-center">
-                            <CreditCard className="text-stone-600" size={20} />
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            order.status === 'approved' ? 'bg-emerald-100' : 'bg-stone-100'
+                          }`}>
+                            <CreditCard className={order.status === 'approved' ? 'text-emerald-600' : 'text-stone-600'} size={20} />
                           </div>
                           <div>
                             <p className="font-medium text-stone-900">{order.card_email}</p>
+                            {order.status === 'approved' && order.card_name && (
+                              <p className="text-sm font-semibold text-emerald-600">
+                                {order.card_name} {order.card_last4 && `••••${order.card_last4}`}
+                              </p>
+                            )}
                             <p className="text-sm text-stone-500">
                               {new Date(order.created_at).toLocaleDateString()}
                             </p>

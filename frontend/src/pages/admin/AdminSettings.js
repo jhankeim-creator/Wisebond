@@ -28,6 +28,12 @@ export default function AdminSettings() {
     // WhatsApp
     whatsapp_enabled: false,
     whatsapp_number: '',
+    whatsapp_api_provider: 'callmebot',
+    callmebot_api_key: '',
+    ultramsg_instance_id: '',
+    ultramsg_token: '',
+    waha_api_url: '',
+    waha_session: 'default',
     
     // USDT (Plisio)
     plisio_enabled: false,
@@ -49,6 +55,10 @@ export default function AdminSettings() {
   const [saving, setSaving] = useState(false);
   const [diagnostics, setDiagnostics] = useState(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+  const [whatsappTest, setWhatsappTest] = useState({ phone: '', message: '' });
+  const [testingWhatsapp, setTestingWhatsapp] = useState(false);
+  const [whatsappNotifications, setWhatsappNotifications] = useState([]);
+  const [whatsappStats, setWhatsappStats] = useState({});
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -58,6 +68,7 @@ export default function AdminSettings() {
 
   useEffect(() => {
     fetchSettings();
+    fetchWhatsappNotifications();
   }, []);
 
   const fetchSettings = async () => {
@@ -99,6 +110,43 @@ export default function AdminSettings() {
       toast.error(getText('Erè nan anrejistreman', 'Erreur lors de la sauvegarde', 'Error saving'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const fetchWhatsappNotifications = async () => {
+    try {
+      const response = await axios.get(`${API}/admin/whatsapp-notifications?limit=10`);
+      setWhatsappNotifications(response.data.notifications || []);
+      setWhatsappStats(response.data.stats || {});
+    } catch (error) {
+      console.error('Error fetching WhatsApp notifications:', error);
+    }
+  };
+
+  const testWhatsapp = async () => {
+    if (!whatsappTest.phone) {
+      toast.error(getText('Antre nimewo telefòn', 'Entrez le numéro de téléphone', 'Enter phone number'));
+      return;
+    }
+    
+    setTestingWhatsapp(true);
+    try {
+      const response = await axios.post(`${API}/admin/test-whatsapp`, {
+        phone_number: whatsappTest.phone,
+        message: whatsappTest.message || 'Tès notifikasyon WhatsApp depi KAYICOM 🎉'
+      });
+      
+      if (response.data.success) {
+        toast.success(getText('Mesaj voye avèk siksè!', 'Message envoyé avec succès!', 'Message sent successfully!'));
+        setWhatsappTest({ phone: '', message: '' });
+        fetchWhatsappNotifications();
+      } else {
+        toast.error(response.data.message || getText('Echèk voye mesaj', 'Échec envoi message', 'Failed to send message'));
+      }
+    } catch (error) {
+      toast.error(getText('Erè koneksyon API', 'Erreur connexion API', 'API connection error'));
+    } finally {
+      setTestingWhatsapp(false);
     }
   };
 
@@ -237,7 +285,7 @@ export default function AdminSettings() {
                   WhatsApp
                 </CardTitle>
                 <CardDescription>
-                  {getText('Bouton WhatsApp pou kontakte sipò', 'Bouton WhatsApp pour contacter le support', 'WhatsApp button to contact support')}
+                  {getText('Notifikasyon WhatsApp otomatik pou ajan yo', 'Notifications WhatsApp automatiques pour les agents', 'Automatic WhatsApp notifications for agents')}
                 </CardDescription>
               </div>
               <Switch
@@ -249,7 +297,7 @@ export default function AdminSettings() {
           {settings.whatsapp_enabled && (
             <CardContent className="space-y-4 border-t pt-4">
               <div>
-                <Label htmlFor="whatsapp">{getText('Nimewo WhatsApp Business', 'Numéro WhatsApp Business', 'WhatsApp Business Number')}</Label>
+                <Label htmlFor="whatsapp">{getText('Nimewo WhatsApp Sipò', 'Numéro WhatsApp Support', 'Support WhatsApp Number')}</Label>
                 <Input
                   id="whatsapp"
                   placeholder="+50939308318"
@@ -257,9 +305,193 @@ export default function AdminSettings() {
                   onChange={(e) => setSettings({...settings, whatsapp_number: e.target.value})}
                   className="mt-1"
                 />
-                <p className="text-sm text-stone-500 dark:text-stone-400 mt-1">
-                  {getText('Format: +509XXXXXXXX', 'Format: +509XXXXXXXX', 'Format: +509XXXXXXXX')}
-                </p>
+              </div>
+
+              {/* WhatsApp API Provider Selection */}
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-xl p-4">
+                <h4 className="font-semibold text-emerald-800 dark:text-emerald-300 mb-3">
+                  {getText('API pou voye mesaj otomatik', 'API pour envoi de messages automatiques', 'API for automatic message sending')}
+                </h4>
+                
+                <div className="mb-4">
+                  <Label>{getText('Chwazi Founi API', 'Choisir Fournisseur API', 'Choose API Provider')}</Label>
+                  <select
+                    value={settings.whatsapp_api_provider || 'callmebot'}
+                    onChange={(e) => setSettings({...settings, whatsapp_api_provider: e.target.value})}
+                    className="w-full mt-1 p-2 border rounded-lg bg-white dark:bg-stone-800"
+                  >
+                    <option value="callmebot">CallMeBot (Gratis / Free)</option>
+                    <option value="ultramsg">UltraMsg (Peye / Paid)</option>
+                    <option value="waha">WAHA (Self-Hosted)</option>
+                  </select>
+                </div>
+
+                {/* CallMeBot Settings */}
+                {(settings.whatsapp_api_provider === 'callmebot' || !settings.whatsapp_api_provider) && (
+                  <div className="space-y-3">
+                    <div className="bg-white dark:bg-stone-800 rounded-lg p-3 text-sm">
+                      <p className="font-medium text-emerald-700 dark:text-emerald-300 mb-2">
+                        {getText('Kijan pou aktive CallMeBot:', 'Comment activer CallMeBot:', 'How to activate CallMeBot:')}
+                      </p>
+                      <ol className="list-decimal list-inside text-emerald-600 dark:text-emerald-400 space-y-1">
+                        <li>{getText('Voye mesaj sa a bay +34 644 71 67 43:', 'Envoyez ce message à +34 644 71 67 43:', 'Send this message to +34 644 71 67 43:')}</li>
+                        <li className="ml-4 font-mono bg-stone-100 dark:bg-stone-700 p-1 rounded text-xs">I allow callmebot to send me messages</li>
+                        <li>{getText('Ou ap resevwa yon apikey nan repons lan', 'Vous recevrez une apikey dans la réponse', 'You will receive an apikey in the response')}</li>
+                        <li>{getText('Antre apikey la anba a', 'Entrez l\'apikey ci-dessous', 'Enter the apikey below')}</li>
+                      </ol>
+                    </div>
+                    <div>
+                      <Label>CallMeBot API Key</Label>
+                      <Input
+                        placeholder="123456"
+                        value={settings.callmebot_api_key || ''}
+                        onChange={(e) => setSettings({...settings, callmebot_api_key: e.target.value})}
+                        className="mt-1 font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* UltraMsg Settings */}
+                {settings.whatsapp_api_provider === 'ultramsg' && (
+                  <div className="space-y-3">
+                    <div className="bg-white dark:bg-stone-800 rounded-lg p-3 text-sm">
+                      <p className="text-emerald-600 dark:text-emerald-400">
+                        {getText('Kreye yon kont sou', 'Créez un compte sur', 'Create an account on')}{' '}
+                        <a href="https://ultramsg.com" target="_blank" rel="noreferrer" className="text-[#EA580C] hover:underline">ultramsg.com</a>
+                      </p>
+                    </div>
+                    <div>
+                      <Label>Instance ID</Label>
+                      <Input
+                        placeholder="instance12345"
+                        value={settings.ultramsg_instance_id || ''}
+                        onChange={(e) => setSettings({...settings, ultramsg_instance_id: e.target.value})}
+                        className="mt-1 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <Label>Token</Label>
+                      <Input
+                        type="password"
+                        placeholder="your-token"
+                        value={settings.ultramsg_token || ''}
+                        onChange={(e) => setSettings({...settings, ultramsg_token: e.target.value})}
+                        className="mt-1 font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* WAHA Settings */}
+                {settings.whatsapp_api_provider === 'waha' && (
+                  <div className="space-y-3">
+                    <div className="bg-white dark:bg-stone-800 rounded-lg p-3 text-sm">
+                      <p className="text-emerald-600 dark:text-emerald-400">
+                        {getText('WAHA se yon solisyon self-hosted.', 'WAHA est une solution self-hosted.', 'WAHA is a self-hosted solution.')}{' '}
+                        <a href="https://github.com/devlikeapro/waha" target="_blank" rel="noreferrer" className="text-[#EA580C] hover:underline">GitHub</a>
+                      </p>
+                    </div>
+                    <div>
+                      <Label>WAHA API URL</Label>
+                      <Input
+                        placeholder="http://localhost:3000"
+                        value={settings.waha_api_url || ''}
+                        onChange={(e) => setSettings({...settings, waha_api_url: e.target.value})}
+                        className="mt-1 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <Label>Session Name</Label>
+                      <Input
+                        placeholder="default"
+                        value={settings.waha_session || 'default'}
+                        onChange={(e) => setSettings({...settings, waha_session: e.target.value})}
+                        className="mt-1 font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* WhatsApp Test Section */}
+              <div className="bg-stone-100 dark:bg-stone-800 border rounded-xl p-4 mt-4">
+                <h4 className="font-semibold mb-3">
+                  {getText('Teste Notifikasyon WhatsApp', 'Tester Notification WhatsApp', 'Test WhatsApp Notification')}
+                </h4>
+                <div className="space-y-3">
+                  <div>
+                    <Label>{getText('Nimewo Telefòn', 'Numéro de Téléphone', 'Phone Number')}</Label>
+                    <Input
+                      placeholder="+509XXXXXXXX"
+                      value={whatsappTest.phone}
+                      onChange={(e) => setWhatsappTest({...whatsappTest, phone: e.target.value})}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label>{getText('Mesaj (Opsyonèl)', 'Message (Optionnel)', 'Message (Optional)')}</Label>
+                    <Input
+                      placeholder="Tès notifikasyon..."
+                      value={whatsappTest.message}
+                      onChange={(e) => setWhatsappTest({...whatsappTest, message: e.target.value})}
+                      className="mt-1"
+                    />
+                  </div>
+                  <Button
+                    onClick={testWhatsapp}
+                    disabled={testingWhatsapp || !whatsappTest.phone}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    {testingWhatsapp ? (
+                      <span className="flex items-center gap-2">
+                        <span className="animate-spin">⏳</span>
+                        {getText('Ap voye...', 'Envoi en cours...', 'Sending...')}
+                      </span>
+                    ) : (
+                      getText('Voye Tès', 'Envoyer Test', 'Send Test')
+                    )}
+                  </Button>
+                </div>
+
+                {/* Notification Stats */}
+                {whatsappStats.total > 0 && (
+                  <div className="mt-4 pt-4 border-t">
+                    <h5 className="text-sm font-medium mb-2">
+                      {getText('Estatistik Notifikasyon', 'Statistiques Notifications', 'Notification Stats')}
+                    </h5>
+                    <div className="flex gap-3 text-xs">
+                      <span className="bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2 py-1 rounded">
+                        ✅ {getText('Voye', 'Envoyé', 'Sent')}: {whatsappStats.sent || 0}
+                      </span>
+                      <span className="bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 px-2 py-1 rounded">
+                        ❌ {getText('Echwe', 'Échoué', 'Failed')}: {whatsappStats.failed || 0}
+                      </span>
+                      <span className="bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 px-2 py-1 rounded">
+                        ⏳ {getText('Annatant', 'En attente', 'Pending')}: {whatsappStats.pending || 0}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Recent Notifications */}
+                {whatsappNotifications.length > 0 && (
+                  <div className="mt-4 pt-4 border-t">
+                    <h5 className="text-sm font-medium mb-2">
+                      {getText('Dènye Notifikasyon', 'Notifications Récentes', 'Recent Notifications')}
+                    </h5>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {whatsappNotifications.slice(0, 5).map((notif, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-xs bg-white dark:bg-stone-700 p-2 rounded">
+                          <span className="font-mono">{notif.phone_number}</span>
+                          <Badge variant={notif.status === 'sent' ? 'default' : notif.status === 'failed' ? 'destructive' : 'secondary'}>
+                            {notif.status}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           )}

@@ -19,6 +19,8 @@ export default function AdminVirtualCards() {
   const [showModal, setShowModal] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [adminNotes, setAdminNotes] = useState('');
+  const [cardName, setCardName] = useState('');
+  const [cardLast4, setCardLast4] = useState('');
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -41,12 +43,17 @@ export default function AdminVirtualCards() {
   const handleProcess = async (action) => {
     setProcessing(true);
     try {
-      await axios.patch(
-        `${API}/admin/virtual-card-orders/${selectedOrder.order_id}?action=${action}${adminNotes ? `&admin_notes=${encodeURIComponent(adminNotes)}` : ''}`
-      );
+      let url = `${API}/admin/virtual-card-orders/${selectedOrder.order_id}?action=${action}`;
+      if (adminNotes) url += `&admin_notes=${encodeURIComponent(adminNotes)}`;
+      if (action === 'approve' && cardName) url += `&card_name=${encodeURIComponent(cardName)}`;
+      if (action === 'approve' && cardLast4) url += `&card_last4=${encodeURIComponent(cardLast4)}`;
+      
+      await axios.patch(url);
       toast.success(action === 'approve' ? 'Komand kat apwouve! Kliyan an resevwa $5 USD bonis.' : 'Komand kat rejte. Lajan ranbouse.');
       setShowModal(false);
       setAdminNotes('');
+      setCardName('');
+      setCardLast4('');
       fetchOrders();
     } catch (error) {
       toast.error('Erè nan tretman');
@@ -55,9 +62,31 @@ export default function AdminVirtualCards() {
     }
   };
 
+  const updateCardDetails = async () => {
+    setProcessing(true);
+    try {
+      let url = `${API}/admin/virtual-card-orders/${selectedOrder.order_id}/details?`;
+      if (cardName) url += `card_name=${encodeURIComponent(cardName)}&`;
+      if (cardLast4) url += `card_last4=${encodeURIComponent(cardLast4)}`;
+      
+      await axios.patch(url);
+      toast.success('Detay kat mete ajou!');
+      fetchOrders();
+      
+      // Update selected order
+      setSelectedOrder(prev => ({...prev, card_name: cardName, card_last4: cardLast4}));
+    } catch (error) {
+      toast.error('Erè nan mizajou');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const openModal = (order) => {
     setSelectedOrder(order);
     setAdminNotes(order.admin_notes || '');
+    setCardName(order.card_name || '');
+    setCardLast4(order.card_last4 || '');
     setShowModal(true);
   };
 
@@ -229,6 +258,30 @@ export default function AdminVirtualCards() {
                       </p>
                     </div>
 
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-stone-500 mb-2">Non Kat (lè apwouve)</p>
+                        <input
+                          type="text"
+                          placeholder="Ex: KAYICOM VISA"
+                          value={cardName}
+                          onChange={(e) => setCardName(e.target.value)}
+                          className="w-full p-2 border rounded-lg text-sm"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-sm text-stone-500 mb-2">Dènye 4 chif</p>
+                        <input
+                          type="text"
+                          placeholder="Ex: 1234"
+                          value={cardLast4}
+                          onChange={(e) => setCardLast4(e.target.value)}
+                          maxLength={4}
+                          className="w-full p-2 border rounded-lg text-sm"
+                        />
+                      </div>
+                    </div>
+
                     <div>
                       <p className="text-sm text-stone-500 mb-2">Nòt Admin (opsyonèl)</p>
                       <Textarea
@@ -259,6 +312,42 @@ export default function AdminVirtualCards() {
                       </Button>
                     </div>
                   </>
+                )}
+
+                {selectedOrder.status === 'approved' && (
+                  <div className="space-y-4 border-t pt-4">
+                    <h4 className="font-semibold text-emerald-700">Detay Kat (pou kliyan wè)</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-stone-500 mb-2">Non Kat</p>
+                        <input
+                          type="text"
+                          placeholder="Ex: KAYICOM VISA"
+                          value={cardName}
+                          onChange={(e) => setCardName(e.target.value)}
+                          className="w-full p-2 border rounded-lg text-sm"
+                        />
+                      </div>
+                      <div>
+                        <p className="text-sm text-stone-500 mb-2">Dènye 4 chif</p>
+                        <input
+                          type="text"
+                          placeholder="Ex: 1234"
+                          value={cardLast4}
+                          onChange={(e) => setCardLast4(e.target.value)}
+                          maxLength={4}
+                          className="w-full p-2 border rounded-lg text-sm"
+                        />
+                      </div>
+                    </div>
+                    <Button 
+                      onClick={updateCardDetails}
+                      disabled={processing}
+                      className="w-full bg-blue-500 hover:bg-blue-600"
+                    >
+                      Mete Detay Kat Ajou
+                    </Button>
+                  </div>
                 )}
 
                 {selectedOrder.status !== 'pending' && selectedOrder.admin_notes && (

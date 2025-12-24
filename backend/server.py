@@ -145,6 +145,18 @@ class AdminSettingsUpdate(BaseModel):
     # WhatsApp
     whatsapp_enabled: Optional[bool] = None
     whatsapp_number: Optional[str] = None
+    whatsapp_api_provider: Optional[str] = None  # "callmebot", "ultramsg", "waha"
+    
+    # CallMeBot (free, user must activate first)
+    callmebot_api_key: Optional[str] = None
+    
+    # UltraMsg (paid, easy to use)
+    ultramsg_instance_id: Optional[str] = None
+    ultramsg_token: Optional[str] = None
+    
+    # WAHA (self-hosted)
+    waha_api_url: Optional[str] = None
+    waha_session: Optional[str] = None
 
     # USDT (Plisio)
     plisio_enabled: Optional[bool] = None
@@ -155,6 +167,12 @@ class AdminSettingsUpdate(BaseModel):
     card_order_fee_htg: Optional[int] = None
     affiliate_reward_htg: Optional[int] = None
     affiliate_cards_required: Optional[int] = None
+    
+    # Manual HTG deposits
+    moncash_enabled: Optional[bool] = None
+    moncash_number: Optional[str] = None
+    natcash_enabled: Optional[bool] = None
+    natcash_number: Optional[str] = None
 
 class BulkEmailRequest(BaseModel):
     subject: str
@@ -181,6 +199,49 @@ class TopUpOrder(BaseModel):
     minutes: int
     price: float
     phone_number: str
+
+# ==================== AGENT DEPOSIT MODELS ====================
+
+class AgentDepositRequest(BaseModel):
+    client_phone_or_id: str  # Client phone number or client ID
+    amount_usd: float  # Amount in USD to deposit
+    amount_htg_received: float  # Amount in Gourdes received from client
+    proof_image: Optional[str] = None  # Payment proof image
+
+class CommissionTier(BaseModel):
+    min: float  # Minimum amount
+    max: float  # Maximum amount
+    commission: float  # Commission amount or percentage
+    is_percentage: bool = False  # If true, commission is a percentage
+
+class AgentSettingsUpdate(BaseModel):
+    agent_deposit_enabled: Optional[bool] = None
+    agent_rate_usd_to_htg: Optional[float] = None  # Rate for how many HTG per 1 USD
+    agent_whatsapp_notifications: Optional[bool] = None
+    commission_tiers: Optional[List[dict]] = None  # List of commission tiers
+
+class AgentRechargeRequest(BaseModel):
+    agent_user_id: str
+    amount_usd: float
+    reason: str
+
+class ClientReportRequest(BaseModel):
+    client_phone_or_id: str
+    reason: str
+    details: Optional[str] = None
+
+class ClientLookupRequest(BaseModel):
+    identifier: str  # Phone or client ID
+
+class UserInfoUpdate(BaseModel):
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    full_name: Optional[str] = None
+
+class CardApprovalWithDetails(BaseModel):
+    card_name: Optional[str] = None
+    card_last4: Optional[str] = None
+    admin_notes: Optional[str] = None
 
 # ==================== HELPERS ====================
 
@@ -276,6 +337,204 @@ async def send_email(to_email: str, subject: str, html_content: str):
     except Exception as e:
         logger.error(f"Failed to send email: {e}")
         return False
+
+async def send_whatsapp_notification(phone_number: str, message: str):
+    """Send WhatsApp notification using configured API provider"""
+    import httpx
+    
+    try:
+        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+        if not settings or not settings.get("whatsapp_enabled"):
+            logger.info("WhatsApp notifications disabled in settings")
+            return False
+        
+        # Clean phone number (remove spaces, dashes)
+        clean_phone = phone_number.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        if not clean_phone.startswith("+"):
+            clean_phone = "+509" + clean_phone  # Default to Haiti
+        
+        # Remove + for API calls
+        phone_for_api = clean_phone.replace("+", "")
+        
+        notification_id = str(uuid.uuid4())
+        notification_status = "pending"
+        api_response = None
+        
+        # Check which WhatsApp API provider is configured
+        whatsapp_provider = settings.get("whatsapp_api_provider", "callmebot")
+        
+        if whatsapp_provider == "ultramsg" and settings.get("ultramsg_instance_id") and settings.get("ultramsg_token"):
+            # UltraMsg API
+            instance_id = settings.get("ultramsg_instance_id")
+            token = settings.get("ultramsg_token")
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://api.ultramsg.com/{instance_id}/messages/chat",
+                    data={
+                        "token": token,
+                        "to": clean_phone,
+                        "body": message
+                    },
+                    timeout=30.0
+                )
+                api_response = response.text
+                if response.status_code == 200:
+                    notification_status = "sent"
+                    logger.info(f"WhatsApp sent via UltraMsg to {clean_phone}")
+                else:
+                    notification_status = "failed"
+                    logger.error(f"UltraMsg error: {response.text}")
+        
+        elif whatsapp_provider == "callmebot" or (not settings.get("ultramsg_instance_id")):
+            # CallMeBot API (free, requires user to activate first)
+            # User must first send: "I allow callmebot to send me messages" to +34 644 71 67 43
+            api_key = settings.get("callmebot_api_key")
+            
+            if api_key:
+                encoded_message = message.replace(" ", "+").replace("\n", "%0A")
+                url = f"https://api.callmebot.com/whatsapp.php?phone={phone_for_api}&text={encoded_message}&apikey={api_key}"
+                
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(url, timeout=30.0)
+                    api_response = response.text
+                    if response.status_code == 200 and "Message queued" in response.text:
+                        notification_status = "sent"
+                        logger.info(f"WhatsApp sent via CallMeBot to {clean_phone}")
+                    else:
+                        notification_status = "failed"
+                        logger.error(f"CallMeBot error: {response.text}")
+            else:
+                # No API key configured - just log
+                logger.warning(f"No WhatsApp API configured. Message to {clean_phone}: {message}")
+                notification_status = "not_configured"
+        
+        elif whatsapp_provider == "waha" and settings.get("waha_api_url"):
+            # WAHA (WhatsApp HTTP API) - self-hosted solution
+            waha_url = settings.get("waha_api_url")
+            waha_session = settings.get("waha_session", "default")
+            
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{waha_url}/api/sendText",
+                    json={
+                        "chatId": f"{phone_for_api}@c.us",
+                        "text": message,
+                        "session": waha_session
+                    },
+                    timeout=30.0
+                )
+                api_response = response.text
+                if response.status_code == 200 or response.status_code == 201:
+                    notification_status = "sent"
+                    logger.info(f"WhatsApp sent via WAHA to {clean_phone}")
+                else:
+                    notification_status = "failed"
+                    logger.error(f"WAHA error: {response.text}")
+        
+        # Store notification for tracking
+        await db.whatsapp_notifications.insert_one({
+            "notification_id": notification_id,
+            "phone_number": clean_phone,
+            "message": message,
+            "status": notification_status,
+            "provider": whatsapp_provider,
+            "api_response": api_response,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        return notification_status == "sent"
+    except Exception as e:
+        logger.error(f"Failed to send WhatsApp notification: {e}")
+        # Store failed notification
+        try:
+            await db.whatsapp_notifications.insert_one({
+                "notification_id": str(uuid.uuid4()),
+                "phone_number": phone_number,
+                "message": message,
+                "status": "error",
+                "error": str(e),
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+        except:
+            pass
+        return False
+
+# Default commission tiers (can be overridden in database)
+DEFAULT_COMMISSION_TIERS = [
+    {"min": 5, "max": 19.99, "commission": 1.0, "is_percentage": False},
+    {"min": 20, "max": 39.99, "commission": 1.2, "is_percentage": False},
+    {"min": 40, "max": 99.99, "commission": 1.3, "is_percentage": False},
+    {"min": 100, "max": 199.99, "commission": 1.8, "is_percentage": False},
+    {"min": 200, "max": 299.99, "commission": 3.0, "is_percentage": False},
+    {"min": 300, "max": 399.99, "commission": 4.5, "is_percentage": False},
+    {"min": 400, "max": 499.99, "commission": 5.0, "is_percentage": False},
+    {"min": 500, "max": 599.99, "commission": 6.0, "is_percentage": False},
+    {"min": 600, "max": 1499.99, "commission": 7.0, "is_percentage": False},
+    {"min": 1500, "max": 999999, "commission": 1.0, "is_percentage": True}  # 1%
+]
+
+async def get_commission_tiers():
+    """Get commission tiers from database or return defaults"""
+    settings = await db.agent_settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if settings and settings.get("commission_tiers"):
+        return settings.get("commission_tiers")
+    return DEFAULT_COMMISSION_TIERS
+
+async def calculate_agent_commission_async(amount_usd: float) -> float:
+    """Calculate agent commission based on configurable tiered structure"""
+    if amount_usd < 5:
+        return 0.0
+    
+    tiers = await get_commission_tiers()
+    
+    for tier in tiers:
+        if tier["min"] <= amount_usd <= tier["max"]:
+            if tier.get("is_percentage", False):
+                return round(amount_usd * (tier["commission"] / 100), 2)
+            else:
+                return tier["commission"]
+    
+    # Fallback: 1% for any amount not covered
+    return round(amount_usd * 0.01, 2)
+
+def calculate_agent_commission_sync(amount_usd: float, tiers: list) -> float:
+    """Synchronous version for use when tiers are already loaded"""
+    if amount_usd < 5:
+        return 0.0
+    
+    for tier in tiers:
+        if tier["min"] <= amount_usd <= tier["max"]:
+            if tier.get("is_percentage", False):
+                return round(amount_usd * (tier["commission"] / 100), 2)
+            else:
+                return tier["commission"]
+    
+    return round(amount_usd * 0.01, 2)
+
+async def get_commission_tier_label(amount_usd: float) -> str:
+    """Get the commission tier description for display"""
+    if amount_usd < 5:
+        return "Pa kalifye (minimòm $5)"
+    
+    tiers = await get_commission_tiers()
+    
+    for tier in tiers:
+        if tier["min"] <= amount_usd <= tier["max"]:
+            if tier.get("is_percentage", False):
+                return f"${tier['min']}+ → {tier['commission']}%"
+            else:
+                return f"${tier['min']}-${tier['max']:.0f} → ${tier['commission']}"
+    
+    return "1%"
+
+async def get_agent_user(current_user: dict = Depends(get_current_user)):
+    """Verify user is an approved agent"""
+    if not current_user.get("is_agent"):
+        raise HTTPException(status_code=403, detail="Agent access required")
+    if current_user.get("kyc_status") != "approved":
+        raise HTTPException(status_code=403, detail="KYC verification required for agents")
+    return current_user
 
 # ==================== AUTH ROUTES ====================
 
@@ -1003,6 +1262,8 @@ async def admin_process_card_order(
     order_id: str,
     action: str,
     admin_notes: Optional[str] = None,
+    card_name: Optional[str] = None,
+    card_last4: Optional[str] = None,
     admin: dict = Depends(get_admin_user)
 ):
     order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
@@ -1017,14 +1278,23 @@ async def admin_process_card_order(
     
     new_status = "approved" if action == "approve" else "rejected"
     
+    update_doc = {
+        "status": new_status,
+        "admin_notes": admin_notes,
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_by": admin["user_id"]
+    }
+    
+    # Add card details if approving
+    if action == "approve":
+        if card_name:
+            update_doc["card_name"] = card_name
+        if card_last4:
+            update_doc["card_last4"] = card_last4
+    
     await db.virtual_card_orders.update_one(
         {"order_id": order_id},
-        {"$set": {
-            "status": new_status,
-            "admin_notes": admin_notes,
-            "processed_at": datetime.now(timezone.utc).isoformat(),
-            "processed_by": admin["user_id"]
-        }}
+        {"$set": update_doc}
     )
     
     if action == "approve":
@@ -1258,6 +1528,691 @@ async def admin_process_topup_order(
     
     return {"message": f"Top-up order {action}d successfully"}
 
+# ==================== AGENT DEPOSIT ROUTES ====================
+
+@api_router.get("/agent/settings")
+async def get_agent_settings():
+    """Get public agent deposit settings (rates and commission tiers)"""
+    settings = await db.agent_settings.find_one({"setting_id": "main"}, {"_id": 0})
+    
+    # Get commission tiers from settings or use defaults
+    raw_tiers = settings.get("commission_tiers", DEFAULT_COMMISSION_TIERS) if settings else DEFAULT_COMMISSION_TIERS
+    
+    # Format tiers for display
+    display_tiers = []
+    for tier in raw_tiers:
+        if tier.get("is_percentage", False):
+            display_tiers.append({
+                "range": f"${tier['min']}+",
+                "commission": f"{tier['commission']}%",
+                "min": tier["min"],
+                "max": tier["max"],
+                "value": tier["commission"],
+                "is_percentage": True
+            })
+        else:
+            display_tiers.append({
+                "range": f"${tier['min']}-${tier['max']:.0f}",
+                "commission": f"${tier['commission']}",
+                "min": tier["min"],
+                "max": tier["max"],
+                "value": tier["commission"],
+                "is_percentage": False
+            })
+    
+    if not settings:
+        return {
+            "enabled": False,
+            "rate_usd_to_htg": 135.0,
+            "commission_tiers": display_tiers
+        }
+    return {
+        "enabled": settings.get("agent_deposit_enabled", False),
+        "rate_usd_to_htg": settings.get("agent_rate_usd_to_htg", 135.0),
+        "commission_tiers": display_tiers
+    }
+
+@api_router.post("/agent/register")
+async def register_as_agent(current_user: dict = Depends(get_current_user)):
+    """User requests to become an agent"""
+    if current_user.get("is_agent"):
+        raise HTTPException(status_code=400, detail="Already registered as agent")
+    
+    if current_user.get("kyc_status") != "approved":
+        raise HTTPException(status_code=403, detail="KYC verification required before becoming an agent")
+    
+    # Create agent request
+    agent_request = {
+        "request_id": str(uuid.uuid4()),
+        "user_id": current_user["user_id"],
+        "client_id": current_user["client_id"],
+        "full_name": current_user["full_name"],
+        "email": current_user["email"],
+        "phone": current_user.get("phone"),
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.agent_requests.insert_one(agent_request)
+    await log_action(current_user["user_id"], "agent_request", {})
+    
+    if "_id" in agent_request:
+        del agent_request["_id"]
+    return {"request": agent_request, "message": "Agent registration request submitted"}
+
+@api_router.get("/agent/status")
+async def get_agent_status(current_user: dict = Depends(get_current_user)):
+    """Get agent registration status"""
+    request = await db.agent_requests.find_one(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0}
+    )
+    return {
+        "is_agent": current_user.get("is_agent", False),
+        "request": request
+    }
+
+@api_router.post("/agent/deposits/create")
+async def create_agent_deposit(request: AgentDepositRequest, current_user: dict = Depends(get_agent_user)):
+    """Agent creates a deposit for a client"""
+    
+    # Check if agent deposits are enabled
+    settings = await db.agent_settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not settings or not settings.get("agent_deposit_enabled", False):
+        raise HTTPException(status_code=403, detail="Agent deposits are currently disabled")
+    
+    # Find the client by phone number or client ID
+    client_identifier = request.client_phone_or_id.strip()
+    client = await db.users.find_one({
+        "$or": [
+            {"phone": {"$regex": client_identifier, "$options": "i"}},
+            {"client_id": {"$regex": f"^{client_identifier}$", "$options": "i"}}
+        ]
+    }, {"_id": 0})
+    
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found. Check phone number or Client ID.")
+    
+    if client["user_id"] == current_user["user_id"]:
+        raise HTTPException(status_code=400, detail="Cannot deposit for yourself")
+    
+    # Get rate from settings
+    rate_usd_to_htg = settings.get("agent_rate_usd_to_htg", 135.0)
+    
+    # Calculate expected HTG and tiered commission
+    expected_htg = request.amount_usd * rate_usd_to_htg
+    commission_usd = await calculate_agent_commission_async(request.amount_usd)
+    commission_tier = await get_commission_tier_label(request.amount_usd)
+    
+    deposit_id = str(uuid.uuid4())
+    agent_deposit = {
+        "deposit_id": deposit_id,
+        "agent_id": current_user["user_id"],
+        "agent_client_id": current_user["client_id"],
+        "agent_name": current_user["full_name"],
+        "agent_phone": current_user.get("phone"),
+        "agent_whatsapp": current_user.get("whatsapp_number") or current_user.get("phone"),
+        "client_id": client["client_id"],
+        "client_user_id": client["user_id"],
+        "client_name": client["full_name"],
+        "client_phone": client.get("phone"),
+        "amount_usd": request.amount_usd,
+        "amount_htg_received": request.amount_htg_received,
+        "expected_htg": expected_htg,
+        "rate_used": rate_usd_to_htg,
+        "commission_tier": commission_tier,
+        "commission_usd": commission_usd,
+        "proof_image": request.proof_image,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": None,
+        "processed_by": None
+    }
+    
+    await db.agent_deposits.insert_one(agent_deposit)
+    await log_action(current_user["user_id"], "agent_deposit_create", {
+        "client_id": client["client_id"],
+        "amount_usd": request.amount_usd
+    })
+    
+    if "_id" in agent_deposit:
+        del agent_deposit["_id"]
+    return {"deposit": agent_deposit, "message": "Deposit submitted for approval"}
+
+@api_router.get("/agent/deposits")
+async def get_agent_deposits(
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_agent_user)
+):
+    """Get agent's own deposits"""
+    query = {"agent_id": current_user["user_id"]}
+    if status:
+        query["status"] = status
+    
+    deposits = await db.agent_deposits.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    
+    # Calculate totals
+    total_deposits = len(deposits)
+    total_usd = sum(d["amount_usd"] for d in deposits if d["status"] == "approved")
+    total_commission = sum(d["commission_usd"] for d in deposits if d["status"] == "approved")
+    
+    return {
+        "deposits": deposits,
+        "stats": {
+            "total_deposits": total_deposits,
+            "approved_usd": total_usd,
+            "total_commission_earned": total_commission
+        }
+    }
+
+@api_router.get("/agent/dashboard")
+async def get_agent_dashboard(current_user: dict = Depends(get_agent_user)):
+    """Get agent dashboard stats"""
+    deposits = await db.agent_deposits.find(
+        {"agent_id": current_user["user_id"]},
+        {"_id": 0}
+    ).to_list(1000)
+    
+    pending = [d for d in deposits if d["status"] == "pending"]
+    approved = [d for d in deposits if d["status"] == "approved"]
+    rejected = [d for d in deposits if d["status"] == "rejected"]
+    
+    total_usd = sum(d["amount_usd"] for d in approved)
+    total_commission = sum(d["commission_usd"] for d in approved)
+    
+    # Get settings for current rates
+    settings = await db.agent_settings.find_one({"setting_id": "main"}, {"_id": 0})
+    
+    # Get commission tiers
+    raw_tiers = settings.get("commission_tiers", DEFAULT_COMMISSION_TIERS) if settings else DEFAULT_COMMISSION_TIERS
+    display_tiers = []
+    for tier in raw_tiers:
+        if tier.get("is_percentage", False):
+            display_tiers.append({"range": f"${tier['min']}+", "commission": f"{tier['commission']}%"})
+        else:
+            display_tiers.append({"range": f"${tier['min']}-${tier['max']:.0f}", "commission": f"${tier['commission']}"})
+    
+    return {
+        "total_deposits": len(deposits),
+        "pending_deposits": len(pending),
+        "approved_deposits": len(approved),
+        "rejected_deposits": len(rejected),
+        "total_usd_deposited": total_usd,
+        "total_commission_earned": total_commission,
+        "agent_wallet_usd": current_user.get("agent_wallet_usd", 0),
+        "current_rate": settings.get("agent_rate_usd_to_htg", 135.0) if settings else 135.0,
+        "commission_tiers": display_tiers
+    }
+
+# Admin: Get all agent requests
+@api_router.get("/admin/agent-requests")
+async def admin_get_agent_requests(
+    status: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    query = {}
+    if status:
+        query["status"] = status
+    
+    requests = await db.agent_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"requests": requests}
+
+# Admin: Process agent request (approve/reject)
+@api_router.patch("/admin/agent-requests/{request_id}")
+async def admin_process_agent_request(
+    request_id: str,
+    action: str,
+    admin: dict = Depends(get_admin_user)
+):
+    request = await db.agent_requests.find_one({"request_id": request_id}, {"_id": 0})
+    if not request:
+        raise HTTPException(status_code=404, detail="Request not found")
+    
+    if request["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Request already processed")
+    
+    if action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    
+    new_status = "approved" if action == "approve" else "rejected"
+    
+    await db.agent_requests.update_one(
+        {"request_id": request_id},
+        {"$set": {
+            "status": new_status,
+            "processed_at": datetime.now(timezone.utc).isoformat(),
+            "processed_by": admin["user_id"]
+        }}
+    )
+    
+    if action == "approve":
+        # Update user to be an agent
+        await db.users.update_one(
+            {"user_id": request["user_id"]},
+            {"$set": {
+                "is_agent": True,
+                "agent_wallet_usd": 0.0,
+                "agent_since": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+    
+    await log_action(admin["user_id"], "agent_request_process", {"request_id": request_id, "action": action})
+    
+    return {"message": f"Agent request {action}d successfully"}
+
+# Admin: Get all agent deposits
+@api_router.get("/admin/agent-deposits")
+async def admin_get_agent_deposits(
+    status: Optional[str] = None,
+    limit: int = Query(default=50, le=200),
+    admin: dict = Depends(get_admin_user)
+):
+    query = {}
+    if status:
+        query["status"] = status
+    
+    deposits = await db.agent_deposits.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"deposits": deposits}
+
+# Admin: Get agent deposit details
+@api_router.get("/admin/agent-deposits/{deposit_id}")
+async def admin_get_agent_deposit(
+    deposit_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    deposit = await db.agent_deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    return {"deposit": deposit}
+
+# Admin: Process agent deposit (approve/reject)
+@api_router.patch("/admin/agent-deposits/{deposit_id}")
+async def admin_process_agent_deposit(
+    deposit_id: str,
+    action: str,
+    admin: dict = Depends(get_admin_user)
+):
+    deposit = await db.agent_deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    
+    if deposit["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Deposit already processed")
+    
+    if action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    
+    new_status = "approved" if action == "approve" else "rejected"
+    
+    await db.agent_deposits.update_one(
+        {"deposit_id": deposit_id},
+        {"$set": {
+            "status": new_status,
+            "processed_at": datetime.now(timezone.utc).isoformat(),
+            "processed_by": admin["user_id"]
+        }}
+    )
+    
+    if action == "approve":
+        # Credit the client's USD wallet
+        await db.users.update_one(
+            {"user_id": deposit["client_user_id"]},
+            {"$inc": {"wallet_usd": deposit["amount_usd"]}}
+        )
+        
+        # Credit the agent's commission
+        await db.users.update_one(
+            {"user_id": deposit["agent_id"]},
+            {"$inc": {"agent_wallet_usd": deposit["commission_usd"]}}
+        )
+        
+        # Create transaction for client
+        await db.transactions.insert_one({
+            "transaction_id": str(uuid.uuid4()),
+            "user_id": deposit["client_user_id"],
+            "type": "agent_deposit",
+            "amount": deposit["amount_usd"],
+            "currency": "USD",
+            "reference_id": deposit_id,
+            "status": "completed",
+            "description": f"Agent deposit from {deposit['agent_name']}",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        # Create commission transaction for agent
+        await db.transactions.insert_one({
+            "transaction_id": str(uuid.uuid4()),
+            "user_id": deposit["agent_id"],
+            "type": "agent_commission",
+            "amount": deposit["commission_usd"],
+            "currency": "USD",
+            "reference_id": deposit_id,
+            "status": "completed",
+            "description": f"Commission from deposit for {deposit['client_name']}",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        # Send WhatsApp notification to agent
+        agent_settings = await db.agent_settings.find_one({"setting_id": "main"}, {"_id": 0})
+        if agent_settings and agent_settings.get("agent_whatsapp_notifications", True):
+            agent_whatsapp = deposit.get("agent_whatsapp") or deposit.get("agent_phone")
+            if agent_whatsapp:
+                message = f"""✅ Depo Apwouve!
+
+Kliyan: {deposit['client_name']}
+Montan: ${deposit['amount_usd']:.2f} USD
+Komisyon ou: ${deposit['commission_usd']:.2f} USD
+
+Mèsi pou sèvis ou ak KAYICOM!"""
+                await send_whatsapp_notification(agent_whatsapp, message)
+    
+    await log_action(admin["user_id"], "agent_deposit_process", {"deposit_id": deposit_id, "action": action})
+    
+    return {"message": f"Agent deposit {action}d successfully"}
+
+# Admin: Get/Update agent settings
+@api_router.get("/admin/agent-settings")
+async def admin_get_agent_settings(admin: dict = Depends(get_admin_user)):
+    settings = await db.agent_settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not settings:
+        settings = {
+            "setting_id": "main",
+            "agent_deposit_enabled": False,
+            "agent_rate_usd_to_htg": 135.0,
+            "agent_whatsapp_notifications": True,
+            "commission_tiers": DEFAULT_COMMISSION_TIERS
+        }
+    
+    # Ensure commission tiers exist (use defaults if not set)
+    if not settings.get("commission_tiers"):
+        settings["commission_tiers"] = DEFAULT_COMMISSION_TIERS
+    
+    return {"settings": settings}
+
+@api_router.put("/admin/agent-settings")
+async def admin_update_agent_settings(settings: AgentSettingsUpdate, admin: dict = Depends(get_admin_user)):
+    update_doc = {k: v for k, v in settings.model_dump().items() if v is not None}
+    update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_doc["updated_by"] = admin["user_id"]
+    
+    await db.agent_settings.update_one(
+        {"setting_id": "main"},
+        {"$set": update_doc},
+        upsert=True
+    )
+    
+    await log_action(admin["user_id"], "agent_settings_update", {"fields_updated": list(update_doc.keys())})
+    
+    return {"message": "Agent settings updated"}
+
+# Admin: Get all agents
+@api_router.get("/admin/agents")
+async def admin_get_agents(admin: dict = Depends(get_admin_user)):
+    agents = await db.users.find(
+        {"is_agent": True},
+        {"_id": 0, "password_hash": 0}
+    ).to_list(200)
+    
+    # Get deposit stats for each agent
+    for agent in agents:
+        deposits = await db.agent_deposits.find(
+            {"agent_id": agent["user_id"], "status": "approved"},
+            {"_id": 0, "amount_usd": 1, "commission_usd": 1}
+        ).to_list(1000)
+        
+        agent["total_deposits"] = len(deposits)
+        agent["total_usd_deposited"] = sum(d["amount_usd"] for d in deposits)
+        agent["total_commission_earned"] = sum(d["commission_usd"] for d in deposits)
+    
+    return {"agents": agents}
+
+# Agent: Lookup client by phone or ID
+@api_router.post("/agent/lookup-client")
+async def agent_lookup_client(request: ClientLookupRequest, current_user: dict = Depends(get_agent_user)):
+    """Look up a client by phone number or client ID"""
+    client_identifier = request.identifier.strip()
+    
+    client = await db.users.find_one({
+        "$or": [
+            {"phone": {"$regex": client_identifier, "$options": "i"}},
+            {"client_id": {"$regex": f"^{client_identifier}$", "$options": "i"}}
+        ]
+    }, {"_id": 0, "password_hash": 0})
+    
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    return {
+        "found": True,
+        "client_id": client["client_id"],
+        "full_name": client["full_name"],
+        "phone": client.get("phone"),
+        "kyc_status": client.get("kyc_status")
+    }
+
+# Agent: Report a problematic client
+@api_router.post("/agent/report-client")
+async def agent_report_client(request: ClientReportRequest, current_user: dict = Depends(get_agent_user)):
+    """Agent reports a problematic client"""
+    
+    # Find the client
+    client_identifier = request.client_phone_or_id.strip()
+    client = await db.users.find_one({
+        "$or": [
+            {"phone": {"$regex": client_identifier, "$options": "i"}},
+            {"client_id": {"$regex": f"^{client_identifier}$", "$options": "i"}}
+        ]
+    }, {"_id": 0})
+    
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    report = {
+        "report_id": str(uuid.uuid4()),
+        "agent_id": current_user["user_id"],
+        "agent_client_id": current_user["client_id"],
+        "agent_name": current_user["full_name"],
+        "reported_client_id": client["client_id"],
+        "reported_client_user_id": client["user_id"],
+        "reported_client_name": client["full_name"],
+        "reported_client_phone": client.get("phone"),
+        "reason": request.reason,
+        "details": request.details,
+        "status": "pending",  # pending, reviewed, resolved
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.client_reports.insert_one(report)
+    await log_action(current_user["user_id"], "client_report", {
+        "reported_client_id": client["client_id"],
+        "reason": request.reason
+    })
+    
+    if "_id" in report:
+        del report["_id"]
+    return {"report": report, "message": "Report submitted successfully"}
+
+# Agent: Get reports history
+@api_router.get("/agent/reports")
+async def agent_get_reports(current_user: dict = Depends(get_agent_user)):
+    """Get agent's submitted reports"""
+    reports = await db.client_reports.find(
+        {"agent_id": current_user["user_id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    return {"reports": reports}
+
+# Agent: Download transaction history (last 7 days)
+@api_router.get("/agent/export-history")
+async def agent_export_history(current_user: dict = Depends(get_agent_user)):
+    """Export agent deposit history for last 7 days"""
+    seven_days_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    
+    deposits = await db.agent_deposits.find(
+        {
+            "agent_id": current_user["user_id"],
+            "created_at": {"$gte": seven_days_ago.isoformat()}
+        },
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(1000)
+    
+    # Format for export
+    export_data = []
+    for d in deposits:
+        export_data.append({
+            "date": d["created_at"],
+            "client_name": d["client_name"],
+            "client_id": d["client_id"],
+            "amount_usd": d["amount_usd"],
+            "amount_htg_received": d["amount_htg_received"],
+            "commission_usd": d["commission_usd"],
+            "status": d["status"]
+        })
+    
+    return {
+        "history": export_data,
+        "period_start": seven_days_ago.isoformat(),
+        "period_end": datetime.now(timezone.utc).isoformat(),
+        "total_deposits": len(export_data),
+        "total_usd": sum(d["amount_usd"] for d in export_data if d["status"] == "approved"),
+        "total_commission": sum(d["commission_usd"] for d in export_data if d["status"] == "approved")
+    }
+
+# Admin: Recharge agent account
+@api_router.post("/admin/recharge-agent")
+async def admin_recharge_agent(request: AgentRechargeRequest, admin: dict = Depends(get_admin_user)):
+    """Admin recharges an agent's USD wallet"""
+    agent = await db.users.find_one({"user_id": request.agent_user_id, "is_agent": True}, {"_id": 0})
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    
+    # Add to agent's main USD wallet
+    await db.users.update_one(
+        {"user_id": request.agent_user_id},
+        {"$inc": {"wallet_usd": request.amount_usd}}
+    )
+    
+    # Create transaction record
+    await db.transactions.insert_one({
+        "transaction_id": str(uuid.uuid4()),
+        "user_id": request.agent_user_id,
+        "type": "admin_agent_recharge",
+        "amount": request.amount_usd,
+        "currency": "USD",
+        "status": "completed",
+        "description": f"Agent recharge by admin: {request.reason}",
+        "admin_id": admin["user_id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await log_action(admin["user_id"], "agent_recharge", {
+        "agent_id": request.agent_user_id,
+        "amount": request.amount_usd,
+        "reason": request.reason
+    })
+    
+    return {"message": f"Successfully recharged ${request.amount_usd} to agent's wallet"}
+
+# Admin: Get client reports
+@api_router.get("/admin/client-reports")
+async def admin_get_client_reports(
+    status: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    query = {}
+    if status:
+        query["status"] = status
+    
+    reports = await db.client_reports.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return {"reports": reports}
+
+# Admin: Update client report status
+@api_router.patch("/admin/client-reports/{report_id}")
+async def admin_update_report_status(
+    report_id: str,
+    status: str,
+    admin: dict = Depends(get_admin_user)
+):
+    if status not in ["pending", "reviewed", "resolved"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    
+    await db.client_reports.update_one(
+        {"report_id": report_id},
+        {"$set": {
+            "status": status,
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+            "reviewed_by": admin["user_id"]
+        }}
+    )
+    
+    return {"message": "Report status updated"}
+
+# Admin: Update user info (email, phone)
+@api_router.patch("/admin/users/{user_id}/info")
+async def admin_update_user_info(
+    user_id: str,
+    update: UserInfoUpdate,
+    admin: dict = Depends(get_admin_user)
+):
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    update_doc = {}
+    if update.email:
+        # Check if email is already taken
+        existing = await db.users.find_one({"email": update.email.lower(), "user_id": {"$ne": user_id}})
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already in use")
+        update_doc["email"] = update.email.lower()
+    if update.phone:
+        update_doc["phone"] = update.phone
+    if update.full_name:
+        update_doc["full_name"] = update.full_name
+    
+    if update_doc:
+        await db.users.update_one({"user_id": user_id}, {"$set": update_doc})
+        await log_action(admin["user_id"], "user_info_update", {
+            "target_user": user_id,
+            "fields_updated": list(update_doc.keys())
+        })
+    
+    return {"message": "User info updated successfully"}
+
+# Agent: Withdraw commission
+@api_router.post("/agent/withdraw-commission")
+async def agent_withdraw_commission(current_user: dict = Depends(get_agent_user)):
+    """Withdraw agent commission to main USD wallet"""
+    agent_balance = current_user.get("agent_wallet_usd", 0)
+    
+    if agent_balance <= 0:
+        raise HTTPException(status_code=400, detail="No commission available to withdraw")
+    
+    # Transfer to main wallet
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {
+            "$inc": {"wallet_usd": agent_balance},
+            "$set": {"agent_wallet_usd": 0}
+        }
+    )
+    
+    # Create transaction
+    await db.transactions.insert_one({
+        "transaction_id": str(uuid.uuid4()),
+        "user_id": current_user["user_id"],
+        "type": "agent_commission_withdrawal",
+        "amount": agent_balance,
+        "currency": "USD",
+        "status": "completed",
+        "description": "Agent commission withdrawal to main wallet",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await log_action(current_user["user_id"], "agent_commission_withdrawal", {"amount": agent_balance})
+    
+    return {"message": "Commission transferred to wallet", "amount": agent_balance}
+
 # ==================== EXCHANGE RATES ====================
 
 @api_router.get("/exchange-rates")
@@ -1425,7 +2380,13 @@ async def admin_review_kyc(
         update_doc["rejection_reason"] = rejection_reason
     
     await db.kyc.update_one({"kyc_id": kyc_id}, {"$set": update_doc})
-    await db.users.update_one({"user_id": kyc["user_id"]}, {"$set": {"kyc_status": new_status}})
+    
+    # Update user with KYC status and WhatsApp number if available
+    user_update = {"kyc_status": new_status}
+    if action == "approve" and kyc.get("whatsapp_number"):
+        user_update["whatsapp_number"] = kyc.get("whatsapp_number")
+    
+    await db.users.update_one({"user_id": kyc["user_id"]}, {"$set": user_update})
     
     await log_action(admin["user_id"], "kyc_review", {"kyc_id": kyc_id, "action": action})
     
@@ -1731,6 +2692,26 @@ async def get_public_chat_settings():
         "whatsapp_number": settings.get("whatsapp_number") if settings.get("whatsapp_enabled") else None
     }
 
+# Public endpoint for app configuration (no auth required)
+@api_router.get("/public/app-config")
+async def get_public_app_config():
+    """Get app configuration for public display (MonCash/NatCash numbers, etc.)"""
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not settings:
+        return {
+            "moncash_enabled": False,
+            "moncash_number": None,
+            "natcash_enabled": False,
+            "natcash_number": None
+        }
+    
+    return {
+        "moncash_enabled": settings.get("moncash_enabled", False),
+        "moncash_number": settings.get("moncash_number") if settings.get("moncash_enabled") else None,
+        "natcash_enabled": settings.get("natcash_enabled", False),
+        "natcash_number": settings.get("natcash_number") if settings.get("natcash_enabled") else None
+    }
+
 @api_router.put("/admin/settings")
 async def admin_update_settings(settings: AdminSettingsUpdate, admin: dict = Depends(get_admin_user)):
     update_doc = {k: v for k, v in settings.model_dump().items() if v is not None}
@@ -1776,6 +2757,89 @@ async def admin_send_bulk_email(request: BulkEmailRequest, admin: dict = Depends
     
     return {"message": f"Emails sent: {success_count} success, {fail_count} failed"}
 
+# Admin: Update card details (after approval)
+@api_router.patch("/admin/virtual-card-orders/{order_id}/details")
+async def admin_update_card_details(
+    order_id: str,
+    card_name: Optional[str] = None,
+    card_last4: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    update_doc = {}
+    if card_name:
+        update_doc["card_name"] = card_name
+    if card_last4:
+        update_doc["card_last4"] = card_last4
+    
+    if update_doc:
+        await db.virtual_card_orders.update_one(
+            {"order_id": order_id},
+            {"$set": update_doc}
+        )
+    
+    return {"message": "Card details updated"}
+
+# Admin: Purge old records (older than X days)
+@api_router.post("/admin/purge-old-records")
+async def admin_purge_old_records(
+    days: int = 7,
+    admin: dict = Depends(get_admin_user)
+):
+    """Delete completed/rejected records older than X days"""
+    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    
+    # Delete old agent deposits (keep pending ones)
+    agent_result = await db.agent_deposits.delete_many({
+        "status": {"$in": ["approved", "rejected"]},
+        "created_at": {"$lt": cutoff_date}
+    })
+    
+    # Delete old deposits (keep pending ones)
+    deposits_result = await db.deposits.delete_many({
+        "status": {"$in": ["completed", "rejected"]},
+        "created_at": {"$lt": cutoff_date}
+    })
+    
+    # Delete old withdrawals (keep pending ones)
+    withdrawals_result = await db.withdrawals.delete_many({
+        "status": {"$in": ["completed", "rejected"]},
+        "created_at": {"$lt": cutoff_date}
+    })
+    
+    # Delete old transactions
+    transactions_result = await db.transactions.delete_many({
+        "created_at": {"$lt": cutoff_date}
+    })
+    
+    # Delete old logs
+    logs_result = await db.logs.delete_many({
+        "timestamp": {"$lt": cutoff_date}
+    })
+    
+    await log_action(admin["user_id"], "purge_old_records", {
+        "days": days,
+        "deleted_agent_deposits": agent_result.deleted_count,
+        "deleted_deposits": deposits_result.deleted_count,
+        "deleted_withdrawals": withdrawals_result.deleted_count,
+        "deleted_transactions": transactions_result.deleted_count,
+        "deleted_logs": logs_result.deleted_count
+    })
+    
+    return {
+        "message": f"Purged records older than {days} days",
+        "result": {
+            "deleted_agent_deposits": agent_result.deleted_count,
+            "deleted_deposits": deposits_result.deleted_count,
+            "deleted_withdrawals": withdrawals_result.deleted_count,
+            "deleted_transactions": transactions_result.deleted_count,
+            "deleted_logs": logs_result.deleted_count
+        }
+    }
+
 # Logs Admin
 @api_router.get("/admin/logs")
 async def admin_get_logs(
@@ -1792,6 +2856,68 @@ async def admin_get_logs(
     
     logs = await db.logs.find(query, {"_id": 0}).sort("timestamp", -1).limit(limit).to_list(limit)
     return {"logs": logs}
+
+# ==================== WHATSAPP NOTIFICATIONS ====================
+
+@api_router.get("/admin/whatsapp-notifications")
+async def admin_get_whatsapp_notifications(
+    status: Optional[str] = None,
+    limit: int = Query(default=50, le=200),
+    admin: dict = Depends(get_admin_user)
+):
+    """Get WhatsApp notification history"""
+    query = {}
+    if status:
+        query["status"] = status
+    
+    notifications = await db.whatsapp_notifications.find(
+        query, {"_id": 0}
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    
+    # Get stats
+    total = await db.whatsapp_notifications.count_documents({})
+    sent = await db.whatsapp_notifications.count_documents({"status": "sent"})
+    failed = await db.whatsapp_notifications.count_documents({"status": "failed"})
+    pending = await db.whatsapp_notifications.count_documents({"status": "pending"})
+    
+    return {
+        "notifications": notifications,
+        "stats": {
+            "total": total,
+            "sent": sent,
+            "failed": failed,
+            "pending": pending
+        }
+    }
+
+class TestWhatsAppRequest(BaseModel):
+    phone_number: str
+    message: str = "Tès notifikasyon WhatsApp depi KAYICOM"
+
+@api_router.post("/admin/test-whatsapp")
+async def admin_test_whatsapp(
+    request: TestWhatsAppRequest,
+    admin: dict = Depends(get_admin_user)
+):
+    """Test WhatsApp notification sending"""
+    success = await send_whatsapp_notification(request.phone_number, request.message)
+    
+    # Log the test
+    await db.logs.insert_one({
+        "log_id": str(uuid.uuid4()),
+        "user_id": admin["user_id"],
+        "action": "whatsapp_test",
+        "details": {
+            "phone": request.phone_number,
+            "success": success
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    if success:
+        return {"success": True, "message": "Mesaj WhatsApp voye avèk siksè"}
+    else:
+        return {"success": False, "message": "Echèk voye mesaj WhatsApp. Verifye konfigirasyon API a."}
 
 # ==================== MAIN ROUTES ====================
 
@@ -1820,10 +2946,15 @@ async def startup():
     await db.users.create_index("email", unique=True)
     await db.users.create_index("client_id", unique=True)
     await db.users.create_index("affiliate_code", unique=True)
+    await db.users.create_index("phone")
+    await db.users.create_index("is_agent")
     await db.transactions.create_index([("user_id", 1), ("created_at", -1)])
     await db.deposits.create_index([("user_id", 1), ("status", 1)])
     await db.withdrawals.create_index([("user_id", 1), ("status", 1)])
     await db.kyc.create_index("user_id", unique=True)
+    await db.agent_deposits.create_index([("agent_id", 1), ("status", 1)])
+    await db.agent_deposits.create_index([("client_user_id", 1)])
+    await db.agent_requests.create_index([("user_id", 1)])
     
     # Create default admin if not exists
     admin = await db.users.find_one({"is_admin": True}, {"_id": 0})

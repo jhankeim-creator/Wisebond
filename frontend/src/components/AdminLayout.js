@@ -24,7 +24,8 @@ import {
   Home,
   Bell,
   MessageSquare,
-  Shield
+  Shield,
+  UserPlus
 } from 'lucide-react';
 
 export const AdminLayout = ({ children, title }) => {
@@ -51,6 +52,8 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/kyc', icon: UserCheck, label: 'KYC' },
     { path: '/admin/deposits', icon: ArrowDownCircle, label: getText('Depo', 'Dépôts', 'Deposits') },
     { path: '/admin/withdrawals', icon: ArrowUpCircle, label: getText('Retrè', 'Retraits', 'Withdrawals') },
+    { path: '/admin/agent-deposits', icon: UserPlus, label: getText('Depo Ajan', 'Dépôts Agent', 'Agent Deposits') },
+    { path: '/admin/agent-settings', icon: UserPlus, label: getText('Paramèt Ajan', 'Paramètres Agent', 'Agent Settings') },
     { path: '/admin/virtual-cards', icon: CreditCard, label: getText('Komand Kat', 'Commandes Cartes', 'Card Orders') },
     { path: '/admin/topup', icon: Phone, label: getText('Komand Minit', 'Commandes Minutes', 'Minute Orders') },
     { path: '/admin/rates', icon: RefreshCw, label: getText('To chanj', 'Taux de change', 'Exchange Rates') },
