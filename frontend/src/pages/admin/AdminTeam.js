@@ -26,11 +26,11 @@ export default function AdminTeam() {
     role: 'admin',
   });
 
-  const getText = (ht, fr, en) => {
+  const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
     if (language === 'fr') return fr;
     return en;
-  };
+  }, [language]);
 
   const fetchTeam = useCallback(async () => {
     setLoading(true);
@@ -42,7 +42,7 @@ export default function AdminTeam() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [getText]);
 
   useEffect(() => {
     fetchTeam();
