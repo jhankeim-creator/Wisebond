@@ -2929,6 +2929,10 @@ async def root():
 async def health():
     return {"status": "healthy"}
 
+@app.get("/")
+async def health_check():
+    return {"status": "online", "message": "Wisebond Backend API"}
+
 # Include router
 app.include_router(api_router)
 

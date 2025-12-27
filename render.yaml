@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: wisebond-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn server:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT
+    envVars:
+      - key: MONGO_URL
+        sync: false # User must provide this in Render dashboard
+      - key: DB_NAME
+        value: wisebond
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: "*" # User should update this to their Vercel URL after frontend deployment
+      - key: PORT
+        value: 10000
