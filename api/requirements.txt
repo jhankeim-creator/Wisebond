@@ -8,7 +8,7 @@ uvicorn==0.32.1
 
 # Database
 motor==3.6.0
-pymongo==4.10.1
+pymongo==4.9.2
 
 # Authentication & Security
 bcrypt==4.2.1
