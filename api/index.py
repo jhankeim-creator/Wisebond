@@ -18,7 +18,42 @@ load_dotenv()
 
 # MongoDB connection
 mongo_url = os.environ.get('MONGO_URL', '')
-db_name = os.environ.get('DB_NAME', 'kayicom')
+db_name = os.environ.get('DB_NAME', 'Kayicom')
+
+# Ensure database name is in connection string for proper authentication
+# MongoDB Atlas requires authSource parameter or database in path
+if mongo_url and ('mongodb+srv://' in mongo_url or 'mongodb://' in mongo_url):
+    from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+    
+    parsed = urlparse(mongo_url)
+    query_params = parse_qs(parsed.query)
+    
+    # Add authSource if not present (required for Atlas authentication)
+    if 'authSource' not in query_params:
+        query_params['authSource'] = [db_name]
+    
+    # Add standard connection options
+    if 'retryWrites' not in query_params:
+        query_params['retryWrites'] = ['true']
+    if 'w' not in query_params:
+        query_params['w'] = ['majority']
+    
+    # If no database in path, add it (optional but recommended)
+    if not parsed.path or parsed.path == '/':
+        new_path = f'/{db_name}'
+    else:
+        new_path = parsed.path
+    
+    # Reconstruct URL
+    new_query = urlencode(query_params, doseq=True)
+    mongo_url = urlunparse((
+        parsed.scheme,
+        parsed.netloc,
+        new_path,
+        parsed.params,
+        new_query,
+        parsed.fragment
+    ))
 
 client = None
 db = None
@@ -26,6 +61,8 @@ db = None
 def get_db():
     global client, db
     if client is None:
+        if not mongo_url:
+            raise ValueError("MONGO_URL environment variable is required")
         client = AsyncIOMotorClient(mongo_url)
         db = client[db_name]
     return db
