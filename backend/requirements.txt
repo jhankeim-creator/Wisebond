@@ -9,7 +9,7 @@ gunicorn==23.0.0
 
 # Database
 motor==3.6.0
-pymongo==4.10.1
+pymongo==4.9.2
 
 # Authentication & Security
 bcrypt==4.2.1
@@ -25,7 +25,7 @@ python-dotenv==1.0.1
 python-multipart==0.0.18
 
 # Email
-resend==2.5.0
+resend==2.19.0
 
 # HTTP Client (for WhatsApp API)
 httpx==0.28.1
