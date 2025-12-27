@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -65,28 +65,6 @@ export default function Withdraw() {
     return en;
   };
 
-  useEffect(() => {
-    fetchFeesAndLimits();
-    fetchRates();
-  }, []);
-
-  // Reset method when target currency changes
-  useEffect(() => {
-    setMethod('');
-    fetchPaymentMethods(targetCurrency);
-  }, [targetCurrency]);
-
-  const fetchFeesAndLimits = async () => {
-    try {
-      const response = await axios.get(`${API}/withdrawals/fees`);
-      setFees(response.data.fees);
-      setLimits(response.data.limits);
-      setCardFees(response.data.card_fees || []);
-    } catch (error) {
-      console.error('Error fetching fees:', error);
-    }
-  };
-
   const getMethodIcon = (methodId) => {
     if (methodId === 'moncash' || methodId === 'natcash') return Smartphone;
     if (methodId === 'bank_usa') return Building;
@@ -95,7 +73,18 @@ export default function Withdraw() {
     return DollarSign;
   };
 
-  const fetchPaymentMethods = async (cur) => {
+  const fetchFeesAndLimits = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API}/withdrawals/fees`);
+      setFees(response.data.fees);
+      setLimits(response.data.limits);
+      setCardFees(response.data.card_fees || []);
+    } catch (error) {
+      console.error('Error fetching fees:', error);
+    }
+  }, []);
+
+  const fetchPaymentMethods = useCallback(async (cur) => {
     try {
       const res = await axios.get(`${API}/public/payment-methods?flow=withdrawal&currency=${cur}`);
       const list = Array.isArray(res.data) ? res.data : [];
@@ -122,16 +111,27 @@ export default function Withdraw() {
     } catch (e) {
       // Silent fallback
     }
-  };
+  }, []);
 
-  const fetchRates = async () => {
+  const fetchRates = useCallback(async () => {
     try {
       const response = await axios.get(`${API}/exchange-rates`);
       setRates(response.data);
     } catch (error) {
       console.error('Error fetching rates:', error);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    fetchFeesAndLimits();
+    fetchRates();
+  }, [fetchFeesAndLimits, fetchRates]);
+
+  // Reset method when target currency changes
+  useEffect(() => {
+    setMethod('');
+    fetchPaymentMethods(targetCurrency);
+  }, [targetCurrency, fetchPaymentMethods]);
 
   const calculateFee = () => {
     if (!method || !amount) return 0;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,7 +32,7 @@ export default function AdminTeam() {
     return en;
   };
 
-  const fetchTeam = async () => {
+  const fetchTeam = useCallback(async () => {
     setLoading(true);
     try {
       const res = await axios.get(`${API}/admin/team`);
@@ -42,11 +42,11 @@ export default function AdminTeam() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchTeam();
-  }, []);
+  }, [fetchTeam]);
 
   const createMember = async () => {
     if (!form.email || !form.password || !form.full_name || !form.phone) {

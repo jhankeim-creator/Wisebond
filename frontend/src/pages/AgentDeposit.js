@@ -77,19 +77,7 @@ export default function AgentDeposit() {
     }
   }, [isAgent]);
 
-  // Lookup client when identifier changes
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (clientIdentifier.length >= 3) {
-        lookupClient();
-      } else {
-        setClientInfo(null);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [clientIdentifier]);
-
-  const lookupClient = async () => {
+  const lookupClient = useCallback(async () => {
     setLookingUpClient(true);
     try {
       const response = await axios.post(`${API}/agent/lookup-client`, {
@@ -101,7 +89,19 @@ export default function AgentDeposit() {
     } finally {
       setLookingUpClient(false);
     }
-  };
+  }, [clientIdentifier]);
+
+  // Lookup client when identifier changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (clientIdentifier.length >= 3) {
+        lookupClient();
+      } else {
+        setClientInfo(null);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [clientIdentifier, lookupClient]);
 
   const fetchReports = async () => {
     try {
