@@ -91,8 +91,8 @@ export const Sidebar = ({ isOpen, onClose }) => {
           )}
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 space-y-1">
+        {/* Navigation - Scrollable */}
+        <nav className="flex-1 space-y-1 overflow-y-auto overflow-x-hidden min-h-0">
           {menuItems.map((item) => {
             const isActive = location.pathname === item.path;
             const Icon = item.icon;

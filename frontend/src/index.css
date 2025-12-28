@@ -240,7 +240,7 @@
 .sidebar {
   background: white;
   width: 280px;
-  min-height: 100vh;
+  height: 100vh;
   position: fixed;
   left: 0;
   top: 0;
@@ -249,6 +249,7 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid #E7E5E4;
+  overflow: hidden;
 }
 
 .main-content {
@@ -359,4 +360,22 @@ input[type="number"] { -moz-appearance: textfield; }
 /* Mobile menu */
 .mobile-menu-btn {
   @apply lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-xl shadow-md border border-stone-200;
+}
+
+/* Sidebar navigation scrollbar */
+.sidebar nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar nav::-webkit-scrollbar-thumb {
+  background: #D6D3D1;
+  border-radius: 3px;
+}
+
+.sidebar nav::-webkit-scrollbar-thumb:hover {
+  background: #A8A29E;
 }
