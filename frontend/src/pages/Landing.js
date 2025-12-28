@@ -102,7 +102,7 @@ export default function Landing() {
       </nav>
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20 px-6 relative overflow-hidden">
+      <section className="pt-24 sm:pt-32 pb-12 sm:pb-20 px-4 sm:px-6 relative overflow-hidden">
         {/* Background glow */}
         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-gradient-to-br from-orange-500/10 to-amber-500/10 rounded-full blur-3xl" />
         
@@ -113,17 +113,17 @@ export default function Landing() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6 }}
             >
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 rounded-full text-[#EA580C] text-sm font-semibold mb-6">
-                <Shield size={16} />
-                <span>{getText('Sekirize & Fyab', 'Sécurisé & Fiable', 'Secure & Reliable')}</span>
+              <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-2 bg-orange-100 rounded-full text-[#EA580C] text-xs sm:text-sm font-semibold mb-4 sm:mb-6">
+                <Shield size={14} className="sm:w-4 sm:h-4" />
+                <span className="whitespace-nowrap">{getText('Sekirize & Fyab', 'Sécurisé & Fiable', 'Secure & Reliable')}</span>
               </div>
               
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-stone-900 leading-tight mb-6">
+              <h1 className="text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-extrabold text-stone-900 leading-tight mb-4 sm:mb-6">
                 {getText('Pòtfèy Ou', 'Votre Portefeuille', 'Your Wallet')}{' '}
-                <span className="gradient-text">{getText('Multi-Deviz', 'Multi-Devises', 'Multi-Currency')}</span>
+                <span className="gradient-text block sm:inline">{getText('Multi-Deviz', 'Multi-Devises', 'Multi-Currency')}</span>
               </h1>
               
-              <p className="text-lg text-stone-600 mb-8 max-w-lg leading-relaxed">
+              <p className="text-base sm:text-lg text-stone-600 mb-6 sm:mb-8 max-w-lg leading-relaxed">
                 {getText(
                   'Jere finans ou an HTG ak USD, fè transfè enstantane, komande kat vityèl ou epi touche ak pwogram afilyasyon nou.',
                   'Gérez vos finances en HTG et USD, effectuez des transferts instantanés, commandez votre carte virtuelle et gagnez avec notre programme d\'affiliation.',
@@ -131,33 +131,33 @@ export default function Landing() {
                 )}
               </p>
               
-              <div className="flex flex-wrap gap-4">
+              <div className="flex flex-wrap gap-3 sm:gap-4">
                 <Link to="/register">
-                  <Button className="bg-[#EA580C] hover:bg-[#C2410C] text-white font-bold text-lg px-8 py-4 h-auto rounded-full shadow-lg shadow-orange-500/20" data-testid="get-started-btn">
+                  <Button className="bg-[#EA580C] hover:bg-[#C2410C] text-white font-bold text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 h-auto rounded-full shadow-lg shadow-orange-500/20" data-testid="get-started-btn">
                     {t('getStarted')}
-                    <ArrowRight className="ml-2" size={20} />
+                    <ArrowRight size={18} className="ml-2 sm:ml-2" />
                   </Button>
                 </Link>
-                <Button variant="outline" className="btn-secondary text-lg px-8 py-4 h-auto">
+                <Button variant="outline" className="btn-secondary text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 h-auto">
                   {t('learnMore')}
                 </Button>
               </div>
               
               {/* Trust indicators */}
-              <div className="flex items-center gap-8 mt-12 pt-8 border-t border-stone-200">
+              <div className="flex flex-wrap items-center gap-4 sm:gap-8 mt-8 sm:mt-12 pt-6 sm:pt-8 border-t border-stone-200">
                 <div>
-                  <p className="text-3xl font-bold text-stone-900">10K+</p>
-                  <p className="text-sm text-stone-500">{getText('Itilizatè', 'Utilisateurs', 'Users')}</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-stone-900">10K+</p>
+                  <p className="text-xs sm:text-sm text-stone-500">{getText('Itilizatè', 'Utilisateurs', 'Users')}</p>
                 </div>
-                <div className="h-10 w-px bg-stone-200" />
+                <div className="hidden sm:block h-10 w-px bg-stone-200" />
                 <div>
-                  <p className="text-3xl font-bold text-stone-900">$5M+</p>
-                  <p className="text-sm text-stone-500">{getText('Tranzaksyon', 'Transactions', 'Transactions')}</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-stone-900">$5M+</p>
+                  <p className="text-xs sm:text-sm text-stone-500">{getText('Tranzaksyon', 'Transactions', 'Transactions')}</p>
                 </div>
-                <div className="h-10 w-px bg-stone-200" />
+                <div className="hidden sm:block h-10 w-px bg-stone-200" />
                 <div>
-                  <p className="text-3xl font-bold text-stone-900">99.9%</p>
-                  <p className="text-sm text-stone-500">Uptime</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-stone-900">99.9%</p>
+                  <p className="text-xs sm:text-sm text-stone-500">Uptime</p>
                 </div>
               </div>
             </motion.div>

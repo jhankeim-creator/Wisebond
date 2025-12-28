@@ -1725,7 +1725,7 @@ async def startup():
     await db.withdrawals.create_index([("user_id", 1), ("status", 1)])
     await db.kyc.create_index("user_id", unique=True)
     
-    # Create default admin if not exists
+    # Create default admin if not exists, or update existing admin email
     admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
     if not admin:
         admin_doc = {
@@ -1749,6 +1749,14 @@ async def startup():
         }
         await db.users.insert_one(admin_doc)
         logger.info("Default admin created: kayicom509@gmail.com / Admin123!")
+    else:
+        # Update admin email if it's the old one
+        if admin.get("email") == "admin@kayicom.com":
+            await db.users.update_one(
+                {"user_id": admin["user_id"]},
+                {"$set": {"email": "kayicom509@gmail.com"}}
+            )
+            logger.info("Admin email updated from admin@kayicom.com to kayicom509@gmail.com")
     
     # Create default exchange rates
     rates = await db.exchange_rates.find_one({"rate_id": "main"}, {"_id": 0})
