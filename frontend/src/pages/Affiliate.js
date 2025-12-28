@@ -18,7 +18,8 @@ import {
   ArrowRight
 } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
+import { API_BASE } from '@/lib/utils';
+const API = API_BASE;
 
 export default function Affiliate() {
   const { language } = useLanguage();

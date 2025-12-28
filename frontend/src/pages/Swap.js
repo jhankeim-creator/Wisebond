@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { ArrowDownUp, RefreshCw, Check, AlertCircle } from 'lucide-react';
+import { API_BASE } from '@/lib/utils';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
+const API = API_BASE;
 
 export default function Swap() {
   const { language } = useLanguage();

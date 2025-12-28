@@ -44,23 +44,25 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAF9] flex">
+    <div className="min-h-screen bg-[#FAFAF9] flex flex-col lg:flex-row">
       {/* Left Panel - Form */}
-      <div className="flex-1 flex flex-col justify-center px-6 py-12 lg:px-20">
+      <div className="flex-1 flex flex-col justify-center px-4 py-8 sm:px-6 sm:py-12 lg:px-20">
         <div className="max-w-md w-full mx-auto">
           {/* Logo */}
-          <Link to="/" className="block mb-8">
+          <Link to="/" className="block mb-6 sm:mb-8">
             <Logo />
           </Link>
           
-          <div className="flex justify-between items-center mb-8">
-            <div>
-              <h1 className="text-3xl font-bold text-stone-900">{t('login')}</h1>
-              <p className="text-stone-600 mt-1">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6 sm:mb-8">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl font-bold text-stone-900">{t('login')}</h1>
+              <p className="text-sm sm:text-base text-stone-600 mt-1">
                 {getText('Byenveni! Konekte sou kont ou.', 'Bienvenue! Connectez-vous à votre compte.', 'Welcome! Sign in to your account.')}
               </p>
             </div>
-            <LanguageSwitcher />
+            <div className="flex-shrink-0">
+              <LanguageSwitcher />
+            </div>
           </div>
           
           <form onSubmit={handleSubmit} className="space-y-6">

@@ -3003,7 +3003,7 @@ async def startup():
         admin_doc = {
             "user_id": str(uuid.uuid4()),
             "client_id": "KCADMIN001",
-            "email": "admin@kayicom.com",
+            "email": "kayicom509@gmail.com",
             "password_hash": hash_password("Admin123!"),
             "full_name": "System Admin",
             "phone": "+509 0000 0000",
@@ -3020,7 +3020,7 @@ async def startup():
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         await db.users.insert_one(admin_doc)
-        logger.info("Default admin created: admin@kayicom.com / Admin123!")
+        logger.info("Default admin created: kayicom509@gmail.com / Admin123!")
     
     # Create default exchange rates
     rates = await db.exchange_rates.find_one({"rate_id": "main"}, {"_id": 0})

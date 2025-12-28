@@ -27,7 +27,7 @@ export const DashboardLayout = ({ children, title }) => {
       <main className="main-content">
         {/* Header */}
         <header className="sticky top-0 z-20 glass-effect border-b border-stone-200 dark:border-stone-700 dark:bg-stone-900/80">
-          <div className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-4">
             <div className="flex items-center gap-4">
               <Link to="/" className="hover:opacity-80 transition-opacity">
                 <Logo size="small" />
@@ -58,7 +58,7 @@ export const DashboardLayout = ({ children, title }) => {
         </header>
         
         {/* Page content */}
-        <div className="p-6 lg:p-8">
+        <div className="p-4 sm:p-6 lg:p-8">
           {/* Mobile title */}
           <h1 className="text-2xl font-bold text-stone-900 dark:text-white mb-6 lg:hidden">{title}</h1>
           {children}
