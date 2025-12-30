@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import { Plus, RefreshCw, Save, Trash2, Wand2 } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 const emptyMethod = {
   method_id: '',

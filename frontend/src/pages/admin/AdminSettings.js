@@ -405,7 +405,7 @@ export default function AdminSettings() {
                     <div>
                       <Label>WAHA API URL</Label>
                       <Input
-                        placeholder="http://localhost:3000"
+                        placeholder="https://your-waha-server.com"
                         value={settings.waha_api_url || ''}
                         onChange={(e) => setSettings({...settings, waha_api_url: e.target.value})}
                         className="mt-1 font-mono"
