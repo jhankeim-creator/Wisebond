@@ -43,7 +43,14 @@ export default function Affiliate() {
   const fetchAffiliateInfo = async () => {
     try {
       const response = await axios.get(`${API}/affiliate/info`);
-      setAffiliateData(response.data);
+      const data = response.data;
+      
+      // Build affiliate link from current origin if backend doesn't provide it
+      if (!data.affiliate_link || data.affiliate_link.includes('localhost')) {
+        data.affiliate_link = `${window.location.origin}/register?ref=${data.affiliate_code}`;
+      }
+      
+      setAffiliateData(data);
     } catch (error) {
       console.error('Error fetching affiliate info:', error);
     } finally {

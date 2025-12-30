@@ -9,9 +9,10 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Check, X, Eye, RefreshCw, CreditCard, Upload } from 'lucide-react';
+import { Check, X, Eye, RefreshCw, CreditCard, Upload, Wallet, DollarSign } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
@@ -21,18 +22,29 @@ const MASTERCARD_LOGO = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3d
 
 export default function AdminVirtualCards() {
   const { language } = useLanguage();
+  const [activeTab, setActiveTab] = useState('orders');
+  
+  // Orders state
   const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('pending');
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [orderFilter, setOrderFilter] = useState('pending');
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [showModal, setShowModal] = useState(false);
+  const [showOrderModal, setShowOrderModal] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [adminNotes, setAdminNotes] = useState('');
   
+  // Top-ups state
+  const [topups, setTopups] = useState([]);
+  const [topupsLoading, setTopupsLoading] = useState(true);
+  const [topupFilter, setTopupFilter] = useState('pending');
+  const [selectedTopup, setSelectedTopup] = useState(null);
+  const [showTopupModal, setShowTopupModal] = useState(false);
+  const [deliveryInfo, setDeliveryInfo] = useState('');
+  
   // Card details for manual entry
   const [cardDetails, setCardDetails] = useState({
-    card_brand: '', // Wise, Payoneer, etc.
-    card_type: 'visa', // visa or mastercard
+    card_brand: '',
+    card_type: 'visa',
     card_holder_name: '',
     card_number: '',
     card_last4: '',
@@ -51,23 +63,43 @@ export default function AdminVirtualCards() {
     return en;
   }, [language]);
 
+  // Fetch orders
   const fetchOrders = useCallback(async () => {
-    setLoading(true);
+    setOrdersLoading(true);
     try {
       let url = `${API}/admin/virtual-card-orders`;
-      if (filter !== 'all') url += `?status=${filter}`;
+      if (orderFilter !== 'all') url += `?status=${orderFilter}`;
       const response = await axios.get(url);
       setOrders(response.data.orders);
     } catch (error) {
       console.error('Error fetching orders:', error);
     } finally {
-      setLoading(false);
+      setOrdersLoading(false);
     }
-  }, [filter]);
+  }, [orderFilter]);
+
+  // Fetch top-ups
+  const fetchTopups = useCallback(async () => {
+    setTopupsLoading(true);
+    try {
+      let url = `${API}/admin/card-topups`;
+      if (topupFilter !== 'all') url += `?status=${topupFilter}`;
+      const response = await axios.get(url);
+      setTopups(response.data.deposits || []);
+    } catch (error) {
+      console.error('Error fetching top-ups:', error);
+    } finally {
+      setTopupsLoading(false);
+    }
+  }, [topupFilter]);
 
   useEffect(() => {
     fetchOrders();
   }, [fetchOrders]);
+
+  useEffect(() => {
+    fetchTopups();
+  }, [fetchTopups]);
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -80,7 +112,8 @@ export default function AdminVirtualCards() {
     }
   };
 
-  const handleProcess = async (action) => {
+  // Process order (approve/reject)
+  const handleProcessOrder = async (action) => {
     setProcessing(true);
     try {
       const payload = {
@@ -92,10 +125,10 @@ export default function AdminVirtualCards() {
       
       await axios.patch(`${API}/admin/virtual-card-orders/${selectedOrder.order_id}`, payload);
       toast.success(action === 'approve' 
-        ? getText('Komand kat apwouve! Kliyan an resevwa $5 USD bonis.', 'Commande carte approuvée! Le client reçoit $5 USD bonus.', 'Card order approved! Client receives $5 USD bonus.') 
-        : getText('Komand kat rejte. Lajan ranbouse.', 'Commande carte rejetée. Montant remboursé.', 'Card order rejected. Amount refunded.'));
-      setShowModal(false);
-      resetForm();
+        ? getText('Komand kat apwouve!', 'Commande carte approuvée!', 'Card order approved!') 
+        : getText('Komand kat rejte.', 'Commande carte rejetée.', 'Card order rejected.'));
+      setShowOrderModal(false);
+      resetOrderForm();
       fetchOrders();
     } catch (error) {
       toast.error(getText('Erè nan tretman', 'Erreur lors du traitement', 'Error processing'));
@@ -104,28 +137,32 @@ export default function AdminVirtualCards() {
     }
   };
 
-  const updateCardDetails = async () => {
+  // Process top-up (approve/reject)
+  const handleProcessTopup = async (action) => {
     setProcessing(true);
     try {
       const payload = {
-        ...cardDetails,
-        card_last4: cardDetails.card_number ? cardDetails.card_number.slice(-4) : cardDetails.card_last4
+        action,
+        admin_notes: adminNotes,
+        delivery_info: deliveryInfo
       };
       
-      await axios.patch(`${API}/admin/virtual-card-orders/${selectedOrder.order_id}/details`, payload);
-      toast.success(getText('Detay kat mete ajou!', 'Détails carte mis à jour!', 'Card details updated!'));
-      fetchOrders();
-      
-      // Update selected order
-      setSelectedOrder(prev => ({...prev, ...payload}));
+      await axios.patch(`${API}/admin/card-topups/${selectedTopup.deposit_id}`, payload);
+      toast.success(action === 'approve' 
+        ? getText('Top-up livere sou kat!', 'Recharge livrée sur carte!', 'Top-up delivered to card!') 
+        : getText('Top-up rejte. Kob ranbouse.', 'Recharge rejetée. Montant remboursé.', 'Top-up rejected. Amount refunded.'));
+      setShowTopupModal(false);
+      setAdminNotes('');
+      setDeliveryInfo('');
+      fetchTopups();
     } catch (error) {
-      toast.error(getText('Erè nan mizajou', 'Erreur lors de la mise à jour', 'Error updating'));
+      toast.error(getText('Erè nan tretman', 'Erreur lors du traitement', 'Error processing'));
     } finally {
       setProcessing(false);
     }
   };
 
-  const resetForm = () => {
+  const resetOrderForm = () => {
     setAdminNotes('');
     setCardDetails({
       card_brand: '',
@@ -143,7 +180,7 @@ export default function AdminVirtualCards() {
     });
   };
 
-  const openModal = (order) => {
+  const openOrderModal = (order) => {
     setSelectedOrder(order);
     setAdminNotes(order.admin_notes || '');
     setCardDetails({
@@ -160,147 +197,254 @@ export default function AdminVirtualCards() {
       billing_zip: order.billing_zip || '',
       card_image: order.card_image || ''
     });
-    setShowModal(true);
+    setShowOrderModal(true);
   };
 
+  const openTopupModal = (topup) => {
+    setSelectedTopup(topup);
+    setAdminNotes(topup.admin_notes || '');
+    setDeliveryInfo(topup.delivery_info || '');
+    setShowTopupModal(true);
+  };
+
+  const pendingOrdersCount = orders.filter(o => o.status === 'pending').length;
+  const pendingTopupsCount = topups.filter(t => t.status === 'pending').length;
+
   return (
-    <AdminLayout title={getText('Jesyon Komand Kat Vityèl', 'Gestion Commandes Cartes Virtuelles', 'Virtual Card Order Management')}>
+    <AdminLayout title={getText('Jesyon Kat Vityèl', 'Gestion Cartes Virtuelles', 'Virtual Card Management')}>
       <div className="space-y-6" data-testid="admin-virtual-cards">
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="bg-amber-50 dark:bg-amber-900/30">
             <CardContent className="p-4 text-center">
-              <p className="text-amber-800 dark:text-amber-300 font-bold text-2xl">{orders.filter(o => o.status === 'pending').length}</p>
-              <p className="text-amber-600 dark:text-amber-400 text-sm">{getText('An atant', 'En attente', 'Pending')}</p>
+              <p className="text-amber-800 dark:text-amber-300 font-bold text-2xl">{pendingOrdersCount}</p>
+              <p className="text-amber-600 dark:text-amber-400 text-sm">{getText('Komand an atant', 'Commandes en attente', 'Pending Orders')}</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-blue-50 dark:bg-blue-900/30">
+            <CardContent className="p-4 text-center">
+              <p className="text-blue-800 dark:text-blue-300 font-bold text-2xl">{pendingTopupsCount}</p>
+              <p className="text-blue-600 dark:text-blue-400 text-sm">{getText('Top-up an atant', 'Recharges en attente', 'Pending Top-ups')}</p>
             </CardContent>
           </Card>
           <Card className="bg-emerald-50 dark:bg-emerald-900/30">
             <CardContent className="p-4 text-center">
               <p className="text-emerald-800 dark:text-emerald-300 font-bold text-2xl">{orders.filter(o => o.status === 'approved').length}</p>
-              <p className="text-emerald-600 dark:text-emerald-400 text-sm">{getText('Apwouve', 'Approuvé', 'Approved')}</p>
+              <p className="text-emerald-600 dark:text-emerald-400 text-sm">{getText('Kat Aktif', 'Cartes Actives', 'Active Cards')}</p>
             </CardContent>
           </Card>
-          <Card className="bg-red-50 dark:bg-red-900/30">
+          <Card className="bg-purple-50 dark:bg-purple-900/30">
             <CardContent className="p-4 text-center">
-              <p className="text-red-800 dark:text-red-300 font-bold text-2xl">{orders.filter(o => o.status === 'rejected').length}</p>
-              <p className="text-red-600 dark:text-red-400 text-sm">{getText('Rejte', 'Rejeté', 'Rejected')}</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-blue-50 dark:bg-blue-900/30">
-            <CardContent className="p-4 text-center">
-              <p className="text-blue-800 dark:text-blue-300 font-bold text-2xl">{orders.length}</p>
-              <p className="text-blue-600 dark:text-blue-400 text-sm">Total</p>
+              <p className="text-purple-800 dark:text-purple-300 font-bold text-2xl">${topups.filter(t => t.status === 'approved').reduce((sum, t) => sum + (t.net_amount || 0), 0).toFixed(0)}</p>
+              <p className="text-purple-600 dark:text-purple-400 text-sm">{getText('Total Livere', 'Total Livré', 'Total Delivered')}</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Filters */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex flex-wrap gap-2">
-              {['pending', 'approved', 'rejected', 'all'].map((f) => (
-                <Button
-                  key={f}
-                  variant={filter === f ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setFilter(f)}
-                  className={filter === f ? 'bg-[#EA580C]' : ''}
-                >
-                  {f === 'pending' ? getText('An atant', 'En attente', 'Pending') : 
-                   f === 'approved' ? getText('Apwouve', 'Approuvé', 'Approved') : 
-                   f === 'rejected' ? getText('Rejte', 'Rejeté', 'Rejected') : 
-                   getText('Tout', 'Tous', 'All')}
-                </Button>
-              ))}
-              <Button variant="outline" size="sm" onClick={fetchOrders} className="ml-auto">
-                <RefreshCw size={16} className="mr-2" />
-                {getText('Aktyalize', 'Actualiser', 'Refresh')}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="orders" className="flex items-center gap-2">
+              <CreditCard size={16} />
+              {getText('Komand Kat', 'Commandes', 'Card Orders')}
+              {pendingOrdersCount > 0 && (
+                <Badge className="bg-amber-500 text-white ml-1">{pendingOrdersCount}</Badge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="topups" className="flex items-center gap-2">
+              <Wallet size={16} />
+              {getText('Top-up Kat', 'Recharges', 'Card Top-ups')}
+              {pendingTopupsCount > 0 && (
+                <Badge className="bg-blue-500 text-white ml-1">{pendingTopupsCount}</Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Orders Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard size={20} className="text-[#EA580C]" />
-              {getText('Komand Kat', 'Commandes Cartes', 'Card Orders')} ({orders.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Client ID</th>
-                    <th>Email Kat</th>
-                    <th>{getText('Mak Kat', 'Marque', 'Brand')}</th>
-                    <th>{getText('Tip', 'Type', 'Type')}</th>
-                    <th>{getText('Frè', 'Frais', 'Fee')}</th>
-                    <th>Date</th>
-                    <th>{getText('Statis', 'Statut', 'Status')}</th>
-                    <th>{getText('Aksyon', 'Actions', 'Actions')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan="8" className="text-center py-8">{getText('Chajman...', 'Chargement...', 'Loading...')}</td>
-                    </tr>
-                  ) : orders.length === 0 ? (
-                    <tr>
-                      <td colSpan="8" className="text-center py-8">{getText('Pa gen komand', 'Aucune commande', 'No orders')}</td>
-                    </tr>
-                  ) : (
-                    orders.map((order) => (
-                      <tr key={order.order_id}>
-                        <td className="font-mono text-sm">{order.client_id}</td>
-                        <td>{order.card_email}</td>
-                        <td className="font-medium">{order.card_brand || '-'}</td>
-                        <td>
-                          {order.card_type && (
-                            <img 
-                              src={order.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
-                              alt={order.card_type} 
-                              className="h-6 w-auto"
-                            />
-                          )}
-                        </td>
-                        <td className="font-semibold">G {order.fee?.toLocaleString()}</td>
-                        <td>{new Date(order.created_at).toLocaleDateString()}</td>
-                        <td>
-                          <Badge className={
-                            order.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                            order.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                            'bg-red-100 text-red-700'
-                          }>
-                            {order.status === 'pending' ? getText('An atant', 'En attente', 'Pending') : 
-                             order.status === 'approved' ? getText('Apwouve', 'Approuvé', 'Approved') : 
-                             getText('Rejte', 'Rejeté', 'Rejected')}
-                          </Badge>
-                        </td>
-                        <td>
-                          <Button 
-                            size="sm" 
-                            variant="outline"
-                            onClick={() => openModal(order)}
-                          >
-                            <Eye size={16} className="mr-2" />
-                            {getText('Wè', 'Voir', 'View')}
-                          </Button>
-                        </td>
+          {/* Orders Tab */}
+          <TabsContent value="orders">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <CreditCard size={20} className="text-[#EA580C]" />
+                    {getText('Komand Kat', 'Commandes de cartes', 'Card Orders')}
+                  </span>
+                  <div className="flex gap-2">
+                    {['pending', 'approved', 'rejected', 'all'].map((f) => (
+                      <Button
+                        key={f}
+                        variant={orderFilter === f ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setOrderFilter(f)}
+                        className={orderFilter === f ? 'bg-[#EA580C]' : ''}
+                      >
+                        {f === 'pending' ? getText('An atant', 'En attente', 'Pending') : 
+                         f === 'approved' ? getText('Apwouve', 'Approuvé', 'Approved') : 
+                         f === 'rejected' ? getText('Rejte', 'Rejeté', 'Rejected') : 
+                         getText('Tout', 'Tous', 'All')}
+                      </Button>
+                    ))}
+                    <Button variant="outline" size="sm" onClick={fetchOrders}>
+                      <RefreshCw size={16} />
+                    </Button>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th>Email Kat</th>
+                        <th>{getText('Mak', 'Marque', 'Brand')}</th>
+                        <th>{getText('Frè', 'Frais', 'Fee')}</th>
+                        <th>Date</th>
+                        <th>{getText('Statis', 'Statut', 'Status')}</th>
+                        <th>{getText('Aksyon', 'Actions', 'Actions')}</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+                    </thead>
+                    <tbody>
+                      {ordersLoading ? (
+                        <tr><td colSpan="7" className="text-center py-8">{getText('Chajman...', 'Chargement...', 'Loading...')}</td></tr>
+                      ) : orders.length === 0 ? (
+                        <tr><td colSpan="7" className="text-center py-8">{getText('Pa gen komand', 'Aucune commande', 'No orders')}</td></tr>
+                      ) : (
+                        orders.map((order) => (
+                          <tr key={order.order_id}>
+                            <td className="font-mono text-sm">{order.client_id}</td>
+                            <td>{order.card_email}</td>
+                            <td>
+                              <div className="flex items-center gap-2">
+                                {order.card_type && (
+                                  <img src={order.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} alt="" className="h-5 w-auto" />
+                                )}
+                                {order.card_brand || '-'}
+                              </div>
+                            </td>
+                            <td className="font-semibold">G {order.fee?.toLocaleString()}</td>
+                            <td>{new Date(order.created_at).toLocaleDateString()}</td>
+                            <td>
+                              <Badge className={
+                                order.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                                order.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                                'bg-red-100 text-red-700'
+                              }>
+                                {order.status === 'pending' ? getText('An atant', 'En attente', 'Pending') : 
+                                 order.status === 'approved' ? getText('Apwouve', 'Approuvé', 'Approved') : 
+                                 getText('Rejte', 'Rejeté', 'Rejected')}
+                              </Badge>
+                            </td>
+                            <td>
+                              <Button size="sm" variant="outline" onClick={() => openOrderModal(order)}>
+                                <Eye size={16} className="mr-1" />
+                                {getText('Wè', 'Voir', 'View')}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        {/* Review Modal */}
-        <Dialog open={showModal} onOpenChange={setShowModal}>
+          {/* Top-ups Tab */}
+          <TabsContent value="topups">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    <Wallet size={20} className="text-blue-500" />
+                    {getText('Top-up Kat', 'Recharges de cartes', 'Card Top-ups')}
+                  </span>
+                  <div className="flex gap-2">
+                    {['pending', 'approved', 'rejected', 'all'].map((f) => (
+                      <Button
+                        key={f}
+                        variant={topupFilter === f ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setTopupFilter(f)}
+                        className={topupFilter === f ? 'bg-blue-500' : ''}
+                      >
+                        {f === 'pending' ? getText('An atant', 'En attente', 'Pending') : 
+                         f === 'approved' ? getText('Apwouve', 'Approuvé', 'Approved') : 
+                         f === 'rejected' ? getText('Rejte', 'Rejeté', 'Rejected') : 
+                         getText('Tout', 'Tous', 'All')}
+                      </Button>
+                    ))}
+                    <Button variant="outline" size="sm" onClick={fetchTopups}>
+                      <RefreshCw size={16} />
+                    </Button>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Client</th>
+                        <th>{getText('Kat', 'Carte', 'Card')}</th>
+                        <th>{getText('Montan', 'Montant', 'Amount')}</th>
+                        <th>{getText('Frè', 'Frais', 'Fee')}</th>
+                        <th>{getText('Nèt', 'Net', 'Net')}</th>
+                        <th>Date</th>
+                        <th>{getText('Statis', 'Statut', 'Status')}</th>
+                        <th>{getText('Aksyon', 'Actions', 'Actions')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {topupsLoading ? (
+                        <tr><td colSpan="8" className="text-center py-8">{getText('Chajman...', 'Chargement...', 'Loading...')}</td></tr>
+                      ) : topups.length === 0 ? (
+                        <tr><td colSpan="8" className="text-center py-8">{getText('Pa gen top-up', 'Aucune recharge', 'No top-ups')}</td></tr>
+                      ) : (
+                        topups.map((topup) => (
+                          <tr key={topup.deposit_id}>
+                            <td className="font-mono text-sm">{topup.client_id}</td>
+                            <td>
+                              <div>
+                                <p className="font-medium">{topup.card_brand || 'Card'} •••• {topup.card_last4 || '****'}</p>
+                                <p className="text-xs text-stone-500">{topup.card_email}</p>
+                              </div>
+                            </td>
+                            <td className="font-semibold">${topup.amount?.toFixed(2)}</td>
+                            <td className="text-red-500">-${topup.fee?.toFixed(2)}</td>
+                            <td className="font-semibold text-emerald-600">${topup.net_amount?.toFixed(2)}</td>
+                            <td>{new Date(topup.created_at).toLocaleDateString()}</td>
+                            <td>
+                              <Badge className={
+                                topup.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                                topup.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                                'bg-red-100 text-red-700'
+                              }>
+                                {topup.status === 'pending' ? getText('An atant', 'En attente', 'Pending') : 
+                                 topup.status === 'approved' ? getText('Livere', 'Livré', 'Delivered') : 
+                                 getText('Rejte', 'Rejeté', 'Rejected')}
+                              </Badge>
+                            </td>
+                            <td>
+                              <Button size="sm" variant="outline" onClick={() => openTopupModal(topup)}>
+                                <Eye size={16} className="mr-1" />
+                                {getText('Wè', 'Voir', 'View')}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Order Modal */}
+        <Dialog open={showOrderModal} onOpenChange={setShowOrderModal}>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -327,252 +471,214 @@ export default function AdminVirtualCards() {
                 </div>
 
                 {selectedOrder.status === 'pending' && (
-                  <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
-                      <strong>{getText('Nòt:', 'Note:', 'Note:')}</strong> {getText(
-                        'Lè ou apwouve, kliyan an ap resevwa $5 USD bonis nan bous li. Lè ou rejte, lajan frè a ap ranbouse.',
-                        'Lors de l\'approbation, le client recevra $5 USD bonus. En cas de rejet, les frais seront remboursés.',
-                        'When approved, the client will receive $5 USD bonus. If rejected, the fees will be refunded.'
-                      )}
-                    </p>
-                  </div>
-                )}
-
-                {/* Card Details Form */}
-                <div className="border rounded-xl p-4 space-y-4">
-                  <h4 className="font-semibold flex items-center gap-2">
-                    <CreditCard size={18} />
-                    {getText('Enfòmasyon Kat la', 'Informations de la Carte', 'Card Information')}
-                  </h4>
-
-                  {/* Card Brand and Type */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>{getText('Mak Kat (pa egzanp Wise)', 'Marque (ex: Wise)', 'Brand (e.g. Wise)')}</Label>
-                      <Input
-                        placeholder="Wise, Payoneer, etc."
-                        value={cardDetails.card_brand}
-                        onChange={(e) => setCardDetails({...cardDetails, card_brand: e.target.value})}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div>
-                      <Label>{getText('Tip Kat', 'Type de Carte', 'Card Type')}</Label>
-                      <Select 
-                        value={cardDetails.card_type} 
-                        onValueChange={(v) => setCardDetails({...cardDetails, card_type: v})}
-                      >
-                        <SelectTrigger className="mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="visa">
-                            <div className="flex items-center gap-2">
-                              <img src={VISA_LOGO} alt="Visa" className="h-4 w-auto" />
-                              Visa
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="mastercard">
-                            <div className="flex items-center gap-2">
-                              <img src={MASTERCARD_LOGO} alt="Mastercard" className="h-4 w-auto" />
-                              Mastercard
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  {/* Card Holder Name */}
-                  <div>
-                    <Label>{getText('Non sou Kat la', 'Nom sur la Carte', 'Name on Card')}</Label>
-                    <Input
-                      placeholder="JEAN PIERRE"
-                      value={cardDetails.card_holder_name}
-                      onChange={(e) => setCardDetails({...cardDetails, card_holder_name: e.target.value.toUpperCase()})}
-                      className="mt-1 uppercase"
-                    />
-                  </div>
-
-                  {/* Card Number */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>{getText('Nimewo Kat Konplè', 'Numéro de Carte Complet', 'Full Card Number')}</Label>
-                      <Input
-                        placeholder="4532 XXXX XXXX 1234"
-                        value={cardDetails.card_number}
-                        onChange={(e) => setCardDetails({...cardDetails, card_number: e.target.value.replace(/\s/g, '')})}
-                        className="mt-1 font-mono"
-                        maxLength={19}
-                      />
-                    </div>
-                    <div>
-                      <Label>{getText('Dènye 4 Chif', 'Derniers 4 Chiffres', 'Last 4 Digits')}</Label>
-                      <Input
-                        placeholder="1234"
-                        value={cardDetails.card_last4 || (cardDetails.card_number ? cardDetails.card_number.slice(-4) : '')}
-                        onChange={(e) => setCardDetails({...cardDetails, card_last4: e.target.value})}
-                        className="mt-1 font-mono"
-                        maxLength={4}
-                        disabled={!!cardDetails.card_number}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Expiry and CVV */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label>{getText('Dat Ekspirasyon', 'Date d\'Expiration', 'Expiry Date')}</Label>
-                      <Input
-                        placeholder="MM/YY"
-                        value={cardDetails.card_expiry}
-                        onChange={(e) => setCardDetails({...cardDetails, card_expiry: e.target.value})}
-                        className="mt-1 font-mono"
-                        maxLength={5}
-                      />
-                    </div>
-                    <div>
-                      <Label>CVV</Label>
-                      <Input
-                        placeholder="123"
-                        value={cardDetails.card_cvv}
-                        onChange={(e) => setCardDetails({...cardDetails, card_cvv: e.target.value})}
-                        className="mt-1 font-mono"
-                        maxLength={4}
-                        type="password"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Billing Address */}
-                  <div className="border-t pt-4">
-                    <h5 className="font-medium mb-3">{getText('Adrès Faktirasyon', 'Adresse de Facturation', 'Billing Address')}</h5>
-                    <div className="space-y-3">
-                      <div>
-                        <Label>{getText('Adrès', 'Adresse', 'Address')}</Label>
-                        <Input
-                          placeholder="123 Main Street"
-                          value={cardDetails.billing_address}
-                          onChange={(e) => setCardDetails({...cardDetails, billing_address: e.target.value})}
-                          className="mt-1"
-                        />
-                      </div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <Label>{getText('Vil', 'Ville', 'City')}</Label>
-                          <Input
-                            placeholder="Miami"
-                            value={cardDetails.billing_city}
-                            onChange={(e) => setCardDetails({...cardDetails, billing_city: e.target.value})}
-                            className="mt-1"
-                          />
-                        </div>
-                        <div>
-                          <Label>{getText('Peyi', 'Pays', 'Country')}</Label>
-                          <Input
-                            placeholder="USA"
-                            value={cardDetails.billing_country}
-                            onChange={(e) => setCardDetails({...cardDetails, billing_country: e.target.value})}
-                            className="mt-1"
-                          />
-                        </div>
-                        <div>
-                          <Label>{getText('Kòd Postal', 'Code Postal', 'ZIP Code')}</Label>
-                          <Input
-                            placeholder="33101"
-                            value={cardDetails.billing_zip}
-                            onChange={(e) => setCardDetails({...cardDetails, billing_zip: e.target.value})}
-                            className="mt-1"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card Image */}
-                  <div className="border-t pt-4">
-                    <Label>{getText('Imaj Kat (Opsyonèl)', 'Image de la Carte (Optionnel)', 'Card Image (Optional)')}</Label>
-                    <div className="mt-2">
-                      <div 
-                        className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors ${
-                          cardDetails.card_image ? 'border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20' : 'border-stone-300 hover:border-[#EA580C]'
-                        }`}
-                        onClick={() => document.getElementById('card-image-upload').click()}
-                      >
-                        {cardDetails.card_image ? (
-                          <img 
-                            src={cardDetails.card_image} 
-                            alt="Card" 
-                            className="max-h-32 mx-auto rounded-lg"
-                          />
-                        ) : (
-                          <>
-                            <Upload className="mx-auto text-stone-400 mb-2" size={32} />
-                            <p className="text-stone-600 dark:text-stone-400">{getText('Klike pou telechaje imaj kat', 'Cliquez pour télécharger l\'image de la carte', 'Click to upload card image')}</p>
-                          </>
+                  <>
+                    <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
+                        <strong>{getText('Nòt:', 'Note:', 'Note:')}</strong> {getText(
+                          'Lè ou apwouve, kliyan an ap resevwa $5 USD bonis. Lè ou rejte, lajan frè a ap ranbouse.',
+                          'Lors de l\'approbation, le client recevra $5 USD bonus. En cas de rejet, les frais seront remboursés.',
+                          'When approved, the client will receive $5 USD bonus. If rejected, the fees will be refunded.'
                         )}
-                      </div>
-                      <input
-                        id="card-image-upload"
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleImageUpload}
-                      />
+                      </p>
                     </div>
-                  </div>
-                </div>
 
-                {/* Admin Notes */}
-                <div>
-                  <Label>{getText('Nòt Admin (opsyonèl)', 'Notes Admin (optionnel)', 'Admin Notes (optional)')}</Label>
-                  <Textarea
-                    placeholder={getText('Ekri nòt pou kliyan an...', 'Écrire une note pour le client...', 'Write a note for the client...')}
-                    value={adminNotes}
-                    onChange={(e) => setAdminNotes(e.target.value)}
-                    rows={2}
-                    className="mt-1"
-                  />
-                </div>
+                    {/* Card Details Form */}
+                    <div className="border rounded-xl p-4 space-y-4">
+                      <h4 className="font-semibold flex items-center gap-2">
+                        <CreditCard size={18} />
+                        {getText('Enfòmasyon Kat la', 'Informations de la Carte', 'Card Information')}
+                      </h4>
 
-                {/* Action Buttons */}
-                {selectedOrder.status === 'pending' ? (
-                  <div className="flex gap-4 pt-4 border-t">
-                    <Button 
-                      onClick={() => handleProcess('approve')}
-                      disabled={processing}
-                      className="flex-1 bg-emerald-500 hover:bg-emerald-600"
-                    >
-                      <Check size={18} className="mr-2" />
-                      {getText('Apwouve', 'Approuver', 'Approve')}
-                    </Button>
-                    <Button 
-                      onClick={() => handleProcess('reject')}
-                      disabled={processing}
-                      variant="destructive"
-                      className="flex-1"
-                    >
-                      <X size={18} className="mr-2" />
-                      {getText('Rejte', 'Rejeter', 'Reject')}
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="pt-4 border-t">
-                    <Button 
-                      onClick={updateCardDetails}
-                      disabled={processing}
-                      className="w-full bg-blue-500 hover:bg-blue-600"
-                    >
-                      {getText('Mete Detay Kat Ajou', 'Mettre à Jour les Détails', 'Update Card Details')}
-                    </Button>
-                  </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>{getText('Mak Kat', 'Marque', 'Brand')}</Label>
+                          <Input placeholder="Wise, Payoneer" value={cardDetails.card_brand} onChange={(e) => setCardDetails({...cardDetails, card_brand: e.target.value})} className="mt-1" />
+                        </div>
+                        <div>
+                          <Label>{getText('Tip Kat', 'Type', 'Type')}</Label>
+                          <Select value={cardDetails.card_type} onValueChange={(v) => setCardDetails({...cardDetails, card_type: v})}>
+                            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="visa">Visa</SelectItem>
+                              <SelectItem value="mastercard">Mastercard</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label>{getText('Non sou Kat', 'Nom sur Carte', 'Name on Card')}</Label>
+                        <Input value={cardDetails.card_holder_name} onChange={(e) => setCardDetails({...cardDetails, card_holder_name: e.target.value.toUpperCase()})} className="mt-1 uppercase" />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>{getText('Nimewo Kat', 'Numéro Carte', 'Card Number')}</Label>
+                          <Input value={cardDetails.card_number} onChange={(e) => setCardDetails({...cardDetails, card_number: e.target.value})} className="mt-1 font-mono" maxLength={19} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
+                            <Input placeholder="MM/YY" value={cardDetails.card_expiry} onChange={(e) => setCardDetails({...cardDetails, card_expiry: e.target.value})} className="mt-1" maxLength={5} />
+                          </div>
+                          <div>
+                            <Label>CVV</Label>
+                            <Input value={cardDetails.card_cvv} onChange={(e) => setCardDetails({...cardDetails, card_cvv: e.target.value})} className="mt-1" maxLength={4} type="password" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t pt-4">
+                        <h5 className="font-medium mb-3">{getText('Adrès Faktirasyon', 'Adresse Facturation', 'Billing Address')}</h5>
+                        <div className="space-y-3">
+                          <Input placeholder={getText('Adrès', 'Adresse', 'Address')} value={cardDetails.billing_address} onChange={(e) => setCardDetails({...cardDetails, billing_address: e.target.value})} />
+                          <div className="grid grid-cols-3 gap-2">
+                            <Input placeholder={getText('Vil', 'Ville', 'City')} value={cardDetails.billing_city} onChange={(e) => setCardDetails({...cardDetails, billing_city: e.target.value})} />
+                            <Input placeholder={getText('Peyi', 'Pays', 'Country')} value={cardDetails.billing_country} onChange={(e) => setCardDetails({...cardDetails, billing_country: e.target.value})} />
+                            <Input placeholder="ZIP" value={cardDetails.billing_zip} onChange={(e) => setCardDetails({...cardDetails, billing_zip: e.target.value})} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border-t pt-4">
+                        <Label>{getText('Imaj Kat', 'Image Carte', 'Card Image')}</Label>
+                        <div className="mt-2 border-2 border-dashed rounded-xl p-4 text-center cursor-pointer" onClick={() => document.getElementById('card-image-upload').click()}>
+                          {cardDetails.card_image ? (
+                            <img src={cardDetails.card_image} alt="Card" className="max-h-32 mx-auto rounded-lg" />
+                          ) : (
+                            <><Upload className="mx-auto text-stone-400 mb-2" size={32} /><p className="text-stone-500">{getText('Klike pou telechaje', 'Cliquez pour télécharger', 'Click to upload')}</p></>
+                          )}
+                        </div>
+                        <input id="card-image-upload" type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label>{getText('Nòt Admin', 'Notes Admin', 'Admin Notes')}</Label>
+                      <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} rows={2} className="mt-1" />
+                    </div>
+
+                    <div className="flex gap-4 pt-4 border-t">
+                      <Button onClick={() => handleProcessOrder('approve')} disabled={processing} className="flex-1 bg-emerald-500 hover:bg-emerald-600">
+                        <Check size={18} className="mr-2" />{getText('Apwouve', 'Approuver', 'Approve')}
+                      </Button>
+                      <Button onClick={() => handleProcessOrder('reject')} disabled={processing} variant="destructive" className="flex-1">
+                        <X size={18} className="mr-2" />{getText('Rejte', 'Rejeter', 'Reject')}
+                      </Button>
+                    </div>
+                  </>
                 )}
 
-                {/* Display existing admin notes */}
                 {selectedOrder.status !== 'pending' && selectedOrder.admin_notes && (
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
                     <p className="text-sm text-stone-500 mb-1">{getText('Nòt Admin', 'Notes Admin', 'Admin Notes')}</p>
                     <p>{selectedOrder.admin_notes}</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Top-up Modal */}
+        <Dialog open={showTopupModal} onOpenChange={setShowTopupModal}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Wallet className="text-blue-500" />
+                {getText('Detay Top-up Kat', 'Détails Recharge Carte', 'Card Top-up Details')}
+              </DialogTitle>
+            </DialogHeader>
+            {selectedTopup && (
+              <div className="space-y-4">
+                {/* Top-up Info */}
+                <div className="p-4 bg-stone-50 dark:bg-stone-800 rounded-xl space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-stone-500">{getText('ID Kliyan', 'ID Client', 'Client ID')}</span>
+                    <span className="font-mono">{selectedTopup.client_id}</span>
+                  </div>
+                  <div className="border-t pt-3">
+                    <p className="text-stone-500 text-sm mb-2">{getText('Enfòmasyon Kat', 'Info Carte', 'Card Info')}</p>
+                    <div className="flex items-center gap-3">
+                      <CreditCard className="text-emerald-600" size={24} />
+                      <div>
+                        <p className="font-medium">{selectedTopup.card_brand || 'Card'} •••• {selectedTopup.card_last4}</p>
+                        <p className="text-sm text-[#EA580C]">{selectedTopup.card_email}</p>
+                        {selectedTopup.card_holder_name && <p className="text-xs text-stone-500">{selectedTopup.card_holder_name}</p>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Amount breakdown */}
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4 space-y-2">
+                  <div className="flex justify-between">
+                    <span>{getText('Montan', 'Montant', 'Amount')}</span>
+                    <span className="font-semibold">${selectedTopup.amount?.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-red-600">
+                    <span>{getText('Frè', 'Frais', 'Fee')}</span>
+                    <span>-${selectedTopup.fee?.toFixed(2)}</span>
+                  </div>
+                  <div className="border-t pt-2 flex justify-between font-bold text-lg">
+                    <span>{getText('Pou mete sou kat', 'À mettre sur carte', 'To put on card')}</span>
+                    <span className="text-emerald-600">${selectedTopup.net_amount?.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {selectedTopup.status === 'pending' && (
+                  <>
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
+                      <p className="text-sm text-amber-700 dark:text-amber-400">
+                        {getText(
+                          `Mete $${selectedTopup.net_amount?.toFixed(2)} sou kat kliyan an, epi konfime livrezon an.`,
+                          `Mettez $${selectedTopup.net_amount?.toFixed(2)} sur la carte du client, puis confirmez la livraison.`,
+                          `Put $${selectedTopup.net_amount?.toFixed(2)} on client's card, then confirm delivery.`
+                        )}
+                      </p>
+                    </div>
+
+                    <div>
+                      <Label>{getText('Enfòmasyon livrezon', 'Info livraison', 'Delivery info')}</Label>
+                      <Textarea 
+                        placeholder={getText('Egzanp: Kob ajoute nan kat Wise...', 'Ex: Fonds ajoutés sur carte Wise...', 'Ex: Funds added to Wise card...')}
+                        value={deliveryInfo} 
+                        onChange={(e) => setDeliveryInfo(e.target.value)} 
+                        rows={2} 
+                        className="mt-1" 
+                      />
+                    </div>
+
+                    <div>
+                      <Label>{getText('Nòt Admin', 'Notes Admin', 'Admin Notes')}</Label>
+                      <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} rows={2} className="mt-1" />
+                    </div>
+
+                    <div className="flex gap-4 pt-4 border-t">
+                      <Button onClick={() => handleProcessTopup('approve')} disabled={processing} className="flex-1 bg-emerald-500 hover:bg-emerald-600">
+                        <Check size={18} className="mr-2" />{getText('Konfime Livrezon', 'Confirmer Livraison', 'Confirm Delivery')}
+                      </Button>
+                      <Button onClick={() => handleProcessTopup('reject')} disabled={processing} variant="destructive" className="flex-1">
+                        <X size={18} className="mr-2" />{getText('Rejte & Ranbouse', 'Rejeter & Rembourser', 'Reject & Refund')}
+                      </Button>
+                    </div>
+                  </>
+                )}
+
+                {selectedTopup.status !== 'pending' && (
+                  <div className="space-y-3">
+                    {selectedTopup.delivery_info && (
+                      <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3">
+                        <p className="text-sm text-emerald-700 dark:text-emerald-400">
+                          <strong>{getText('Livrezon:', 'Livraison:', 'Delivery:')}</strong> {selectedTopup.delivery_info}
+                        </p>
+                      </div>
+                    )}
+                    {selectedTopup.admin_notes && (
+                      <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                        <p className="text-sm"><strong>{getText('Nòt:', 'Notes:', 'Notes:')}</strong> {selectedTopup.admin_notes}</p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

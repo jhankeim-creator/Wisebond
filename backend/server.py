@@ -1151,12 +1151,22 @@ async def get_affiliate_info(current_user: dict = Depends(get_current_user)):
             "has_card": has_approved_card
         })
     
+    # Get affiliate settings
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    affiliate_cards_required = settings.get("affiliate_cards_required", 5) if settings else 5
+    affiliate_reward_htg = settings.get("affiliate_reward_htg", 2000) if settings else 2000
+    
+    # Construct link - send just the code, frontend will build the full URL
+    frontend_url = os.environ.get('FRONTEND_URL', '')
+    
     return {
         "affiliate_code": current_user["affiliate_code"],
-        "affiliate_link": f"{os.environ.get('FRONTEND_URL', 'http://localhost:3000')}/register?ref={current_user['affiliate_code']}",
+        "affiliate_link": f"{frontend_url}/register?ref={current_user['affiliate_code']}" if frontend_url else None,
         "earnings": current_user.get("affiliate_earnings", 0),
         "referrals": enriched_referrals,
-        "referrals_with_cards": referrals_with_cards
+        "referrals_with_cards": referrals_with_cards,
+        "affiliate_cards_required": affiliate_cards_required,
+        "affiliate_reward_htg": affiliate_reward_htg
     }
 
 @api_router.post("/affiliate/apply-code")
@@ -1289,6 +1299,94 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
     if "_id" in order:
         del order["_id"]
     return {"order": order, "message": "Card order submitted successfully"}
+
+class CardTopUpRequest(BaseModel):
+    order_id: str
+    amount: float
+
+@api_router.post("/virtual-cards/top-up")
+async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = Depends(get_current_user)):
+    """Submit a card top-up request - deducts from USD balance, admin delivers to card"""
+    if current_user["kyc_status"] != "approved":
+        raise HTTPException(status_code=403, detail="KYC verification required")
+    
+    # Verify the card order exists and belongs to user
+    card_order = await db.virtual_card_orders.find_one({
+        "order_id": request.order_id,
+        "user_id": current_user["user_id"],
+        "status": "approved"
+    }, {"_id": 0})
+    
+    if not card_order:
+        raise HTTPException(status_code=404, detail="Card not found or not approved")
+    
+    if request.amount < 5:
+        raise HTTPException(status_code=400, detail="Minimum amount is $5")
+    
+    # Calculate fee based on card fees
+    card_fees = await db.card_fees.find({}, {"_id": 0}).sort("min_amount", 1).to_list(100)
+    fee = 0
+    for fee_config in card_fees:
+        if request.amount >= fee_config["min_amount"] and request.amount <= fee_config["max_amount"]:
+            if fee_config.get("is_percentage"):
+                fee = request.amount * (fee_config["fee"] / 100)
+            else:
+                fee = fee_config["fee"]
+            break
+    
+    total_deduction = request.amount  # Deduct full amount, fee is taken from net amount to card
+    
+    if current_user.get("wallet_usd", 0) < total_deduction:
+        raise HTTPException(status_code=400, detail="Insufficient USD balance")
+    
+    # Deduct from USD balance
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {"$inc": {"wallet_usd": -total_deduction}}
+    )
+    
+    # Create deposit record with all card info for admin
+    deposit = {
+        "deposit_id": str(uuid.uuid4()),
+        "user_id": current_user["user_id"],
+        "client_id": current_user["client_id"],
+        "order_id": request.order_id,
+        "card_email": card_order.get("card_email"),
+        "card_brand": card_order.get("card_brand"),
+        "card_type": card_order.get("card_type"),
+        "card_holder_name": card_order.get("card_holder_name"),
+        "card_last4": card_order.get("card_last4"),
+        "amount": request.amount,
+        "fee": fee,
+        "net_amount": request.amount - fee,
+        "status": "pending",  # pending, approved, rejected
+        "admin_notes": None,
+        "delivery_info": None,  # Admin can add delivery confirmation
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": None,
+        "processed_by": None
+    }
+    
+    await db.virtual_card_deposits.insert_one(deposit)
+    
+    # Create transaction record
+    await db.transactions.insert_one({
+        "transaction_id": str(uuid.uuid4()),
+        "user_id": current_user["user_id"],
+        "type": "card_topup",
+        "amount": -request.amount,
+        "currency": "USD",
+        "status": "pending",
+        "description": f"Card top-up to {card_order.get('card_email')} (pending)",
+        "reference_id": deposit["deposit_id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    await log_action(current_user["user_id"], "card_topup", {"deposit_id": deposit["deposit_id"], "amount": request.amount})
+    
+    if "_id" in deposit:
+        del deposit["_id"]
+    return {"deposit": deposit, "message": "Top-up request submitted successfully"}
 
 # Admin: Get all card orders
 @api_router.get("/admin/virtual-card-orders")
@@ -2950,6 +3048,86 @@ async def admin_update_card_details(
         )
     
     return {"message": "Card details updated"}
+
+# Admin: Get all card top-up requests
+@api_router.get("/admin/card-topups")
+async def admin_get_card_topups(
+    status: Optional[str] = None,
+    limit: int = Query(default=50, le=200),
+    admin: dict = Depends(get_admin_user)
+):
+    query = {}
+    if status:
+        query["status"] = status
+    
+    deposits = await db.virtual_card_deposits.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"deposits": deposits}
+
+# Admin: Process card top-up (approve/reject)
+class CardTopUpProcessPayload(BaseModel):
+    action: str  # approve or reject
+    admin_notes: Optional[str] = None
+    delivery_info: Optional[str] = None  # Confirmation of delivery to card
+
+@api_router.patch("/admin/card-topups/{deposit_id}")
+async def admin_process_card_topup(
+    deposit_id: str,
+    payload: CardTopUpProcessPayload,
+    admin: dict = Depends(get_admin_user)
+):
+    deposit = await db.virtual_card_deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Top-up request not found")
+    
+    if deposit["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Top-up already processed")
+    
+    if payload.action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+    
+    new_status = "approved" if payload.action == "approve" else "rejected"
+    
+    update_doc = {
+        "status": new_status,
+        "admin_notes": payload.admin_notes,
+        "delivery_info": payload.delivery_info,
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_by": admin["user_id"]
+    }
+    
+    await db.virtual_card_deposits.update_one(
+        {"deposit_id": deposit_id},
+        {"$set": update_doc}
+    )
+    
+    # Update transaction status
+    await db.transactions.update_one(
+        {"reference_id": deposit_id},
+        {"$set": {"status": "completed" if payload.action == "approve" else "refunded"}}
+    )
+    
+    if payload.action == "reject":
+        # Refund the amount to user's USD balance
+        await db.users.update_one(
+            {"user_id": deposit["user_id"]},
+            {"$inc": {"wallet_usd": deposit["amount"]}}
+        )
+        
+        # Create refund transaction
+        await db.transactions.insert_one({
+            "transaction_id": str(uuid.uuid4()),
+            "user_id": deposit["user_id"],
+            "type": "card_topup_refund",
+            "amount": deposit["amount"],
+            "currency": "USD",
+            "status": "completed",
+            "description": f"Card top-up refund (rejected)",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    
+    await log_action(admin["user_id"], "card_topup_process", {"deposit_id": deposit_id, "action": payload.action})
+    
+    return {"message": f"Top-up {payload.action}d successfully"}
 
 # Admin: Purge old records (older than X days)
 @api_router.post("/admin/purge-old-records")
