@@ -2683,6 +2683,45 @@ async def admin_delete_card_fee(fee_id: str, admin: dict = Depends(get_admin_use
     
     return {"message": "Card fee deleted"}
 
+# Seed default card fees
+@api_router.post("/admin/card-fees/seed-defaults")
+async def admin_seed_default_card_fees(admin: dict = Depends(get_admin_user)):
+    """Seed default card withdrawal fees. This will replace all existing card fees."""
+    
+    # Default card fees
+    default_fees = [
+        {"min_amount": 5, "max_amount": 19, "fee": 2.5, "is_percentage": False},
+        {"min_amount": 20, "max_amount": 39, "fee": 3, "is_percentage": False},
+        {"min_amount": 40, "max_amount": 99, "fee": 4.4, "is_percentage": False},
+        {"min_amount": 100, "max_amount": 199, "fee": 5.9, "is_percentage": False},
+        {"min_amount": 200, "max_amount": 299, "fee": 9, "is_percentage": False},
+        {"min_amount": 300, "max_amount": 399, "fee": 14, "is_percentage": False},
+        {"min_amount": 400, "max_amount": 499, "fee": 15, "is_percentage": False},
+        {"min_amount": 500, "max_amount": 599, "fee": 20, "is_percentage": False},
+        {"min_amount": 600, "max_amount": 1500, "fee": 30, "is_percentage": False},
+        {"min_amount": 1500, "max_amount": 999999, "fee": 5, "is_percentage": True},  # 5% for $1500+
+    ]
+    
+    # Clear existing card fees
+    await db.card_fees.delete_many({})
+    
+    # Insert new fees
+    created_fees = []
+    for fee_config in default_fees:
+        fee_doc = {
+            "fee_id": str(uuid.uuid4()),
+            **fee_config,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.card_fees.insert_one(fee_doc)
+        if "_id" in fee_doc:
+            del fee_doc["_id"]
+        created_fees.append(fee_doc)
+    
+    await log_action(admin["user_id"], "card_fees_seed_defaults", {"count": len(default_fees)})
+    
+    return {"message": f"Successfully seeded {len(default_fees)} default card fees", "fees": created_fees}
+
 # Withdrawal Limits Admin
 @api_router.get("/admin/withdrawal-limits")
 async def admin_get_withdrawal_limits(admin: dict = Depends(get_admin_user)):

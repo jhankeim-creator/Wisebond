@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Plus, Trash2, RefreshCw, CreditCard, ArrowUpCircle } from 'lucide-react';
+import { Plus, Trash2, RefreshCw, CreditCard, ArrowUpCircle, Wand2 } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
@@ -103,6 +103,26 @@ export default function AdminFees() {
     try {
       await axios.delete(`${API}/admin/card-fees/${feeId}`);
       toast.success(getText('Frè kat siprime', 'Frais carte supprimé', 'Card fee deleted'));
+      fetchData();
+    } catch (error) {
+      toast.error(getText('Erè', 'Erreur', 'Error'));
+    }
+  };
+
+  const seedDefaultCardFees = async () => {
+    if (!window.confirm(getText(
+      'Sa ap ranplase tout frè kat egzistan yo ak frè default yo. Kontinye?', 
+      'Cela remplacera tous les frais carte existants par les frais par défaut. Continuer?', 
+      'This will replace all existing card fees with default fees. Continue?'
+    ))) return;
+    
+    try {
+      const response = await axios.post(`${API}/admin/card-fees/seed-defaults`);
+      toast.success(getText(
+        `${response.data.fees?.length || 10} frè kat ajoute!`, 
+        `${response.data.fees?.length || 10} frais carte ajoutés!`, 
+        `${response.data.fees?.length || 10} card fees added!`
+      ));
       fetchData();
     } catch (error) {
       toast.error(getText('Erè', 'Erreur', 'Error'));
@@ -206,10 +226,16 @@ export default function AdminFees() {
                 <CreditCard className="text-purple-500" size={20} />
                 {getText('Frè Retrè pa Kat Vityèl (pa limit)', 'Frais de retrait par carte virtuelle (par limite)', 'Virtual Card Withdrawal Fees (by limit)')}
               </span>
-              <Button size="sm" onClick={() => setShowCardFeeModal(true)} className="bg-purple-500">
-                <Plus size={16} className="mr-2" />
-                {getText('Ajoute', 'Ajouter', 'Add')}
-              </Button>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={seedDefaultCardFees} className="text-purple-600 border-purple-300 hover:bg-purple-50">
+                  <Wand2 size={16} className="mr-2" />
+                  {getText('Mete Frè Default', 'Mettre Frais Défaut', 'Set Default Fees')}
+                </Button>
+                <Button size="sm" onClick={() => setShowCardFeeModal(true)} className="bg-purple-500">
+                  <Plus size={16} className="mr-2" />
+                  {getText('Ajoute', 'Ajouter', 'Add')}
+                </Button>
+              </div>
             </CardTitle>
           </CardHeader>
           <CardContent>
