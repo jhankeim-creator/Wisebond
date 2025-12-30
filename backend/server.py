@@ -1304,19 +1304,37 @@ async def admin_get_card_orders(
     orders = await db.virtual_card_orders.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     return {"orders": orders}
 
+# Pydantic model for card details
+class CardDetailsPayload(BaseModel):
+    action: Optional[str] = None  # approve or reject
+    admin_notes: Optional[str] = None
+    card_brand: Optional[str] = None  # Wise, Payoneer, etc.
+    card_type: Optional[str] = None  # visa or mastercard
+    card_holder_name: Optional[str] = None
+    card_number: Optional[str] = None
+    card_last4: Optional[str] = None
+    card_expiry: Optional[str] = None
+    card_cvv: Optional[str] = None
+    billing_address: Optional[str] = None
+    billing_city: Optional[str] = None
+    billing_country: Optional[str] = None
+    billing_zip: Optional[str] = None
+    card_image: Optional[str] = None
+
 # Admin: Process card order (approve/reject)
 @api_router.patch("/admin/virtual-card-orders/{order_id}")
 async def admin_process_card_order(
     order_id: str,
-    action: str,
-    admin_notes: Optional[str] = None,
-    card_name: Optional[str] = None,
-    card_last4: Optional[str] = None,
+    payload: CardDetailsPayload,
     admin: dict = Depends(get_admin_user)
 ):
     order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    
+    action = payload.action
+    if not action:
+        raise HTTPException(status_code=400, detail="Action required")
     
     if order["status"] != "pending":
         raise HTTPException(status_code=400, detail="Order already processed")
@@ -1328,17 +1346,39 @@ async def admin_process_card_order(
     
     update_doc = {
         "status": new_status,
-        "admin_notes": admin_notes,
+        "admin_notes": payload.admin_notes,
         "processed_at": datetime.now(timezone.utc).isoformat(),
         "processed_by": admin["user_id"]
     }
     
     # Add card details if approving
     if action == "approve":
-        if card_name:
-            update_doc["card_name"] = card_name
-        if card_last4:
-            update_doc["card_last4"] = card_last4
+        if payload.card_brand:
+            update_doc["card_brand"] = payload.card_brand
+        if payload.card_type:
+            update_doc["card_type"] = payload.card_type
+        if payload.card_holder_name:
+            update_doc["card_holder_name"] = payload.card_holder_name
+        if payload.card_number:
+            update_doc["card_number"] = payload.card_number
+            # Auto-extract last 4 digits
+            update_doc["card_last4"] = payload.card_number[-4:]
+        elif payload.card_last4:
+            update_doc["card_last4"] = payload.card_last4
+        if payload.card_expiry:
+            update_doc["card_expiry"] = payload.card_expiry
+        if payload.card_cvv:
+            update_doc["card_cvv"] = payload.card_cvv
+        if payload.billing_address:
+            update_doc["billing_address"] = payload.billing_address
+        if payload.billing_city:
+            update_doc["billing_city"] = payload.billing_city
+        if payload.billing_country:
+            update_doc["billing_country"] = payload.billing_country
+        if payload.billing_zip:
+            update_doc["billing_zip"] = payload.billing_zip
+        if payload.card_image:
+            update_doc["card_image"] = payload.card_image
     
     await db.virtual_card_orders.update_one(
         {"order_id": order_id},
@@ -2867,8 +2907,7 @@ async def admin_send_bulk_email(request: BulkEmailRequest, admin: dict = Depends
 @api_router.patch("/admin/virtual-card-orders/{order_id}/details")
 async def admin_update_card_details(
     order_id: str,
-    card_name: Optional[str] = None,
-    card_last4: Optional[str] = None,
+    payload: CardDetailsPayload,
     admin: dict = Depends(get_admin_user)
 ):
     order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
@@ -2876,10 +2915,33 @@ async def admin_update_card_details(
         raise HTTPException(status_code=404, detail="Order not found")
     
     update_doc = {}
-    if card_name:
-        update_doc["card_name"] = card_name
-    if card_last4:
-        update_doc["card_last4"] = card_last4
+    if payload.card_brand:
+        update_doc["card_brand"] = payload.card_brand
+    if payload.card_type:
+        update_doc["card_type"] = payload.card_type
+    if payload.card_holder_name:
+        update_doc["card_holder_name"] = payload.card_holder_name
+    if payload.card_number:
+        update_doc["card_number"] = payload.card_number
+        update_doc["card_last4"] = payload.card_number[-4:]
+    elif payload.card_last4:
+        update_doc["card_last4"] = payload.card_last4
+    if payload.card_expiry:
+        update_doc["card_expiry"] = payload.card_expiry
+    if payload.card_cvv:
+        update_doc["card_cvv"] = payload.card_cvv
+    if payload.billing_address:
+        update_doc["billing_address"] = payload.billing_address
+    if payload.billing_city:
+        update_doc["billing_city"] = payload.billing_city
+    if payload.billing_country:
+        update_doc["billing_country"] = payload.billing_country
+    if payload.billing_zip:
+        update_doc["billing_zip"] = payload.billing_zip
+    if payload.card_image:
+        update_doc["card_image"] = payload.card_image
+    if payload.admin_notes is not None:
+        update_doc["admin_notes"] = payload.admin_notes
     
     if update_doc:
         await db.virtual_card_orders.update_one(
