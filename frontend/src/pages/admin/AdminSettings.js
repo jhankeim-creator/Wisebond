@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Save, Key, Mail, Wallet, CreditCard, DollarSign, Shield, MessageSquare, Phone, Smartphone, Send } from 'lucide-react';
+import { Save, Key, Mail, Wallet, CreditCard, DollarSign, Shield, MessageSquare, Phone, Smartphone, Send, Upload, Image } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
@@ -638,18 +638,51 @@ export default function AdminSettings() {
                 </div>
               </div>
               <div>
-                <Label htmlFor="moncash_qr">{getText('QR Kod (URL imaj)', 'QR Code (URL image)', 'QR Code (image URL)')}</Label>
-                <Input
-                  id="moncash_qr"
-                  placeholder="https://example.com/qr-moncash.png"
-                  value={settings.moncash_qr || ''}
-                  onChange={(e) => setSettings({ ...settings, moncash_qr: e.target.value })}
-                  className="mt-1"
-                />
-                <p className="text-xs text-stone-500 mt-1">{getText('Opsyonèl - ap afiche sou paj depo a', 'Optionnel - s\'affichera sur la page de dépôt', 'Optional - will display on deposit page')}</p>
-                {settings.moncash_qr && (
-                  <img src={settings.moncash_qr} alt="MonCash QR" className="mt-2 w-24 h-24 object-contain rounded border" />
-                )}
+                <Label htmlFor="moncash_qr">{getText('QR Kod', 'QR Code', 'QR Code')}</Label>
+                <div className="mt-2 flex items-center gap-4">
+                  <div 
+                    className={`w-32 h-32 border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all hover:border-[#EA580C] ${settings.moncash_qr ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-stone-300 dark:border-stone-600'}`}
+                    onClick={() => document.getElementById('moncash-qr-upload').click()}
+                  >
+                    {settings.moncash_qr ? (
+                      <img src={settings.moncash_qr} alt="MonCash QR" className="w-full h-full object-contain rounded-lg" />
+                    ) : (
+                      <>
+                        <Upload size={24} className="text-stone-400 mb-2" />
+                        <span className="text-xs text-stone-500">{getText('Telechaje QR', 'Télécharger QR', 'Upload QR')}</span>
+                      </>
+                    )}
+                  </div>
+                  <input
+                    id="moncash-qr-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setSettings({ ...settings, moncash_qr: reader.result });
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                  <div className="flex-1">
+                    <p className="text-xs text-stone-500 dark:text-stone-400">{getText('Opsyonèl - ap afiche sou paj depo a', 'Optionnel - s\'affichera sur la page de dépôt', 'Optional - will display on deposit page')}</p>
+                    {settings.moncash_qr && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 text-red-500 hover:text-red-600"
+                        onClick={() => setSettings({ ...settings, moncash_qr: '' })}
+                      >
+                        {getText('Retire QR', 'Retirer QR', 'Remove QR')}
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -689,18 +722,51 @@ export default function AdminSettings() {
                 </div>
               </div>
               <div>
-                <Label htmlFor="natcash_qr">{getText('QR Kod (URL imaj)', 'QR Code (URL image)', 'QR Code (image URL)')}</Label>
-                <Input
-                  id="natcash_qr"
-                  placeholder="https://example.com/qr-natcash.png"
-                  value={settings.natcash_qr || ''}
-                  onChange={(e) => setSettings({ ...settings, natcash_qr: e.target.value })}
-                  className="mt-1"
-                />
-                <p className="text-xs text-stone-500 mt-1">{getText('Opsyonèl - ap afiche sou paj depo a', 'Optionnel - s\'affichera sur la page de dépôt', 'Optional - will display on deposit page')}</p>
-                {settings.natcash_qr && (
-                  <img src={settings.natcash_qr} alt="NatCash QR" className="mt-2 w-24 h-24 object-contain rounded border" />
-                )}
+                <Label htmlFor="natcash_qr">{getText('QR Kod', 'QR Code', 'QR Code')}</Label>
+                <div className="mt-2 flex items-center gap-4">
+                  <div 
+                    className={`w-32 h-32 border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all hover:border-[#EA580C] ${settings.natcash_qr ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : 'border-stone-300 dark:border-stone-600'}`}
+                    onClick={() => document.getElementById('natcash-qr-upload').click()}
+                  >
+                    {settings.natcash_qr ? (
+                      <img src={settings.natcash_qr} alt="NatCash QR" className="w-full h-full object-contain rounded-lg" />
+                    ) : (
+                      <>
+                        <Upload size={24} className="text-stone-400 mb-2" />
+                        <span className="text-xs text-stone-500">{getText('Telechaje QR', 'Télécharger QR', 'Upload QR')}</span>
+                      </>
+                    )}
+                  </div>
+                  <input
+                    id="natcash-qr-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          setSettings({ ...settings, natcash_qr: reader.result });
+                        };
+                        reader.readAsDataURL(file);
+                      }
+                    }}
+                  />
+                  <div className="flex-1">
+                    <p className="text-xs text-stone-500 dark:text-stone-400">{getText('Opsyonèl - ap afiche sou paj depo a', 'Optionnel - s\'affichera sur la page de dépôt', 'Optional - will display on deposit page')}</p>
+                    {settings.natcash_qr && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-2 text-red-500 hover:text-red-600"
+                        onClick={() => setSettings({ ...settings, natcash_qr: '' })}
+                      >
+                        {getText('Retire QR', 'Retirer QR', 'Remove QR')}
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 

@@ -368,6 +368,27 @@ export default function Deposit() {
                   : getText('Voye nan: payments@kayicom.com', 'Envoyez à: payments@kayicom.com', 'Send to: payments@kayicom.com')
               }
             </p>
+            
+            {/* Display QR Code if available */}
+            {currency === 'HTG' && (
+              (method === 'moncash' && manualConfig.moncash_qr) || 
+              (method === 'natcash' && manualConfig.natcash_qr)
+            ) && (
+              <div className="mt-4 flex flex-col items-center">
+                <p className="text-sm text-orange-700 mb-2">{getText('Eskane QR Kod la:', 'Scannez le QR Code:', 'Scan the QR Code:')}</p>
+                <img 
+                  src={method === 'moncash' ? manualConfig.moncash_qr : manualConfig.natcash_qr} 
+                  alt={`${method === 'moncash' ? 'MonCash' : 'NatCash'} QR Code`}
+                  className="w-48 h-48 object-contain rounded-xl border-2 border-orange-300 bg-white p-2"
+                />
+                {method === 'moncash' && manualConfig.moncash_name && (
+                  <p className="mt-2 text-sm font-medium text-orange-800">{getText('Non', 'Nom', 'Name')}: {manualConfig.moncash_name}</p>
+                )}
+                {method === 'natcash' && manualConfig.natcash_name && (
+                  <p className="mt-2 text-sm font-medium text-orange-800">{getText('Non', 'Nom', 'Name')}: {manualConfig.natcash_name}</p>
+                )}
+              </div>
+            )}
           </div>
 
           <div>

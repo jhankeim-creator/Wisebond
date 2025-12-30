@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Check, X, Eye, RefreshCw } from 'lucide-react';
+import { Check, X, Eye, RefreshCw, Trash2 } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
@@ -66,6 +66,26 @@ export default function AdminKYC() {
       fetchSubmissions();
     } catch (error) {
       toast.error('Erreur lors du traitement');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleDeleteKyc = async () => {
+    if (!selectedKyc) return;
+    
+    if (!window.confirm('Efase KYC sa a? Kliyan an ap kapab soumèt yon nouvo. / Supprimer ce KYC? Le client pourra en soumettre un nouveau.')) {
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      await axios.delete(`${API}/admin/kyc/${selectedKyc.kyc_id}`);
+      toast.success('KYC efase! Kliyan an ka soumèt yon nouvo. / KYC supprimé! Le client peut en soumettre un nouveau.');
+      setShowModal(false);
+      fetchSubmissions();
+    } catch (error) {
+      toast.error('Erreur lors de la suppression');
     } finally {
       setProcessing(false);
     }
@@ -261,6 +281,22 @@ export default function AdminKYC() {
                     </div>
                   </>
                 )}
+
+                {/* Delete KYC Button - shown for all statuses */}
+                <div className="border-t pt-4 mt-4">
+                  <Button 
+                    onClick={handleDeleteKyc}
+                    disabled={processing}
+                    variant="outline"
+                    className="w-full text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    <Trash2 size={18} className="mr-2" />
+                    Efase KYC (Pèmèt kliyan an resoumèt) / Supprimer KYC (Permettre nouvelle soumission)
+                  </Button>
+                  <p className="text-xs text-slate-500 mt-2 text-center">
+                    Sa ap efase KYC sa a epi pèmèt kliyan an soumèt yon nouvo.
+                  </p>
+                </div>
               </div>
             )}
           </DialogContent>

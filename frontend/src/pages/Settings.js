@@ -13,15 +13,54 @@ import {
   Lock, 
   Globe,
   Shield,
-  Bell
+  Bell,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import axios from 'axios';
+
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function Settings() {
   const { t, language, setLanguage } = useLanguage();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   
   const [notifications, setNotifications] = useState(true);
   const [twoFactor, setTwoFactor] = useState(user?.two_factor_enabled || false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deleteReason.trim() || deleteReason.length < 5) {
+      toast.error(getText('Rezon an dwe gen omwen 5 karaktè', 'La raison doit contenir au moins 5 caractères', 'Reason must be at least 5 characters'));
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await axios.delete(`${API}/users/me`, { data: { reason: deleteReason } });
+      toast.success(getText('Kont ou efase avèk siksè', 'Votre compte a été supprimé avec succès', 'Your account has been deleted successfully'));
+      setShowDeleteModal(false);
+      // Logout and redirect to home
+      setTimeout(() => {
+        logout();
+        window.location.href = '/';
+      }, 2000);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || getText('Erè pandan sipresyon', 'Erreur lors de la suppression', 'Error deleting account'));
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const handleLanguageChange = (lang) => {
     setLanguage(lang);
@@ -198,7 +237,85 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Delete Account */}
+        <Card className="border-red-200">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 size={20} />
+              {getText('Siprime Kont', 'Supprimer le Compte', 'Delete Account')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-slate-600 mb-4">
+              {getText(
+                'Si ou siprime kont ou, tout done ou yo ap pèdi pou tout tan. Aksyon sa a pap ka anile.',
+                'Si vous supprimez votre compte, toutes vos données seront perdues définitivement. Cette action est irréversible.',
+                'If you delete your account, all your data will be permanently lost. This action cannot be undone.'
+              )}
+            </p>
+            <Button 
+              variant="outline" 
+              className="text-red-600 border-red-300 hover:bg-red-50"
+              onClick={() => setShowDeleteModal(true)}
+            >
+              <Trash2 size={16} className="mr-2" />
+              {getText('Siprime kont mwen', 'Supprimer mon compte', 'Delete my account')}
+            </Button>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle size={24} />
+              {getText('Siprime Kont Ou', 'Supprimer votre Compte', 'Delete Your Account')}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <p className="text-red-700 text-sm">
+                <strong>{getText('Atansyon!', 'Attention!', 'Warning!')}</strong> {getText(
+                  'Aksyon sa a pap ka anile. Tout done ou yo (KYC, tranzaksyon, depo, retrè, kat vityèl) ap efase pou tout tan.',
+                  'Cette action est irréversible. Toutes vos données (KYC, transactions, dépôts, retraits, cartes virtuelles) seront définitivement supprimées.',
+                  'This action cannot be undone. All your data (KYC, transactions, deposits, withdrawals, virtual cards) will be permanently deleted.'
+                )}
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-red-700">{getText('Poukisa ou vle siprime kont ou? (Obligatwa)', 'Pourquoi voulez-vous supprimer votre compte? (Obligatoire)', 'Why do you want to delete your account? (Required)')}</Label>
+              <Textarea
+                placeholder={getText('Ekri rezon an isit...', 'Écrivez la raison ici...', 'Write the reason here...')}
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                className="mt-2"
+                rows={3}
+              />
+              <p className="text-xs text-slate-500 mt-1">{getText('Omwen 5 karaktè', 'Minimum 5 caractères', 'Minimum 5 characters')}</p>
+            </div>
+
+            <div className="flex gap-4 pt-4">
+              <Button variant="outline" onClick={() => setShowDeleteModal(false)} className="flex-1">
+                {getText('Anile', 'Annuler', 'Cancel')}
+              </Button>
+              <Button 
+                onClick={handleDeleteAccount}
+                disabled={deleting || !deleteReason.trim() || deleteReason.length < 5}
+                variant="destructive"
+                className="flex-1"
+              >
+                <Trash2 size={16} className="mr-2" />
+                {deleting ? getText('Sipresyon...', 'Suppression...', 'Deleting...') : getText('Siprime', 'Supprimer', 'Delete')}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
