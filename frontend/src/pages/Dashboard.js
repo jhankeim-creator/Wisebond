@@ -6,6 +6,8 @@ import { useAuth } from '@/context/AuthContext';
 import { Logo } from '@/components/Logo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { UserQRCode } from '@/components/QRCode';
 import axios from 'axios';
 import { 
   ArrowDownCircle, 
@@ -18,7 +20,8 @@ import {
   CreditCard,
   Users,
   Copy,
-  Check
+  Check,
+  QrCode
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -32,6 +35,7 @@ export default function Dashboard() {
   const [rates, setRates] = useState(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
 
   const copyClientId = () => {
     if (user?.client_id) {
@@ -95,10 +99,10 @@ export default function Dashboard() {
 
   const quickActions = [
     { to: '/deposit', icon: ArrowDownCircle, label: t('deposit'), color: 'bg-emerald-500 hover:bg-emerald-600' },
-    { to: '/withdraw', icon: ArrowUpCircle, label: t('withdraw'), color: 'bg-[#EA580C] hover:bg-[#C2410C]' },
-    { to: '/swap', icon: TrendingUp, label: 'Swap', color: 'bg-purple-500 hover:bg-purple-600' },
+    { action: 'qr', icon: QrCode, label: getText('Resevwa', 'Recevoir', 'Receive'), color: 'bg-blue-500 hover:bg-blue-600' },
     { to: '/transfer', icon: Send, label: t('transfer'), color: 'bg-amber-500 hover:bg-amber-600' },
-    { to: '/virtual-card', icon: CreditCard, label: getText('Kat', 'Carte', 'Card'), color: 'bg-stone-800 hover:bg-stone-900' }
+    { to: '/swap', icon: TrendingUp, label: 'Swap', color: 'bg-purple-500 hover:bg-purple-600' },
+    { to: '/withdraw', icon: ArrowUpCircle, label: t('withdraw'), color: 'bg-[#EA580C] hover:bg-[#C2410C]' }
   ];
 
   return (
@@ -201,6 +205,20 @@ export default function Dashboard() {
         <div className="grid grid-cols-5 gap-3 md:gap-4">
           {quickActions.map((action) => {
             const Icon = action.icon;
+            
+            // Handle button action (QR code)
+            if (action.action === 'qr') {
+              return (
+                <button key="qr" onClick={() => setShowQRModal(true)}>
+                  <div className={`${action.color} text-white rounded-xl p-3 md:p-4 text-center transition-all hover:scale-105 shadow-lg`}>
+                    <Icon className="mx-auto mb-1 md:mb-2" size={20} />
+                    <span className="font-semibold text-xs md:text-sm">{action.label}</span>
+                  </div>
+                </button>
+              );
+            }
+            
+            // Handle link action
             return (
               <Link key={action.to} to={action.to}>
                 <div className={`${action.color} text-white rounded-xl p-3 md:p-4 text-center transition-all hover:scale-105 shadow-lg`}>
@@ -332,6 +350,24 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* QR Code Modal for Receiving Money */}
+      <Dialog open={showQRModal} onOpenChange={setShowQRModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-center">
+              {getText('Resevwa Lajan', 'Recevoir de l\'Argent', 'Receive Money')}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center py-6">
+            <UserQRCode 
+              clientId={user?.client_id} 
+              userName={user?.full_name}
+              size={180}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
