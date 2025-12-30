@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { LiveChat } from "@/components/LiveChat";
 import { ScrollToTop } from "@/components/ScrollToTop";
+import { InstallPrompt } from "@/components/InstallPrompt";
 
 // Pages
 import Landing from "@/pages/Landing";
@@ -146,6 +147,7 @@ function App() {
             <ScrollToTop />
             <AppRoutes />
             <LiveChat />
+            <InstallPrompt />
             <Toaster position="top-right" richColors />
           </BrowserRouter>
         </AuthProvider>

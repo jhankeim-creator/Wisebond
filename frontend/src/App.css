@@ -174,3 +174,50 @@
 .mobile-menu-btn {
   @apply lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-md;
 }
+
+/* PWA Install Banner Animation */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out forwards;
+}
+
+/* Safe area for bottom install banner */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Smooth transitions */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Better touch feedback for mobile */
+button, a, .clickable {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Improve scrolling on mobile */
+.scroll-smooth {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

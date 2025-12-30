@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -17,9 +17,238 @@ import {
   CheckCircle,
   TrendingUp,
   Smartphone,
-  DollarSign
+  DollarSign,
+  Download,
+  Wifi,
+  Battery,
+  Clock
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+
+// Install App Section Component
+function InstallAppSection({ getText }) {
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
+
+  useEffect(() => {
+    // Check platform
+    const userAgent = navigator.userAgent.toLowerCase();
+    setIsAndroid(/android/i.test(userAgent));
+
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+      return;
+    }
+
+    const handleBeforeInstall = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setIsInstalled(true);
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setIsInstalled(true);
+    }
+    setDeferredPrompt(null);
+  };
+
+  const appFeatures = [
+    {
+      icon: Wifi,
+      title: getText('Travay san entènèt', 'Fonctionne hors ligne', 'Works offline'),
+      desc: getText('Wè balans ou menm san entènèt', 'Consultez votre solde même sans internet', 'Check balance even without internet')
+    },
+    {
+      icon: Battery,
+      title: getText('Leje anpil', 'Très légère', 'Very lightweight'),
+      desc: getText('Pa pran espas sou telefòn ou', 'Ne prend pas d\'espace sur votre téléphone', 'Doesn\'t take up phone storage')
+    },
+    {
+      icon: Clock,
+      title: getText('Rapid tankou zèklè', 'Rapide comme l\'éclair', 'Lightning fast'),
+      desc: getText('Louvri enstantaneman, pa bezwen tann', 'S\'ouvre instantanément, pas besoin d\'attendre', 'Opens instantly, no waiting')
+    }
+  ];
+
+  return (
+    <section className="py-20 px-6 bg-stone-900 text-white relative overflow-hidden">
+      <div className="absolute inset-0">
+        <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_20%_30%,rgba(234,88,12,0.15),transparent_40%)]" />
+        <div className="absolute bottom-0 right-0 w-full h-full bg-[radial-gradient(circle_at_80%_70%,rgba(245,158,11,0.1),transparent_40%)]" />
+      </div>
+      
+      <div className="max-w-7xl mx-auto relative">
+        <div className="grid lg:grid-cols-2 gap-12 items-center">
+          {/* Content */}
+          <div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              viewport={{ once: true }}
+            >
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#EA580C]/20 to-amber-500/20 rounded-full text-amber-400 text-sm font-semibold mb-6 border border-amber-500/30">
+                <Smartphone size={16} />
+                <span>{getText('App Android', 'Application Android', 'Android App')}</span>
+              </div>
+              
+              <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+                {getText('Enstale KAYICOM sou telefòn ou', 'Installez KAYICOM sur votre téléphone', 'Install KAYICOM on your phone')}
+              </h2>
+              
+              <p className="text-lg text-stone-400 mb-8">
+                {getText(
+                  'Telechaje app leje a dirèkteman sou telefòn Android ou. Pa bezwen ale nan Play Store!',
+                  'Téléchargez l\'app légère directement sur votre téléphone Android. Pas besoin d\'aller sur Play Store!',
+                  'Download the lightweight app directly on your Android phone. No need to go to Play Store!'
+                )}
+              </p>
+              
+              {/* Features */}
+              <div className="space-y-4 mb-8">
+                {appFeatures.map((feature, index) => {
+                  const Icon = feature.icon;
+                  return (
+                    <motion.div
+                      key={feature.title}
+                      initial={{ opacity: 0, x: -20 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.4, delay: index * 0.1 }}
+                      viewport={{ once: true }}
+                      className="flex items-start gap-4"
+                    >
+                      <div className="w-10 h-10 bg-gradient-to-br from-[#EA580C] to-amber-500 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Icon size={20} className="text-white" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-white">{feature.title}</h3>
+                        <p className="text-stone-400 text-sm">{feature.desc}</p>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+              
+              {/* Install Button */}
+              {isInstalled ? (
+                <div className="flex items-center gap-3 text-emerald-400 bg-emerald-500/10 px-6 py-4 rounded-2xl border border-emerald-500/30">
+                  <CheckCircle size={24} />
+                  <span className="font-semibold text-lg">
+                    {getText('App enstale!', 'App installée!', 'App installed!')}
+                  </span>
+                </div>
+              ) : (
+                <Button
+                  onClick={handleInstall}
+                  disabled={!deferredPrompt && !isAndroid}
+                  className="bg-gradient-to-r from-[#EA580C] to-amber-500 hover:from-[#C2410C] hover:to-amber-600 text-white font-bold text-lg px-8 py-6 h-auto rounded-2xl shadow-lg shadow-orange-500/20 disabled:opacity-50"
+                >
+                  <Download size={24} className="mr-3" />
+                  {getText('Enstale App KAYICOM', 'Installer App KAYICOM', 'Install KAYICOM App')}
+                </Button>
+              )}
+              
+              {!deferredPrompt && !isInstalled && (
+                <p className="text-stone-500 text-sm mt-4">
+                  {getText(
+                    '💡 Louvri sit sa nan Chrome sou Android pou w ka enstale app la.',
+                    '💡 Ouvrez ce site dans Chrome sur Android pour installer l\'app.',
+                    '💡 Open this site in Chrome on Android to install the app.'
+                  )}
+                </p>
+              )}
+            </motion.div>
+          </div>
+          
+          {/* Phone Mockup */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.6 }}
+            viewport={{ once: true }}
+            className="flex justify-center"
+          >
+            <div className="relative">
+              {/* Phone frame */}
+              <div className="w-72 h-[580px] bg-gradient-to-b from-stone-800 to-stone-900 rounded-[3rem] p-3 shadow-2xl border border-stone-700">
+                {/* Screen */}
+                <div className="w-full h-full bg-stone-950 rounded-[2.5rem] overflow-hidden relative">
+                  {/* Status bar */}
+                  <div className="h-8 bg-stone-900 flex items-center justify-between px-6">
+                    <span className="text-white text-xs font-medium">9:41</span>
+                    <div className="flex items-center gap-1">
+                      <Wifi size={12} className="text-white" />
+                      <Battery size={12} className="text-white" />
+                    </div>
+                  </div>
+                  
+                  {/* App content preview */}
+                  <div className="p-4 space-y-4">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="w-10 h-10 bg-gradient-to-br from-[#EA580C] to-amber-500 rounded-xl flex items-center justify-center">
+                        <span className="text-white font-black text-lg">K</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-stone-500 text-xs">Balans Total</p>
+                        <p className="text-white font-bold">$1,234.56</p>
+                      </div>
+                    </div>
+                    
+                    {/* Wallet cards */}
+                    <div className="space-y-3">
+                      <div className="bg-gradient-to-r from-[#EA580C] to-orange-600 rounded-2xl p-4 text-white">
+                        <p className="text-orange-200 text-xs">HTG Wallet</p>
+                        <p className="text-xl font-bold">G 45,678</p>
+                      </div>
+                      <div className="bg-gradient-to-r from-amber-500 to-amber-600 rounded-2xl p-4 text-white">
+                        <p className="text-amber-200 text-xs">USD Wallet</p>
+                        <p className="text-xl font-bold">$567.89</p>
+                      </div>
+                    </div>
+                    
+                    {/* Quick actions */}
+                    <div className="grid grid-cols-4 gap-2">
+                      {['Depo', 'Retrè', 'Swap', 'Kat'].map((action) => (
+                        <div key={action} className="bg-stone-800 rounded-xl p-3 text-center">
+                          <div className="w-8 h-8 bg-[#EA580C] rounded-lg mx-auto mb-1" />
+                          <p className="text-white text-xs">{action}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Decorative elements */}
+              <div className="absolute -top-4 -right-4 w-24 h-24 bg-gradient-to-br from-[#EA580C]/30 to-amber-500/30 rounded-full blur-2xl" />
+              <div className="absolute -bottom-4 -left-4 w-32 h-32 bg-gradient-to-br from-amber-500/20 to-[#EA580C]/20 rounded-full blur-2xl" />
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function Landing() {
   const { t, language } = useLanguage();
@@ -414,6 +643,9 @@ export default function Landing() {
           </Link>
         </div>
       </section>
+
+      {/* Install App Section */}
+      <InstallAppSection getText={getText} />
 
       {/* CTA Section */}
       <section className="py-20 px-6 bg-gradient-to-r from-[#EA580C] to-[#C2410C]">

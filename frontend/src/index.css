@@ -379,3 +379,137 @@ input[type="number"] { -moz-appearance: textfield; }
 .sidebar nav::-webkit-scrollbar-thumb:hover {
   background: #A8A29E;
 }
+
+/* PWA & Performance Optimizations */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
+/* Prevent pull-to-refresh on mobile */
+body {
+  overscroll-behavior-y: contain;
+}
+
+/* GPU acceleration for smooth animations */
+.wallet-card-htg,
+.wallet-card-usd,
+.virtual-card,
+.card-feature,
+.btn-primary,
+.btn-gold {
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+/* Smooth touch scrolling */
+* {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Better tap targets for mobile */
+button, a, [role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Hide tap highlight on mobile */
+a, button, input, select, textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Safe area padding for notched devices */
+.safe-area-inset-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.safe-area-inset-top {
+  padding-top: env(safe-area-inset-top, 0);
+}
+
+/* Dark mode wallet cards */
+.dark .wallet-card-htg {
+  box-shadow: 0 10px 40px -10px rgba(234, 88, 12, 0.4);
+}
+
+.dark .wallet-card-usd {
+  box-shadow: 0 10px 40px -10px rgba(245, 158, 11, 0.4);
+}
+
+/* PWA Install banner styles */
+.pwa-install-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: linear-gradient(to right, #1c1917, #292524, #1c1917);
+  border-top: 1px solid #44403c;
+  padding: 12px 16px;
+  animation: slideUp 0.4s ease-out;
+}
+
+/* Loading skeleton animation */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #e5e5e5 25%, #f5f5f5 50%, #e5e5e5 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.dark .skeleton {
+  background: linear-gradient(90deg, #292524 25%, #3f3f3f 50%, #292524 75%);
+  background-size: 200% 100%;
+}
+
+/* Improved focus states for accessibility */
+.focus-ring {
+  @apply focus:ring-2 focus:ring-[#EA580C]/50 focus:ring-offset-2 focus:outline-none;
+}
+
+/* Better button states */
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+/* Card hover effects */
+.card-hover {
+  transition: all 0.2s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.1);
+}
+
+/* Balance display */
+.balance-display {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* Notification dot */
+.notification-dot {
+  @apply absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white;
+}
+
+/* Status indicator pulse */
+.status-online {
+  @apply relative;
+}
+
+.status-online::after {
+  content: '';
+  @apply absolute w-2 h-2 bg-emerald-500 rounded-full;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.5; }
+}
