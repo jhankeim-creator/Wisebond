@@ -24,9 +24,12 @@ import {
   Download,
   Flag,
   CheckCircle,
-  Loader2
+  Loader2,
+  QrCode,
+  Camera
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import QRScanner from '@/components/QRScanner';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
@@ -49,6 +52,9 @@ export default function AgentDeposit() {
   const [proofImage, setProofImage] = useState('');
   const [loading, setLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  
+  // QR Scanner
+  const [showQRScanner, setShowQRScanner] = useState(false);
   
   // Report form
   const [showReportModal, setShowReportModal] = useState(false);
@@ -102,6 +108,31 @@ export default function AgentDeposit() {
     }, 500);
     return () => clearTimeout(timer);
   }, [clientIdentifier, lookupClient]);
+
+  // Handle QR scan result
+  const handleQRScan = (scannedData) => {
+    setShowQRScanner(false);
+    
+    // Extract client ID from scanned data
+    // Assuming QR code contains client ID in format: KC12345 or similar
+    let clientId = scannedData.trim();
+    
+    // If it's a URL, try to extract client ID from it
+    if (clientId.includes('/')) {
+      const parts = clientId.split('/');
+      clientId = parts[parts.length - 1];
+    }
+    
+    // Clean up the client ID
+    clientId = clientId.replace(/[^a-zA-Z0-9]/g, '');
+    
+    if (clientId) {
+      setClientIdentifier(clientId);
+      toast.success(getText('QR Code skane! Rechèch kliyan...', 'QR Code scanné! Recherche client...', 'QR Code scanned! Searching client...'));
+    } else {
+      toast.error(getText('QR Code pa valid', 'QR Code invalide', 'Invalid QR Code'));
+    }
+  };
 
   const fetchReports = async () => {
     try {
@@ -467,47 +498,55 @@ export default function AgentDeposit() {
     <DashboardLayout title={getText('Ajan Depo', 'Agent Dépôt', 'Agent Deposit')}>
       <div className="max-w-4xl mx-auto space-y-6 w-full px-0" data-testid="agent-deposit-page">
         
+        {/* QR Scanner Modal */}
+        {showQRScanner && (
+          <QRScanner 
+            onScan={handleQRScan} 
+            onClose={() => setShowQRScanner(false)} 
+          />
+        )}
+
         {/* Agent Dashboard Stats */}
         {dashboard && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             <Card className="border-2 border-stone-200 dark:border-stone-700">
-              <CardContent className="p-4 text-center">
-                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-xl flex items-center justify-center mx-auto mb-2">
-                  <DollarSign className="text-blue-600 dark:text-blue-400" size={24} />
+              <CardContent className="p-3 sm:p-4 text-center">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 dark:bg-blue-900 rounded-xl flex items-center justify-center mx-auto mb-2">
+                  <DollarSign className="text-blue-600 dark:text-blue-400" size={20} />
                 </div>
-                <p className="text-2xl font-bold text-stone-900 dark:text-white">{dashboard.total_deposits}</p>
-                <p className="text-sm text-stone-500 dark:text-stone-400">{getText('Total Depo', 'Total Dépôts', 'Total Deposits')}</p>
+                <p className="text-xl sm:text-2xl font-bold text-stone-900 dark:text-white">{dashboard.total_deposits}</p>
+                <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400">{getText('Total Depo', 'Total Dépôts', 'Total Deposits')}</p>
               </CardContent>
             </Card>
             <Card className="border-2 border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/30">
-              <CardContent className="p-4 text-center">
-                <div className="w-12 h-12 bg-amber-100 dark:bg-amber-800 rounded-xl flex items-center justify-center mx-auto mb-2">
-                  <Clock className="text-amber-600 dark:text-amber-400" size={24} />
+              <CardContent className="p-3 sm:p-4 text-center">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-100 dark:bg-amber-800 rounded-xl flex items-center justify-center mx-auto mb-2">
+                  <Clock className="text-amber-600 dark:text-amber-400" size={20} />
                 </div>
-                <p className="text-2xl font-bold text-amber-600">{dashboard.pending_deposits}</p>
-                <p className="text-sm text-amber-700 dark:text-amber-400">{getText('An Atant', 'En Attente', 'Pending')}</p>
+                <p className="text-xl sm:text-2xl font-bold text-amber-600">{dashboard.pending_deposits}</p>
+                <p className="text-xs sm:text-sm text-amber-700 dark:text-amber-400">{getText('An Atant', 'En Attente', 'Pending')}</p>
               </CardContent>
             </Card>
             <Card className="border-2 border-emerald-200 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/30">
-              <CardContent className="p-4 text-center">
-                <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-800 rounded-xl flex items-center justify-center mx-auto mb-2">
-                  <CheckCircle className="text-emerald-600 dark:text-emerald-400" size={24} />
+              <CardContent className="p-3 sm:p-4 text-center">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-800 rounded-xl flex items-center justify-center mx-auto mb-2">
+                  <CheckCircle className="text-emerald-600 dark:text-emerald-400" size={20} />
                 </div>
-                <p className="text-2xl font-bold text-emerald-600">${dashboard.total_usd_deposited?.toLocaleString()}</p>
-                <p className="text-sm text-emerald-700 dark:text-emerald-400">{getText('USD Depoze', 'USD Déposés', 'USD Deposited')}</p>
+                <p className="text-xl sm:text-2xl font-bold text-emerald-600">${dashboard.total_usd_deposited?.toLocaleString()}</p>
+                <p className="text-xs sm:text-sm text-emerald-700 dark:text-emerald-400">{getText('USD Depoze', 'USD Déposés', 'USD Deposited')}</p>
               </CardContent>
             </Card>
             <Card className="border-2 border-purple-300 dark:border-purple-700 bg-purple-100 dark:bg-purple-900/30">
-              <CardContent className="p-4 text-center">
-                <div className="w-12 h-12 bg-purple-200 dark:bg-purple-800 rounded-xl flex items-center justify-center mx-auto mb-2">
-                  <Wallet className="text-purple-600 dark:text-purple-400" size={24} />
+              <CardContent className="p-3 sm:p-4 text-center">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-purple-200 dark:bg-purple-800 rounded-xl flex items-center justify-center mx-auto mb-2">
+                  <Wallet className="text-purple-600 dark:text-purple-400" size={20} />
                 </div>
-                <p className="text-2xl font-bold text-purple-600">${dashboard.agent_wallet_usd?.toFixed(2)}</p>
-                <p className="text-sm text-purple-700 dark:text-purple-400">{getText('Komisyon Disponib', 'Commission Disponible', 'Available Commission')}</p>
+                <p className="text-xl sm:text-2xl font-bold text-purple-600">${dashboard.agent_wallet_usd?.toFixed(2)}</p>
+                <p className="text-xs sm:text-sm text-purple-700 dark:text-purple-400">{getText('Komisyon', 'Commission', 'Commission')}</p>
                 {dashboard.agent_wallet_usd > 0 && (
                   <Button 
                     size="sm" 
-                    className="mt-2 bg-purple-600 hover:bg-purple-700 text-white"
+                    className="mt-2 bg-purple-600 hover:bg-purple-700 text-white text-xs"
                     onClick={withdrawCommission}
                     disabled={loading}
                   >
@@ -520,14 +559,16 @@ export default function AgentDeposit() {
         )}
 
         {/* Action Buttons */}
-        <div className="flex gap-3 flex-wrap">
-          <Button variant="outline" onClick={exportHistory}>
-            <Download size={18} className="mr-2" />
-            {getText('Ekspòte Istorik (7 jou)', 'Exporter Historique (7 jours)', 'Export History (7 days)')}
+        <div className="flex gap-2 sm:gap-3 flex-wrap">
+          <Button variant="outline" size="sm" onClick={exportHistory}>
+            <Download size={16} className="mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">{getText('Ekspòte Istorik', 'Exporter', 'Export')}</span>
+            <span className="sm:hidden">{getText('Ekspòte', 'Export', 'Export')}</span>
           </Button>
-          <Button variant="outline" onClick={() => setShowReportModal(true)} className="text-red-600 border-red-200 hover:bg-red-50">
-            <Flag size={18} className="mr-2" />
-            {getText('Siyale Kliyan', 'Signaler Client', 'Report Client')}
+          <Button variant="outline" size="sm" onClick={() => setShowReportModal(true)} className="text-red-600 border-red-200 hover:bg-red-50">
+            <Flag size={16} className="mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">{getText('Siyale Kliyan', 'Signaler', 'Report')}</span>
+            <span className="sm:hidden">{getText('Siyale', 'Signal', 'Report')}</span>
           </Button>
         </div>
 
@@ -535,12 +576,12 @@ export default function AgentDeposit() {
         {settings && (
           <Card className="bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/20 border-orange-200 dark:border-orange-700">
             <CardContent className="p-4">
-              <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <DollarSign className="text-[#EA580C]" size={24} />
                   <div>
                     <p className="text-sm text-orange-700 dark:text-orange-400">{getText('To Aktyèl', 'Taux Actuel', 'Current Rate')}</p>
-                    <p className="text-xl font-bold text-stone-900 dark:text-white">1 USD = G {settings.rate_usd_to_htg}</p>
+                    <p className="text-lg sm:text-xl font-bold text-stone-900 dark:text-white">1 USD = G {settings.rate_usd_to_htg}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -558,8 +599,8 @@ export default function AgentDeposit() {
         {/* Commission Tiers Card */}
         {isAgent && settings && (
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
                 <Wallet className="text-emerald-600" size={20} />
                 {getText('Griy Komisyon', 'Grille de Commission', 'Commission Tiers')}
               </CardTitle>
@@ -580,17 +621,17 @@ export default function AgentDeposit() {
         {/* New Deposit Form */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <DollarSign className="text-[#EA580C]" size={20} />
               {getText('Nouvo Depo pou Kliyan', 'Nouveau Dépôt pour Client', 'New Deposit for Client')}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Client Search */}
+          <CardContent className="space-y-4 sm:space-y-6">
+            {/* Client Search with QR Scanner */}
             <div>
-              <Label htmlFor="client">
-                <Search size={16} className="inline mr-2" />
-                {getText('Nimewo Telefòn oswa Client ID Kliyan', 'Numéro de Téléphone ou Client ID', 'Client Phone Number or Client ID')}
+              <Label htmlFor="client" className="flex items-center gap-2">
+                <Search size={16} />
+                {getText('Nimewo Telefòn oswa Client ID', 'Téléphone ou Client ID', 'Phone or Client ID')}
               </Label>
               <div className="flex gap-2 mt-1">
                 <Input
@@ -600,18 +641,36 @@ export default function AgentDeposit() {
                   onChange={(e) => setClientIdentifier(e.target.value)}
                   className="flex-1"
                 />
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowQRScanner(true)}
+                  className="bg-[#EA580C] hover:bg-[#C2410C] text-white border-0 px-3"
+                  title={getText('Skane QR Code', 'Scanner QR Code', 'Scan QR Code')}
+                >
+                  <QrCode size={20} />
+                </Button>
                 {lookingUpClient && <Loader2 className="animate-spin text-stone-400 mt-2" size={20} />}
               </div>
               
-              {/* Client Info Display - Enhanced Card */}
+              {/* QR Scanner Hint */}
+              <p className="text-xs text-stone-500 mt-2 flex items-center gap-1">
+                <Camera size={12} />
+                {getText(
+                  'Klike sou bouton QR pou skane kod kliyan an',
+                  'Cliquez sur le bouton QR pour scanner le code client',
+                  'Click the QR button to scan client code'
+                )}
+              </p>
+              
+              {/* Client Info Display */}
               {clientInfo && (
                 <div className="mt-3 p-4 bg-emerald-50 dark:bg-emerald-900/30 border-2 border-emerald-300 dark:border-emerald-700 rounded-xl">
                   <div className="flex items-start gap-3">
-                    <div className="w-14 h-14 bg-emerald-200 dark:bg-emerald-800 rounded-full flex items-center justify-center flex-shrink-0">
-                      <CheckCircle className="text-emerald-600 dark:text-emerald-400" size={28} />
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 bg-emerald-200 dark:bg-emerald-800 rounded-full flex items-center justify-center flex-shrink-0">
+                      <CheckCircle className="text-emerald-600 dark:text-emerald-400" size={24} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-bold text-emerald-800 dark:text-emerald-300 text-lg truncate">
+                      <p className="font-bold text-emerald-800 dark:text-emerald-300 text-base sm:text-lg truncate">
                         {clientInfo.full_name}
                       </p>
                       <div className="mt-1 space-y-1">
@@ -624,11 +683,11 @@ export default function AgentDeposit() {
                           <span>{clientInfo.phone}</span>
                         </p>
                       </div>
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1 text-xs bg-emerald-200 dark:bg-emerald-700 text-emerald-800 dark:text-emerald-200 px-2 py-1 rounded-full font-semibold">
-                          <CheckCircle size={12} />
+                      <div className="mt-2">
+                        <Badge className="bg-emerald-200 dark:bg-emerald-700 text-emerald-800 dark:text-emerald-200 text-xs">
+                          <CheckCircle size={12} className="mr-1" />
                           {getText('Kliyan verifye', 'Client vérifié', 'Verified client')}
-                        </span>
+                        </Badge>
                       </div>
                     </div>
                   </div>
@@ -652,24 +711,16 @@ export default function AgentDeposit() {
                   </div>
                 </div>
               )}
-              
-              <p className="text-xs text-stone-500 mt-1">
-                {getText(
-                  'Antre nimewo telefòn oswa Client ID kliyan w ap fè depo pou li a',
-                  'Entrez le numéro de téléphone ou le Client ID du client pour lequel vous faites le dépôt',
-                  'Enter the phone number or Client ID of the client you are making the deposit for'
-                )}
-              </p>
             </div>
 
             {/* Amount USD */}
             <div>
-              <Label htmlFor="amount_usd">
-                <DollarSign size={16} className="inline mr-2" />
+              <Label htmlFor="amount_usd" className="flex items-center gap-2">
+                <DollarSign size={16} />
                 {getText('Montan USD pou depoze', 'Montant USD à déposer', 'USD Amount to Deposit')}
               </Label>
               <div className="relative mt-1">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl text-stone-400">$</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl sm:text-2xl text-stone-400">$</span>
                 <Input
                   id="amount_usd"
                   type="number"
@@ -677,21 +728,21 @@ export default function AgentDeposit() {
                   placeholder="0.00"
                   value={amountUSD}
                   onChange={(e) => setAmountUSD(e.target.value)}
-                  className="pl-12 text-xl font-semibold"
+                  className="pl-10 sm:pl-12 text-lg sm:text-xl font-semibold h-12 sm:h-14"
                 />
               </div>
             </div>
 
             {/* Calculated Values */}
             {amountUSD && settings && (
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-4">
-                  <p className="text-sm text-amber-700 dark:text-amber-400">{getText('HTG Espere (selon to a)', 'HTG Attendu (selon le taux)', 'Expected HTG (per rate)')}</p>
-                  <p className="text-2xl font-bold text-stone-900 dark:text-white">G {expectedHTG.toLocaleString()}</p>
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm text-amber-700 dark:text-amber-400">{getText('HTG Espere', 'HTG Attendu', 'Expected HTG')}</p>
+                  <p className="text-lg sm:text-2xl font-bold text-stone-900 dark:text-white">G {expectedHTG.toLocaleString()}</p>
                 </div>
-                <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-4">
-                  <p className="text-sm text-emerald-700 dark:text-emerald-400">{getText('Komisyon ou ap touche', 'Commission que vous gagnerez', 'Commission you will earn')}</p>
-                  <p className="text-2xl font-bold text-emerald-600">${commission.toFixed(2)}</p>
+                <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3 sm:p-4">
+                  <p className="text-xs sm:text-sm text-emerald-700 dark:text-emerald-400">{getText('Komisyon ou', 'Commission', 'Your Commission')}</p>
+                  <p className="text-lg sm:text-2xl font-bold text-emerald-600">${commission.toFixed(2)}</p>
                 </div>
               </div>
             )}
@@ -699,10 +750,10 @@ export default function AgentDeposit() {
             {/* Amount HTG Received */}
             <div>
               <Label htmlFor="amount_htg">
-                {getText('Montan HTG ou te resevwa nan men kliyan an', 'Montant HTG reçu du client', 'HTG Amount received from client')}
+                {getText('Montan HTG ou te resevwa', 'Montant HTG reçu', 'HTG Amount received')}
               </Label>
               <div className="relative mt-1">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl text-stone-400">G</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl sm:text-2xl text-stone-400">G</span>
                 <Input
                   id="amount_htg"
                   type="number"
@@ -710,15 +761,11 @@ export default function AgentDeposit() {
                   placeholder="0"
                   value={amountHTG}
                   onChange={(e) => setAmountHTG(e.target.value)}
-                  className="pl-12 text-xl font-semibold"
+                  className="pl-10 sm:pl-12 text-lg sm:text-xl font-semibold h-12 sm:h-14"
                 />
               </div>
               <p className="text-xs text-stone-500 mt-1">
-                {getText(
-                  'Antre montan HTG kliyan an te ba ou',
-                  'Entrez le montant HTG que le client vous a donné',
-                  'Enter the HTG amount the client gave you'
-                )}
+                {getText('Antre montan HTG kliyan an te ba ou', 'Entrez le montant HTG que le client vous a donné', 'Enter the HTG amount the client gave you')}
               </p>
             </div>
 
@@ -754,7 +801,7 @@ export default function AgentDeposit() {
             <Button 
               onClick={() => setShowConfirm(true)}
               disabled={!clientInfo || !amountUSD || !amountHTG}
-              className="btn-primary w-full"
+              className="btn-primary w-full h-12 sm:h-14 text-base sm:text-lg"
             >
               {getText('Soumèt Depo', 'Soumettre Dépôt', 'Submit Deposit')}
               <ArrowRight size={18} className="ml-2" />
@@ -765,7 +812,7 @@ export default function AgentDeposit() {
         {/* Recent Deposits */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <Clock size={20} className="text-stone-500" />
               {getText('Depo Resan', 'Dépôts Récents', 'Recent Deposits')}
             </CardTitle>
@@ -778,13 +825,13 @@ export default function AgentDeposit() {
             ) : (
               <div className="space-y-3">
                 {deposits.slice(0, 10).map((deposit) => (
-                  <div key={deposit.deposit_id} className="flex items-center justify-between p-4 bg-stone-50 dark:bg-stone-800 rounded-xl">
-                    <div>
-                      <p className="font-semibold text-stone-900 dark:text-white">{deposit.client_name}</p>
-                      <p className="text-sm text-stone-500">{deposit.client_id}</p>
+                  <div key={deposit.deposit_id} className="flex items-center justify-between p-3 sm:p-4 bg-stone-50 dark:bg-stone-800 rounded-xl">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-stone-900 dark:text-white truncate">{deposit.client_name}</p>
+                      <p className="text-xs sm:text-sm text-stone-500">{deposit.client_id}</p>
                       <p className="text-xs text-stone-400">{new Date(deposit.created_at).toLocaleString()}</p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex-shrink-0 ml-2">
                       <p className="font-bold text-emerald-600">${deposit.amount_usd}</p>
                       <Badge className={
                         deposit.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
@@ -805,7 +852,7 @@ export default function AgentDeposit() {
 
         {/* Confirmation Modal */}
         <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
-          <DialogContent>
+          <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>{getText('Konfime Depo', 'Confirmer le Dépôt', 'Confirm Deposit')}</DialogTitle>
             </DialogHeader>
@@ -813,7 +860,7 @@ export default function AgentDeposit() {
               <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4 space-y-2">
                 <div className="flex justify-between">
                   <span className="text-stone-500">{getText('Kliyan', 'Client', 'Client')}:</span>
-                  <span className="font-semibold">{clientInfo?.full_name || clientIdentifier}</span>
+                  <span className="font-semibold truncate ml-2">{clientInfo?.full_name || clientIdentifier}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-stone-500">{getText('Montan USD', 'Montant USD', 'USD Amount')}:</span>
@@ -824,7 +871,7 @@ export default function AgentDeposit() {
                   <span className="font-semibold">G {amountHTG}</span>
                 </div>
                 <div className="flex justify-between border-t pt-2">
-                  <span className="text-stone-500">{getText('Komisyon ou', 'Votre Commission', 'Your Commission')}:</span>
+                  <span className="text-stone-500">{getText('Komisyon ou', 'Commission', 'Your Commission')}:</span>
                   <span className="font-bold text-purple-600">${commission.toFixed(2)}</span>
                 </div>
               </div>
@@ -832,9 +879,9 @@ export default function AgentDeposit() {
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-3">
                 <p className="text-sm text-amber-700 dark:text-amber-300">
                   {getText(
-                    'Apre soumisyon, admin an ap verifye epi apwouve depo a. Ou ap resevwa yon notifikasyon WhatsApp lè li apwouve.',
-                    'Après soumission, l\'admin vérifiera et approuvera le dépôt. Vous recevrez une notification WhatsApp une fois approuvé.',
-                    'After submission, admin will verify and approve the deposit. You will receive a WhatsApp notification when approved.'
+                    'Apre soumisyon, admin an ap verifye epi apwouve depo a.',
+                    'Après soumission, l\'admin vérifiera et approuvera le dépôt.',
+                    'After submission, admin will verify and approve the deposit.'
                   )}
                 </p>
               </div>
@@ -866,7 +913,7 @@ export default function AgentDeposit() {
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label>{getText('Nimewo Telefòn oswa Client ID', 'Téléphone ou Client ID', 'Phone or Client ID')}</Label>
+                <Label>{getText('Telefòn oswa Client ID', 'Téléphone ou Client ID', 'Phone or Client ID')}</Label>
                 <Input
                   placeholder={getText('Ex: +50937000000 oswa KC12345', 'Ex: +50937000000 ou KC12345', 'Ex: +50937000000 or KC12345')}
                   value={reportClientId}
@@ -886,7 +933,7 @@ export default function AgentDeposit() {
               <div>
                 <Label>{getText('Detay (opsyonèl)', 'Détails (optionnel)', 'Details (optional)')}</Label>
                 <Textarea
-                  placeholder={getText('Dekri pwoblèm nan an detay...', 'Décrivez le problème en détail...', 'Describe the issue in detail...')}
+                  placeholder={getText('Dekri pwoblèm nan...', 'Décrivez le problème...', 'Describe the issue...')}
                   value={reportDetails}
                   onChange={(e) => setReportDetails(e.target.value)}
                   className="mt-1"
@@ -902,7 +949,7 @@ export default function AgentDeposit() {
                   disabled={loading || !reportClientId || !reportReason}
                   className="flex-1 bg-red-500 hover:bg-red-600 text-white"
                 >
-                  {loading ? getText('Chajman...', 'Chargement...', 'Loading...') : getText('Soumèt Rapò', 'Soumettre Rapport', 'Submit Report')}
+                  {loading ? getText('Chajman...', 'Chargement...', 'Loading...') : getText('Soumèt', 'Soumettre', 'Submit')}
                 </Button>
               </div>
             </div>
