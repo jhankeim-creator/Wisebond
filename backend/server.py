@@ -1460,26 +1460,8 @@ async def admin_create_card_manually(
     
     await db.virtual_card_orders.insert_one(order)
     
-    # Add $5 USD bonus to user's wallet
-    await db.users.update_one(
-        {"user_id": payload.user_id},
-        {"$inc": {"wallet_usd": CARD_BONUS_USD}}
-    )
-    
-    # Create bonus transaction
-    await db.transactions.insert_one({
-        "transaction_id": str(uuid.uuid4()),
-        "user_id": payload.user_id,
-        "type": "card_bonus",
-        "amount": CARD_BONUS_USD,
-        "currency": "USD",
-        "status": "completed",
-        "description": "Virtual card bonus (admin created)",
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    
-    # NOTE: Manual cards do NOT count for affiliate rewards
-    # Only cards ordered by users themselves count
+    # NOTE: Manual cards do NOT get $5 bonus and do NOT count for affiliate rewards
+    # Only cards ordered by users themselves get the bonus
     
     await log_action(admin["user_id"], "card_manual_create", {"order_id": order["order_id"], "user_id": payload.user_id})
     
