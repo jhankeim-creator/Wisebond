@@ -177,7 +177,7 @@ export default function Deposit() {
   const renderStep1 = () => (
     <div className="space-y-6">
       <div>
-        <h3 className="font-semibold text-stone-900 mb-4">{getText('Chwazi deviz', 'Choisir la devise', 'Choose currency')}</h3>
+        <h3 className="font-semibold text-stone-900 dark:text-white mb-4">{getText('Chwazi deviz', 'Choisir la devise', 'Choose currency')}</h3>
         <div className="grid grid-cols-2 gap-4">
           {['HTG', 'USD'].map((cur) => (
             <button
@@ -185,27 +185,27 @@ export default function Deposit() {
               onClick={() => { setCurrency(cur); setMethod(''); }}
               className={`p-6 rounded-xl border-2 transition-all ${
                 currency === cur 
-                  ? cur === 'HTG' ? 'border-[#EA580C] bg-orange-50' : 'border-amber-500 bg-amber-50'
-                  : 'border-stone-200 hover:border-stone-300'
+                  ? cur === 'HTG' ? 'border-[#EA580C] bg-orange-50 dark:bg-orange-900/20' : 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
+                  : 'border-stone-200 dark:border-stone-700 hover:border-stone-300'
               }`}
             >
-              <div className="text-3xl font-bold text-stone-900 mb-1">
+              <div className="text-3xl font-bold text-stone-900 dark:text-white mb-1">
                 {cur === 'HTG' ? 'G' : '$'}
               </div>
-              <div className="text-stone-600">{cur === 'HTG' ? 'Goud' : 'Dola'}</div>
+              <div className="text-stone-600 dark:text-stone-400">{cur === 'HTG' ? 'Goud' : 'Dola'}</div>
             </button>
           ))}
         </div>
       </div>
 
       <div>
-        <h3 className="font-semibold text-stone-900 mb-4">{getText('Chwazi metòd', 'Choisir la méthode', 'Choose method')}</h3>
+        <h3 className="font-semibold text-stone-900 dark:text-white mb-4">{getText('Chwazi metòd', 'Choisir la méthode', 'Choose method')}</h3>
         <div className="space-y-3">
           {depositMethods[currency].length === 0 ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-300">
               {getText(
                 'Pa gen metòd depo ki aktive pou HTG. Kontakte admin.',
-                'Aucune méthode de dépôt activée pour HTG. Contactez l’admin.',
+                'Aucune méthode de dépôt activée pour HTG. Contactez l\'admin.',
                 'No HTG deposit methods are enabled. Contact admin.'
               )}
             </div>
@@ -217,14 +217,14 @@ export default function Deposit() {
                 onClick={() => setMethod(m.id)}
                 className={`w-full p-4 rounded-xl border-2 flex items-center gap-4 transition-all ${
                   method === m.id 
-                    ? 'border-[#EA580C] bg-orange-50' 
-                    : 'border-stone-200 hover:border-stone-300'
+                    ? 'border-[#EA580C] bg-orange-50 dark:bg-orange-900/20' 
+                    : 'border-stone-200 dark:border-stone-700 hover:border-stone-300'
                 }`}
               >
-                <div className="w-12 h-12 bg-stone-100 rounded-lg flex items-center justify-center">
-                  <Icon size={24} className="text-stone-600" />
+                <div className="w-12 h-12 bg-stone-100 dark:bg-stone-800 rounded-lg flex items-center justify-center">
+                  <Icon size={24} className="text-stone-600 dark:text-stone-400" />
                 </div>
-                <span className="font-medium text-stone-900">{m.name}</span>
+                <span className="font-medium text-stone-900 dark:text-white">{m.name}</span>
                 {method === m.id && (
                   <Check className="ml-auto text-[#EA580C]" size={20} />
                 )}
@@ -245,10 +245,108 @@ export default function Deposit() {
     </div>
   );
 
+  // Helper to render HTG deposit instructions with step-by-step guidance
+  const renderHTGInstructions = () => {
+    if (method === 'moncash' && manualConfig.moncash_number) {
+      return (
+        <div className="space-y-3">
+          {/* Phone number to send to */}
+          <div className="bg-white dark:bg-stone-800 rounded-lg p-3 border border-orange-200 dark:border-orange-600">
+            <p className="text-xs text-orange-600 dark:text-orange-400 mb-1">
+              {getText('Nimewo pou voye lajan an:', 'Numéro pour envoyer l\'argent:', 'Number to send money to:')}
+            </p>
+            <p className="text-xl font-bold text-orange-800 dark:text-orange-300 font-mono">{manualConfig.moncash_number}</p>
+          </div>
+          
+          {/* Step by step instructions */}
+          <div className="text-sm text-orange-700 dark:text-orange-400 space-y-2">
+            <p className="font-semibold">{getText('Etap yo:', 'Étapes:', 'Steps:')}</p>
+            <ol className="list-decimal list-inside space-y-1 ml-2">
+              <li>{getText('Ouvri aplikasyon MonCash la', 'Ouvrez l\'application MonCash', 'Open MonCash app')}</li>
+              <li>{getText('Klike sou "Voye Lajan"', 'Cliquez sur "Envoyer Argent"', 'Click on "Send Money"')}</li>
+              <li>{getText(`Antre nimewo a: ${manualConfig.moncash_number}`, `Entrez le numéro: ${manualConfig.moncash_number}`, `Enter number: ${manualConfig.moncash_number}`)}</li>
+              <li>{getText('Antre montan ou vle depoze a', 'Entrez le montant à déposer', 'Enter the deposit amount')}</li>
+              <li>{getText('Konfime tranzaksyon an', 'Confirmez la transaction', 'Confirm the transaction')}</li>
+              <li>{getText('Pran yon screenshot de konfirmasyon an', 'Prenez une capture d\'écran de la confirmation', 'Take a screenshot of the confirmation')}</li>
+              <li>{getText('Telechaje screenshot la anba a', 'Téléchargez la capture ci-dessous', 'Upload the screenshot below')}</li>
+            </ol>
+          </div>
+          
+          <div className="bg-amber-100 dark:bg-amber-900/30 rounded-lg p-2 text-xs text-amber-800 dark:text-amber-300">
+            <strong>⚠️ {getText('Enpòtan', 'Important', 'Important')}:</strong> {getText('Asire w ou voye egzakteman montan ou antre a pou evite pwoblèm.', 'Assurez-vous d\'envoyer exactement le montant indiqué.', 'Make sure to send the exact amount entered.')}
+          </div>
+        </div>
+      );
+    }
+    
+    if (method === 'natcash' && manualConfig.natcash_number) {
+      return (
+        <div className="space-y-3">
+          {/* Phone number to send to */}
+          <div className="bg-white dark:bg-stone-800 rounded-lg p-3 border border-orange-200 dark:border-orange-600">
+            <p className="text-xs text-orange-600 dark:text-orange-400 mb-1">
+              {getText('Nimewo pou voye lajan an:', 'Numéro pour envoyer l\'argent:', 'Number to send money to:')}
+            </p>
+            <p className="text-xl font-bold text-orange-800 dark:text-orange-300 font-mono">{manualConfig.natcash_number}</p>
+          </div>
+          
+          {/* Step by step instructions */}
+          <div className="text-sm text-orange-700 dark:text-orange-400 space-y-2">
+            <p className="font-semibold">{getText('Etap yo:', 'Étapes:', 'Steps:')}</p>
+            <ol className="list-decimal list-inside space-y-1 ml-2">
+              <li>{getText('Ouvri aplikasyon NatCash la', 'Ouvrez l\'application NatCash', 'Open NatCash app')}</li>
+              <li>{getText('Klike sou "Transfere"', 'Cliquez sur "Transférer"', 'Click on "Transfer"')}</li>
+              <li>{getText(`Antre nimewo a: ${manualConfig.natcash_number}`, `Entrez le numéro: ${manualConfig.natcash_number}`, `Enter number: ${manualConfig.natcash_number}`)}</li>
+              <li>{getText('Antre montan ou vle depoze a', 'Entrez le montant à déposer', 'Enter the deposit amount')}</li>
+              <li>{getText('Konfime tranzaksyon an', 'Confirmez la transaction', 'Confirm the transaction')}</li>
+              <li>{getText('Pran yon screenshot de konfirmasyon an', 'Prenez une capture d\'écran de la confirmation', 'Take a screenshot of the confirmation')}</li>
+              <li>{getText('Telechaje screenshot la anba a', 'Téléchargez la capture ci-dessous', 'Upload the screenshot below')}</li>
+            </ol>
+          </div>
+          
+          <div className="bg-amber-100 dark:bg-amber-900/30 rounded-lg p-2 text-xs text-amber-800 dark:text-amber-300">
+            <strong>⚠️ {getText('Enpòtan', 'Important', 'Important')}:</strong> {getText('Asire w ou voye egzakteman montan ou antre a pou evite pwoblèm.', 'Assurez-vous d\'envoyer exactement le montant indiqué.', 'Make sure to send the exact amount entered.')}
+          </div>
+        </div>
+      );
+    }
+    
+    return (
+      <p className="text-sm text-orange-700 dark:text-orange-400">
+        {getText(
+          'Metòd sa pa configure. Kontakte admin.',
+          'Méthode non configurée. Contactez l\'admin.',
+          'Method not configured. Contact admin.'
+        )}
+      </p>
+    );
+  };
+
+  // Helper to render USD deposit instructions
+  const renderUSDInstructions = () => {
+    return (
+      <div className="space-y-3">
+        <div className="bg-white dark:bg-stone-800 rounded-lg p-3 border border-orange-200 dark:border-orange-600">
+          <p className="text-xs text-orange-600 dark:text-orange-400 mb-1">{getText('Voye nan:', 'Envoyer à:', 'Send to:')}</p>
+          <p className="text-lg font-semibold text-orange-800 dark:text-orange-300">
+            payments@kayicom.com
+          </p>
+        </div>
+        <p className="text-sm text-orange-700 dark:text-orange-400">
+          {getText(
+            'Apre ou fin voye peman an, pran yon screenshot epi telechaje li anba a.',
+            'Après avoir envoyé le paiement, prenez une capture d\'écran et téléchargez-la ci-dessous.',
+            'After sending the payment, take a screenshot and upload it below.'
+          )}
+        </p>
+      </div>
+    );
+  };
+
   const renderStep2 = () => (
     <div className="space-y-6">
       <div className="text-center">
-        <Label className="text-stone-600">{getText('Montan pou depoze', 'Montant à déposer', 'Amount to deposit')} ({currency})</Label>
+        <Label className="text-stone-600 dark:text-stone-400">{getText('Montan pou depoze', 'Montant à déposer', 'Amount to deposit')} ({currency})</Label>
         <div className="relative mt-2">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-3xl text-stone-400">
             {currency === 'HTG' ? 'G' : '$'}
@@ -265,12 +363,12 @@ export default function Deposit() {
       </div>
 
       {method === 'usdt' ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="text-amber-500 mt-0.5" size={20} />
             <div>
-              <p className="font-medium text-amber-800">{getText('Enstriksyon USDT (Plisio)', 'Instructions USDT (Plisio)', 'USDT Instructions (Plisio)')}</p>
-              <p className="text-sm text-amber-700 mt-1">
+              <p className="font-medium text-amber-800 dark:text-amber-300">{getText('Enstriksyon USDT (Plisio)', 'Instructions USDT (Plisio)', 'USDT Instructions (Plisio)')}</p>
+              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
                 {getText(
                   'Chwazi rezo a, epi n ap kreye yon lyen peman otomatik. Depo a ap valide otomatikman apre peman an konfime.',
                   'Choisissez le réseau, puis nous créerons un lien de paiement automatique. Le dépôt sera validé automatiquement après confirmation.',
@@ -280,7 +378,7 @@ export default function Deposit() {
               <div className="mt-3">
                 <Label>{getText('Rezo USDT', 'Réseau USDT', 'USDT Network')}</Label>
                 {usdtLoading ? (
-                  <div className="text-sm text-stone-600 mt-2">{getText('Chajman rezo yo...', 'Chargement des réseaux...', 'Loading networks...')}</div>
+                  <div className="text-sm text-stone-600 dark:text-stone-400 mt-2">{getText('Chajman rezo yo...', 'Chargement des réseaux...', 'Loading networks...')}</div>
                 ) : (
                   <Select value={usdtNetwork} onValueChange={setUsdtNetwork}>
                     <SelectTrigger className="mt-2">
@@ -294,10 +392,10 @@ export default function Deposit() {
                   </Select>
                 )}
                 {!usdtLoading && usdtNetworks.length === 0 && (
-                  <p className="text-sm text-amber-700 mt-2">
+                  <p className="text-sm text-amber-700 dark:text-amber-400 mt-2">
                     {getText(
                       'Plisio pa disponib kounye a. Kontakte admin pou aktive li.',
-                      'Plisio n’est pas disponible pour le moment. Contactez l’admin pour l’activer.',
+                      'Plisio n\'est pas disponible pour le moment. Contactez l\'admin pour l\'activer.',
                       'Plisio is not available right now. Ask admin to enable it.'
                     )}
                   </p>
@@ -308,53 +406,29 @@ export default function Deposit() {
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-            <p className="font-medium text-orange-800">
+          <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-xl p-4">
+            <p className="font-medium text-orange-800 dark:text-orange-300 mb-3">
               {getText('Enstriksyon', 'Instructions', 'Instructions')} {depositMethods[currency].find(m => m.id === method)?.name}
             </p>
-            <p className="text-sm text-orange-700 mt-1">
-              {currency === 'HTG' 
-                ? (
-                  method === 'moncash' && manualConfig.moncash_number
-                    ? getText(
-                      `Voye montan an nan MonCash: ${manualConfig.moncash_number}`,
-                      `Envoyez le montant sur MonCash: ${manualConfig.moncash_number}`,
-                      `Send the amount to MonCash: ${manualConfig.moncash_number}`
-                    )
-                    : method === 'natcash' && manualConfig.natcash_number
-                      ? getText(
-                        `Voye montan an nan NatCash: ${manualConfig.natcash_number}`,
-                        `Envoyez le montant sur NatCash: ${manualConfig.natcash_number}`,
-                        `Send the amount to NatCash: ${manualConfig.natcash_number}`
-                      )
-                      : getText(
-                        'Metòd sa pa configure. Kontakte admin.',
-                        'Méthode non configurée. Contactez l’admin.',
-                        'Method not configured. Contact admin.'
-                      )
-                )
-                : method === 'zelle' 
-                  ? getText('Voye nan: payments@kayicom.com', 'Envoyez à: payments@kayicom.com', 'Send to: payments@kayicom.com')
-                  : getText('Voye nan: payments@kayicom.com', 'Envoyez à: payments@kayicom.com', 'Send to: payments@kayicom.com')
-              }
-            </p>
+            
+            {currency === 'HTG' ? renderHTGInstructions() : renderUSDInstructions()}
           </div>
 
           <div>
             <Label>{getText('Telechaje prèv peman', 'Télécharger preuve de paiement', 'Upload payment proof')}</Label>
             <div 
-              className={`file-upload-zone mt-2 ${proofImage ? 'border-emerald-500 bg-emerald-50' : ''}`}
+              className={`file-upload-zone mt-2 ${proofImage ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : ''}`}
               onClick={() => document.getElementById('proof-upload').click()}
             >
               {proofImage ? (
                 <div className="flex items-center justify-center gap-3">
                   <Check className="text-emerald-500" size={24} />
-                  <span className="text-emerald-700">{getText('Imaj telechaje', 'Image téléchargée', 'Image uploaded')}</span>
+                  <span className="text-emerald-700 dark:text-emerald-400">{getText('Imaj telechaje', 'Image téléchargée', 'Image uploaded')}</span>
                 </div>
               ) : (
                 <>
                   <Upload className="mx-auto text-stone-400 mb-2" size={32} />
-                  <p className="text-stone-600">{getText('Klike pou telechaje', 'Cliquez pour télécharger', 'Click to upload')}</p>
+                  <p className="text-stone-600 dark:text-stone-400">{getText('Klike pou telechaje', 'Cliquez pour télécharger', 'Click to upload')}</p>
                   <p className="text-sm text-stone-400 mt-1">PNG, JPG {getText('jiska', "jusqu'à", 'up to')} 5MB</p>
                 </>
               )}
@@ -389,11 +463,11 @@ export default function Deposit() {
 
   const renderSuccess = () => (
     <div className="text-center py-8">
-      <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+      <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
         <Check className="text-emerald-500" size={40} />
       </div>
-      <h3 className="text-2xl font-bold text-stone-900 mb-2">{getText('Demann soumèt!', 'Demande soumise!', 'Request submitted!')}</h3>
-      <p className="text-stone-600 mb-6">
+      <h3 className="text-2xl font-bold text-stone-900 dark:text-white mb-2">{getText('Demann soumèt!', 'Demande soumise!', 'Request submitted!')}</h3>
+      <p className="text-stone-600 dark:text-stone-400 mb-6">
         {getText(
           `Demann depo ${currency === 'HTG' ? 'G' : '$'}${amount} ${currency} ap tann validasyon.`,
           `Votre demande de dépôt de ${currency === 'HTG' ? 'G' : '$'}${amount} ${currency} est en attente de validation.`,
@@ -402,11 +476,11 @@ export default function Deposit() {
       </p>
 
       {createdDeposit?.provider === 'plisio' && createdDeposit?.plisio_invoice_url && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-left">
-          <p className="font-semibold text-amber-800 mb-2">
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl p-4 mb-6 text-left">
+          <p className="font-semibold text-amber-800 dark:text-amber-300 mb-2">
             {getText('Peye ak Plisio (USDT)', 'Payer avec Plisio (USDT)', 'Pay with Plisio (USDT)')}
           </p>
-          <p className="text-sm text-amber-700 mb-3">
+          <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
             {getText(
               'Klike sou lyen an pou fini peman an. Depo a ap valide otomatikman apre peman an konfime.',
               'Cliquez sur le lien pour finaliser le paiement. Le dépôt sera validé automatiquement après confirmation.',
@@ -438,7 +512,7 @@ export default function Deposit() {
             </Button>
           </div>
           {createdDeposit.provider_status && (
-            <p className="text-sm text-stone-700 mt-3">
+            <p className="text-sm text-stone-700 dark:text-stone-400 mt-3">
               {getText('Estati', 'Statut', 'Status')}: <span className="font-semibold">{createdDeposit.provider_status}</span>
             </p>
           )}
@@ -457,8 +531,8 @@ export default function Deposit() {
         <Card>
           <CardContent className="p-8 text-center">
             <AlertCircle className="mx-auto text-amber-500 mb-4" size={48} />
-            <h3 className="text-xl font-bold text-stone-900 mb-2">{getText('Verifikasyon KYC obligatwa', 'Vérification KYC requise', 'KYC verification required')}</h3>
-            <p className="text-stone-600 mb-6">
+            <h3 className="text-xl font-bold text-stone-900 dark:text-white mb-2">{getText('Verifikasyon KYC obligatwa', 'Vérification KYC requise', 'KYC verification required')}</h3>
+            <p className="text-stone-600 dark:text-stone-400 mb-6">
               {getText('Ou dwe konplete KYC ou pou fè depo.', 'Vous devez compléter votre vérification KYC pour effectuer des dépôts.', 'You must complete KYC verification to make deposits.')}
             </p>
             <Button className="btn-primary" onClick={() => window.location.href = '/kyc'}>

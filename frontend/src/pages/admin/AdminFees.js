@@ -11,7 +11,8 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import { Plus, Trash2, RefreshCw, CreditCard, ArrowUpCircle } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
+import { API_BASE } from '@/lib/utils';
+const API = API_BASE;
 
 export default function AdminFees() {
   const { getText } = useLanguage();

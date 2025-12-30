@@ -9,9 +9,10 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Save, Key, Mail, Wallet, CreditCard, DollarSign, Shield, MessageSquare, Phone, Smartphone } from 'lucide-react';
+import { Save, Key, Mail, Wallet, CreditCard, DollarSign, Shield, MessageSquare, Phone, Smartphone, Send, CheckCircle, XCircle } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
+import { API_BASE } from '@/lib/utils';
+const API = API_BASE;
 
 export default function AdminSettings() {
   const { language } = useLanguage();
@@ -59,6 +60,11 @@ export default function AdminSettings() {
   const [testingWhatsapp, setTestingWhatsapp] = useState(false);
   const [whatsappNotifications, setWhatsappNotifications] = useState([]);
   const [whatsappStats, setWhatsappStats] = useState({});
+  
+  // Email test state
+  const [emailTest, setEmailTest] = useState({ email: '', subject: '', message: '' });
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [emailTestResult, setEmailTestResult] = useState(null);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -150,6 +156,38 @@ export default function AdminSettings() {
     }
   };
 
+  const testEmail = async () => {
+    if (!emailTest.email) {
+      toast.error(getText('Antre adrès email', 'Entrez l\'adresse email', 'Enter email address'));
+      return;
+    }
+    
+    setTestingEmail(true);
+    setEmailTestResult(null);
+    try {
+      const response = await axios.post(`${API}/admin/test-email`, {
+        email: emailTest.email,
+        subject: emailTest.subject || 'Test Email from KAYICOM',
+        message: emailTest.message || 'This is a test email to verify your Resend configuration is working correctly.'
+      });
+      
+      if (response.data.success) {
+        toast.success(getText('Email voye avèk siksè!', 'Email envoyé avec succès!', 'Email sent successfully!'));
+        setEmailTestResult({ success: true, message: response.data.message });
+        setEmailTest({ email: '', subject: '', message: '' });
+      } else {
+        toast.error(response.data.message || getText('Echèk voye email', 'Échec envoi email', 'Failed to send email'));
+        setEmailTestResult({ success: false, message: response.data.message });
+      }
+    } catch (error) {
+      const errMsg = error.response?.data?.detail || getText('Erè koneksyon API', 'Erreur connexion API', 'API connection error');
+      toast.error(errMsg);
+      setEmailTestResult({ success: false, message: errMsg });
+    } finally {
+      setTestingEmail(false);
+    }
+  };
+
   const purgeOldRecords = async () => {
     try {
       const resp = await axios.post(`${API}/admin/purge-old-records?days=7`);
@@ -225,6 +263,59 @@ export default function AdminSettings() {
                       onChange={(e) => setSettings({...settings, sender_email: e.target.value})}
                       className="mt-1"
                     />
+                  </div>
+
+                  {/* Email Test Section */}
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl p-4 mt-4">
+                    <h4 className="font-semibold text-blue-800 dark:text-blue-300 mb-3 flex items-center gap-2">
+                      <Send size={16} />
+                      {getText('Teste Email', 'Tester Email', 'Test Email')}
+                    </h4>
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="text-blue-700 dark:text-blue-300">{getText('Adrès Email', 'Adresse Email', 'Email Address')}</Label>
+                        <Input
+                          type="email"
+                          placeholder="test@example.com"
+                          value={emailTest.email}
+                          onChange={(e) => setEmailTest({...emailTest, email: e.target.value})}
+                          className="mt-1 bg-white dark:bg-stone-800"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-blue-700 dark:text-blue-300">{getText('Sijè (Opsyonèl)', 'Sujet (Optionnel)', 'Subject (Optional)')}</Label>
+                        <Input
+                          placeholder="Test Email from KAYICOM"
+                          value={emailTest.subject}
+                          onChange={(e) => setEmailTest({...emailTest, subject: e.target.value})}
+                          className="mt-1 bg-white dark:bg-stone-800"
+                        />
+                      </div>
+                      <Button
+                        onClick={testEmail}
+                        disabled={testingEmail || !emailTest.email}
+                        className="w-full bg-blue-600 hover:bg-blue-700"
+                      >
+                        {testingEmail ? (
+                          <span className="flex items-center gap-2">
+                            <span className="animate-spin">⏳</span>
+                            {getText('Ap voye...', 'Envoi en cours...', 'Sending...')}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-2">
+                            <Send size={16} />
+                            {getText('Voye Email Tès', 'Envoyer Email Test', 'Send Test Email')}
+                          </span>
+                        )}
+                      </Button>
+
+                      {emailTestResult && (
+                        <div className={`flex items-center gap-2 p-3 rounded-lg ${emailTestResult.success ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'}`}>
+                          {emailTestResult.success ? <CheckCircle size={16} /> : <XCircle size={16} />}
+                          <span className="text-sm">{emailTestResult.message}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </>
               )}

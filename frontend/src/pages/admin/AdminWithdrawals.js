@@ -6,9 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Check, X, Eye, RefreshCw } from 'lucide-react';
+import { Check, X, Eye, RefreshCw, User, Phone, Mail, Wallet } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
+import { API_BASE } from '@/lib/utils';
+const API = API_BASE;
 
 export default function AdminWithdrawals() {
   const [withdrawals, setWithdrawals] = useState([]);
@@ -187,11 +188,39 @@ export default function AdminWithdrawals() {
                 </div>
 
                 <div>
-                  <p className="text-sm text-slate-500">Destination</p>
-                  <code className="text-sm bg-slate-100 p-2 rounded block break-all">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Destination</p>
+                  <code className="text-sm bg-slate-100 dark:bg-slate-800 p-2 rounded block break-all text-slate-900 dark:text-slate-100">
                     {selectedWithdrawal.destination}
                   </code>
                 </div>
+
+                {/* Client Info */}
+                {selectedWithdrawal.client_info && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                    <p className="font-medium text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-2">
+                      <User size={16} />
+                      Informations Client
+                    </p>
+                    <div className="text-sm space-y-1 text-blue-700 dark:text-blue-400">
+                      <div className="flex items-center gap-2">
+                        <User size={14} />
+                        <span>{selectedWithdrawal.client_info.full_name || '-'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Mail size={14} />
+                        <span>{selectedWithdrawal.client_info.email || '-'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone size={14} />
+                        <span>{selectedWithdrawal.client_info.phone || '-'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Wallet size={14} />
+                        <span>USD: ${selectedWithdrawal.client_info.wallet_usd?.toFixed(2) || '0.00'} | HTG: G {selectedWithdrawal.client_info.wallet_htg?.toLocaleString() || '0'}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {selectedWithdrawal.status === 'pending' && (
                   <div className="flex gap-4 pt-4 border-t">

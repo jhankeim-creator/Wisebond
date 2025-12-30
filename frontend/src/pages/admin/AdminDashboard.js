@@ -12,7 +12,8 @@ import {
   TrendingUp
 } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
+import { API_BASE } from '@/lib/utils';
+const API = API_BASE;
 
 export default function AdminDashboard() {
   const { t } = useLanguage();
@@ -40,28 +41,36 @@ export default function AdminDashboard() {
       value: stats?.total_users || 0, 
       icon: Users, 
       color: 'bg-blue-500',
-      bgColor: 'bg-blue-50'
+      bgColor: 'bg-blue-50 dark:bg-blue-900/20',
+      textColor: 'text-slate-600 dark:text-slate-400',
+      valueColor: 'text-slate-900 dark:text-white'
     },
     { 
       label: 'KYC en attente', 
       value: stats?.pending_kyc || 0, 
       icon: UserCheck, 
       color: 'bg-amber-500',
-      bgColor: 'bg-amber-50'
+      bgColor: 'bg-amber-50 dark:bg-amber-900/20',
+      textColor: 'text-slate-600 dark:text-slate-400',
+      valueColor: 'text-slate-900 dark:text-white'
     },
     { 
       label: 'Dépôts en attente', 
       value: stats?.pending_deposits || 0, 
       icon: ArrowDownCircle, 
       color: 'bg-emerald-500',
-      bgColor: 'bg-emerald-50'
+      bgColor: 'bg-emerald-50 dark:bg-emerald-900/20',
+      textColor: 'text-slate-600 dark:text-slate-400',
+      valueColor: 'text-slate-900 dark:text-white'
     },
     { 
       label: 'Retraits en attente', 
       value: stats?.pending_withdrawals || 0, 
       icon: ArrowUpCircle, 
       color: 'bg-red-500',
-      bgColor: 'bg-red-50'
+      bgColor: 'bg-red-50 dark:bg-red-900/20',
+      textColor: 'text-slate-600 dark:text-slate-400',
+      valueColor: 'text-slate-900 dark:text-white'
     },
   ];
 
@@ -77,8 +86,8 @@ export default function AdminDashboard() {
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-slate-600">{stat.label}</p>
-                      <p className="text-3xl font-bold text-slate-900 mt-1">
+                      <p className={`text-sm ${stat.textColor}`}>{stat.label}</p>
+                      <p className={`text-3xl font-bold ${stat.valueColor} mt-1`}>
                         {loading ? '-' : stat.value}
                       </p>
                     </div>
@@ -126,27 +135,27 @@ export default function AdminDashboard() {
         {/* Quick Actions */}
         <Card>
           <CardContent className="p-6">
-            <h3 className="font-semibold text-slate-900 mb-4">Actions rapides</h3>
+            <h3 className="font-semibold text-slate-900 dark:text-white mb-4">Actions rapides</h3>
             <div className="grid md:grid-cols-4 gap-4">
-              <a href="/admin/kyc" className="p-4 bg-amber-50 rounded-xl text-center hover:bg-amber-100 transition-colors">
-                <UserCheck className="mx-auto text-amber-600 mb-2" size={24} />
-                <p className="font-medium text-amber-700">Vérifier KYC</p>
-                <p className="text-sm text-amber-600">{stats?.pending_kyc || 0} en attente</p>
+              <a href="/admin/kyc" className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-xl text-center hover:bg-amber-100 dark:hover:bg-amber-900/30 transition-colors">
+                <UserCheck className="mx-auto text-amber-600 dark:text-amber-400 mb-2" size={24} />
+                <p className="font-medium text-amber-700 dark:text-amber-300">Vérifier KYC</p>
+                <p className="text-sm text-amber-600 dark:text-amber-400">{stats?.pending_kyc || 0} en attente</p>
               </a>
-              <a href="/admin/deposits" className="p-4 bg-emerald-50 rounded-xl text-center hover:bg-emerald-100 transition-colors">
-                <ArrowDownCircle className="mx-auto text-emerald-600 mb-2" size={24} />
-                <p className="font-medium text-emerald-700">Approuver dépôts</p>
-                <p className="text-sm text-emerald-600">{stats?.pending_deposits || 0} en attente</p>
+              <a href="/admin/deposits" className="p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl text-center hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors">
+                <ArrowDownCircle className="mx-auto text-emerald-600 dark:text-emerald-400 mb-2" size={24} />
+                <p className="font-medium text-emerald-700 dark:text-emerald-300">Approuver dépôts</p>
+                <p className="text-sm text-emerald-600 dark:text-emerald-400">{stats?.pending_deposits || 0} en attente</p>
               </a>
-              <a href="/admin/withdrawals" className="p-4 bg-red-50 rounded-xl text-center hover:bg-red-100 transition-colors">
-                <ArrowUpCircle className="mx-auto text-red-600 mb-2" size={24} />
-                <p className="font-medium text-red-700">Traiter retraits</p>
-                <p className="text-sm text-red-600">{stats?.pending_withdrawals || 0} en attente</p>
+              <a href="/admin/withdrawals" className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-center hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors">
+                <ArrowUpCircle className="mx-auto text-red-600 dark:text-red-400 mb-2" size={24} />
+                <p className="font-medium text-red-700 dark:text-red-300">Traiter retraits</p>
+                <p className="text-sm text-red-600 dark:text-red-400">{stats?.pending_withdrawals || 0} en attente</p>
               </a>
-              <a href="/admin/rates" className="p-4 bg-blue-50 rounded-xl text-center hover:bg-blue-100 transition-colors">
-                <TrendingUp className="mx-auto text-blue-600 mb-2" size={24} />
-                <p className="font-medium text-blue-700">Taux de change</p>
-                <p className="text-sm text-blue-600">Configurer</p>
+              <a href="/admin/rates" className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl text-center hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors">
+                <TrendingUp className="mx-auto text-blue-600 dark:text-blue-400 mb-2" size={24} />
+                <p className="font-medium text-blue-700 dark:text-blue-300">Taux de change</p>
+                <p className="text-sm text-blue-600 dark:text-blue-400">Configurer</p>
               </a>
             </div>
           </CardContent>
