@@ -25,11 +25,11 @@ export default function AdminKYC() {
   const [rejectReason, setRejectReason] = useState('');
   const [processing, setProcessing] = useState(false);
 
-  const getText = (ht, fr, en) => {
+  const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
     if (language === 'fr') return fr;
     return en;
-  };
+  }, [language]);
 
   const fetchSubmissions = useCallback(async () => {
     setLoading(true);
@@ -44,7 +44,7 @@ export default function AdminKYC() {
     } finally {
       setLoading(false);
     }
-  }, [filter, language]);
+  }, [filter, getText]);
 
   useEffect(() => {
     fetchSubmissions();
