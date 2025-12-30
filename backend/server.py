@@ -179,23 +179,12 @@ class AdminSettingsUpdate(BaseModel):
     crisp_enabled: Optional[bool] = None
     crisp_website_id: Optional[str] = None
 
-    # WhatsApp
+    # WhatsApp (CallMeBot - free)
     whatsapp_enabled: Optional[bool] = None
     whatsapp_number: Optional[str] = None
-    whatsapp_api_provider: Optional[str] = None  # "callmebot", "ultramsg", "waha"
-    
-    # CallMeBot (free, user must activate first)
     callmebot_api_key: Optional[str] = None
     
-    # UltraMsg (paid, easy to use)
-    ultramsg_instance_id: Optional[str] = None
-    ultramsg_token: Optional[str] = None
-    
-    # WAHA (self-hosted)
-    waha_api_url: Optional[str] = None
-    waha_session: Optional[str] = None
-    
-    # Telegram Bot (free, unlimited)
+    # Telegram Bot (free, unlimited) - RECOMMENDED
     telegram_enabled: Optional[bool] = None
     telegram_bot_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
@@ -428,7 +417,7 @@ async def send_telegram_notification(message: str):
         return False
 
 async def send_whatsapp_notification(phone_number: str, message: str):
-    """Send WhatsApp notification using configured API provider"""
+    """Send WhatsApp notification using CallMeBot (free)"""
     import httpx
     
     try:
@@ -449,77 +438,26 @@ async def send_whatsapp_notification(phone_number: str, message: str):
         notification_status = "pending"
         api_response = None
         
-        # Check which WhatsApp API provider is configured
-        whatsapp_provider = settings.get("whatsapp_api_provider", "callmebot")
+        # CallMeBot API (free, requires user to activate first)
+        # User must first send: "I allow callmebot to send me messages" to +34 644 71 67 43
+        api_key = settings.get("callmebot_api_key")
         
-        if whatsapp_provider == "ultramsg" and settings.get("ultramsg_instance_id") and settings.get("ultramsg_token"):
-            # UltraMsg API
-            instance_id = settings.get("ultramsg_instance_id")
-            token = settings.get("ultramsg_token")
+        if api_key:
+            encoded_message = message.replace(" ", "+").replace("\n", "%0A")
+            url = f"https://api.callmebot.com/whatsapp.php?phone={phone_for_api}&text={encoded_message}&apikey={api_key}"
             
             async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"https://api.ultramsg.com/{instance_id}/messages/chat",
-                    data={
-                        "token": token,
-                        "to": clean_phone,
-                        "body": message
-                    },
-                    timeout=30.0
-                )
+                response = await client.get(url, timeout=30.0)
                 api_response = response.text
-                if response.status_code == 200:
+                if response.status_code == 200 and "Message queued" in response.text:
                     notification_status = "sent"
-                    logger.info(f"WhatsApp sent via UltraMsg to {clean_phone}")
+                    logger.info(f"WhatsApp sent via CallMeBot to {clean_phone}")
                 else:
                     notification_status = "failed"
-                    logger.error(f"UltraMsg error: {response.text}")
-        
-        elif whatsapp_provider == "callmebot" or (not settings.get("ultramsg_instance_id")):
-            # CallMeBot API (free, requires user to activate first)
-            # User must first send: "I allow callmebot to send me messages" to +34 644 71 67 43
-            api_key = settings.get("callmebot_api_key")
-            
-            if api_key:
-                encoded_message = message.replace(" ", "+").replace("\n", "%0A")
-                url = f"https://api.callmebot.com/whatsapp.php?phone={phone_for_api}&text={encoded_message}&apikey={api_key}"
-                
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(url, timeout=30.0)
-                    api_response = response.text
-                    if response.status_code == 200 and "Message queued" in response.text:
-                        notification_status = "sent"
-                        logger.info(f"WhatsApp sent via CallMeBot to {clean_phone}")
-                    else:
-                        notification_status = "failed"
-                        logger.error(f"CallMeBot error: {response.text}")
-            else:
-                # No API key configured - just log
-                logger.warning(f"No WhatsApp API configured. Message to {clean_phone}: {message}")
-                notification_status = "not_configured"
-        
-        elif whatsapp_provider == "waha" and settings.get("waha_api_url"):
-            # WAHA (WhatsApp HTTP API) - self-hosted solution
-            waha_url = settings.get("waha_api_url")
-            waha_session = settings.get("waha_session", "default")
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{waha_url}/api/sendText",
-                    json={
-                        "chatId": f"{phone_for_api}@c.us",
-                        "text": message,
-                        "session": waha_session
-                    },
-                    timeout=30.0
-                )
-                api_response = response.text
-                if response.status_code == 200 or response.status_code == 201:
-                    notification_status = "sent"
-                    logger.info(f"WhatsApp sent via WAHA to {clean_phone}")
-                else:
-                    notification_status = "failed"
-                    logger.error(f"WAHA error: {response.text}")
+                    logger.error(f"CallMeBot error: {response.text}")
+        else:
+            logger.warning(f"No CallMeBot API key configured")
+            notification_status = "not_configured"
         
         # Store notification for tracking
         await db.whatsapp_notifications.insert_one({
@@ -527,7 +465,7 @@ async def send_whatsapp_notification(phone_number: str, message: str):
             "phone_number": clean_phone,
             "message": message,
             "status": notification_status,
-            "provider": whatsapp_provider,
+            "provider": "callmebot",
             "api_response": api_response,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
@@ -535,18 +473,6 @@ async def send_whatsapp_notification(phone_number: str, message: str):
         return notification_status == "sent"
     except Exception as e:
         logger.error(f"Failed to send WhatsApp notification: {e}")
-        # Store failed notification
-        try:
-            await db.whatsapp_notifications.insert_one({
-                "notification_id": str(uuid.uuid4()),
-                "phone_number": phone_number,
-                "message": message,
-                "status": "error",
-                "error": str(e),
-                "created_at": datetime.now(timezone.utc).isoformat()
-            })
-        except:
-            pass
         return False
 
 # Default commission tiers (can be overridden in database)

@@ -25,17 +25,12 @@ export default function AdminSettings() {
     crisp_enabled: false,
     crisp_website_id: '',
     
-    // WhatsApp
+    // WhatsApp (CallMeBot - free)
     whatsapp_enabled: false,
     whatsapp_number: '',
-    whatsapp_api_provider: 'callmebot',
     callmebot_api_key: '',
-    ultramsg_instance_id: '',
-    ultramsg_token: '',
-    waha_api_url: '',
-    waha_session: 'default',
     
-    // Telegram (FREE & Unlimited)
+    // Telegram (FREE & Unlimited) - RECOMMENDED
     telegram_enabled: false,
     telegram_bot_token: '',
     telegram_chat_id: '',
@@ -322,111 +317,34 @@ export default function AdminSettings() {
                 />
               </div>
 
-              {/* WhatsApp API Provider Selection */}
+              {/* CallMeBot Settings (Free WhatsApp) */}
               <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-xl p-4">
                 <h4 className="font-semibold text-emerald-800 dark:text-emerald-300 mb-3">
-                  {getText('API pou voye mesaj otomatik', 'API pour envoi de messages automatiques', 'API for automatic message sending')}
+                  {getText('CallMeBot - WhatsApp GRATIS', 'CallMeBot - WhatsApp GRATUIT', 'CallMeBot - FREE WhatsApp')}
                 </h4>
                 
-                <div className="mb-4">
-                  <Label>{getText('Chwazi Founi API', 'Choisir Fournisseur API', 'Choose API Provider')}</Label>
-                  <select
-                    value={settings.whatsapp_api_provider || 'callmebot'}
-                    onChange={(e) => setSettings({...settings, whatsapp_api_provider: e.target.value})}
-                    className="w-full mt-1 p-2 border rounded-lg bg-white dark:bg-stone-800"
-                  >
-                    <option value="callmebot">CallMeBot (Gratis / Free)</option>
-                    <option value="ultramsg">UltraMsg (Peye / Paid)</option>
-                    <option value="waha">WAHA (Self-Hosted)</option>
-                  </select>
+                <div className="space-y-3">
+                  <div className="bg-white dark:bg-stone-800 rounded-lg p-3 text-sm">
+                    <p className="font-medium text-emerald-700 dark:text-emerald-300 mb-2">
+                      {getText('Kijan pou aktive CallMeBot:', 'Comment activer CallMeBot:', 'How to activate CallMeBot:')}
+                    </p>
+                    <ol className="list-decimal list-inside text-emerald-600 dark:text-emerald-400 space-y-1">
+                      <li>{getText('Voye mesaj sa a bay +34 644 71 67 43:', 'Envoyez ce message à +34 644 71 67 43:', 'Send this message to +34 644 71 67 43:')}</li>
+                      <li className="ml-4 font-mono bg-stone-100 dark:bg-stone-700 p-1 rounded text-xs">I allow callmebot to send me messages</li>
+                      <li>{getText('Ou ap resevwa yon apikey nan repons lan', 'Vous recevrez une apikey dans la réponse', 'You will receive an apikey in the response')}</li>
+                      <li>{getText('Antre apikey la anba a', 'Entrez l\'apikey ci-dessous', 'Enter the apikey below')}</li>
+                    </ol>
+                  </div>
+                  <div>
+                    <Label>CallMeBot API Key</Label>
+                    <Input
+                      placeholder="123456"
+                      value={settings.callmebot_api_key || ''}
+                      onChange={(e) => setSettings({...settings, callmebot_api_key: e.target.value})}
+                      className="mt-1 font-mono"
+                    />
+                  </div>
                 </div>
-
-                {/* CallMeBot Settings */}
-                {(settings.whatsapp_api_provider === 'callmebot' || !settings.whatsapp_api_provider) && (
-                  <div className="space-y-3">
-                    <div className="bg-white dark:bg-stone-800 rounded-lg p-3 text-sm">
-                      <p className="font-medium text-emerald-700 dark:text-emerald-300 mb-2">
-                        {getText('Kijan pou aktive CallMeBot:', 'Comment activer CallMeBot:', 'How to activate CallMeBot:')}
-                      </p>
-                      <ol className="list-decimal list-inside text-emerald-600 dark:text-emerald-400 space-y-1">
-                        <li>{getText('Voye mesaj sa a bay +34 644 71 67 43:', 'Envoyez ce message à +34 644 71 67 43:', 'Send this message to +34 644 71 67 43:')}</li>
-                        <li className="ml-4 font-mono bg-stone-100 dark:bg-stone-700 p-1 rounded text-xs">I allow callmebot to send me messages</li>
-                        <li>{getText('Ou ap resevwa yon apikey nan repons lan', 'Vous recevrez une apikey dans la réponse', 'You will receive an apikey in the response')}</li>
-                        <li>{getText('Antre apikey la anba a', 'Entrez l\'apikey ci-dessous', 'Enter the apikey below')}</li>
-                      </ol>
-                    </div>
-                    <div>
-                      <Label>CallMeBot API Key</Label>
-                      <Input
-                        placeholder="123456"
-                        value={settings.callmebot_api_key || ''}
-                        onChange={(e) => setSettings({...settings, callmebot_api_key: e.target.value})}
-                        className="mt-1 font-mono"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* UltraMsg Settings */}
-                {settings.whatsapp_api_provider === 'ultramsg' && (
-                  <div className="space-y-3">
-                    <div className="bg-white dark:bg-stone-800 rounded-lg p-3 text-sm">
-                      <p className="text-emerald-600 dark:text-emerald-400">
-                        {getText('Kreye yon kont sou', 'Créez un compte sur', 'Create an account on')}{' '}
-                        <a href="https://ultramsg.com" target="_blank" rel="noreferrer" className="text-[#EA580C] hover:underline">ultramsg.com</a>
-                      </p>
-                    </div>
-                    <div>
-                      <Label>Instance ID</Label>
-                      <Input
-                        placeholder="instance12345"
-                        value={settings.ultramsg_instance_id || ''}
-                        onChange={(e) => setSettings({...settings, ultramsg_instance_id: e.target.value})}
-                        className="mt-1 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <Label>Token</Label>
-                      <Input
-                        type="password"
-                        placeholder="your-token"
-                        value={settings.ultramsg_token || ''}
-                        onChange={(e) => setSettings({...settings, ultramsg_token: e.target.value})}
-                        className="mt-1 font-mono"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* WAHA Settings */}
-                {settings.whatsapp_api_provider === 'waha' && (
-                  <div className="space-y-3">
-                    <div className="bg-white dark:bg-stone-800 rounded-lg p-3 text-sm">
-                      <p className="text-emerald-600 dark:text-emerald-400">
-                        {getText('WAHA se yon solisyon self-hosted.', 'WAHA est une solution self-hosted.', 'WAHA is a self-hosted solution.')}{' '}
-                        <a href="https://github.com/devlikeapro/waha" target="_blank" rel="noreferrer" className="text-[#EA580C] hover:underline">GitHub</a>
-                      </p>
-                    </div>
-                    <div>
-                      <Label>WAHA API URL</Label>
-                      <Input
-                        placeholder="https://your-waha-server.com"
-                        value={settings.waha_api_url || ''}
-                        onChange={(e) => setSettings({...settings, waha_api_url: e.target.value})}
-                        className="mt-1 font-mono"
-                      />
-                    </div>
-                    <div>
-                      <Label>Session Name</Label>
-                      <Input
-                        placeholder="default"
-                        value={settings.waha_session || 'default'}
-                        onChange={(e) => setSettings({...settings, waha_session: e.target.value})}
-                        className="mt-1 font-mono"
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* WhatsApp Test Section */}
