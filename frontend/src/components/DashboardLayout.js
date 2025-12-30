@@ -4,7 +4,8 @@ import { Sidebar } from '@/components/Sidebar';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Logo } from '@/components/Logo';
-import { Menu, Bell } from 'lucide-react';
+import { NotificationBell } from '@/components/NotificationBell';
+import { Menu } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 export const DashboardLayout = ({ children, title }) => {
@@ -41,10 +42,7 @@ export const DashboardLayout = ({ children, title }) => {
               <ThemeToggle />
               <LanguageSwitcher />
               
-              <button className="relative p-2 rounded-xl hover:bg-orange-50 dark:hover:bg-stone-800 transition-colors">
-                <Bell size={20} className="text-stone-600 dark:text-stone-300" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-[#EA580C] rounded-full" />
-              </button>
+              <NotificationBell />
               
               <div className="hidden md:flex items-center gap-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-[#EA580C] to-[#F59E0B] rounded-full flex items-center justify-center shadow-lg shadow-orange-500/20">

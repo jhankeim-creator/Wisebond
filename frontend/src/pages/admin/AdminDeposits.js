@@ -6,9 +6,109 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Check, X, Eye, RefreshCw } from 'lucide-react';
+import { Check, X, Eye, RefreshCw, ZoomIn, Download, ExternalLink, User, Phone, Mail, Calendar } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
+import { API_BASE } from '@/lib/utils';
+const API = API_BASE;
+
+// Proof image viewer with zoom and download
+const ProofImageViewer = ({ src }) => {
+  const [showFullscreen, setShowFullscreen] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  const handleDownload = () => {
+    if (!src) return;
+    const link = document.createElement('a');
+    link.href = src;
+    link.download = `proof-${Date.now()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const openInNewTab = () => {
+    if (!src) return;
+    const newWindow = window.open();
+    newWindow.document.write(`<img src="${src}" style="max-width:100%;height:auto;" />`);
+  };
+
+  if (!src) return null;
+
+  return (
+    <div>
+      <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">Preuve de paiement</p>
+      <div className="relative group">
+        {imageError ? (
+          <div className="h-48 bg-red-50 dark:bg-red-900/20 rounded-lg flex flex-col items-center justify-center text-red-500 dark:text-red-400 border border-red-200 dark:border-red-800">
+            <X size={24} className="mb-2" />
+            <span className="text-sm">Erreur de chargement de l'image</span>
+            <div className="flex gap-2 mt-3">
+              <Button size="sm" variant="outline" onClick={openInNewTab}>
+                <ExternalLink size={14} className="mr-1" />
+                Ouvrir dans nouvel onglet
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleDownload}>
+                <Download size={14} className="mr-1" />
+                Télécharger
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <img 
+              src={src} 
+              alt="Payment Proof" 
+              className="rounded-lg border border-slate-200 dark:border-slate-700 max-w-full max-h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => setShowFullscreen(true)}
+              onError={() => setImageError(true)}
+            />
+            <div className="absolute bottom-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button size="sm" variant="secondary" onClick={() => setShowFullscreen(true)}>
+                <ZoomIn size={16} />
+              </Button>
+              <Button size="sm" variant="secondary" onClick={handleDownload}>
+                <Download size={16} />
+              </Button>
+              <Button size="sm" variant="secondary" onClick={openInNewTab}>
+                <ExternalLink size={16} />
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Fullscreen Modal */}
+      {showFullscreen && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setShowFullscreen(false)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full">
+            <img 
+              src={src} 
+              alt="Payment Proof" 
+              className="w-full h-full object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <div className="absolute top-4 right-4 flex gap-2">
+              <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); handleDownload(); }}>
+                <Download size={16} className="mr-2" />
+                Télécharger
+              </Button>
+              <Button size="sm" variant="secondary" onClick={(e) => { e.stopPropagation(); openInNewTab(); }}>
+                <ExternalLink size={16} className="mr-2" />
+                Nouvel onglet
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => setShowFullscreen(false)}>
+                <X size={16} />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default function AdminDeposits() {
   const [deposits, setDeposits] = useState([]);
@@ -215,15 +315,33 @@ export default function AdminDeposits() {
                   </div>
                 )}
 
-                {selectedDeposit.proof_image && (
-                  <div>
-                    <p className="text-sm text-slate-500 mb-2">Preuve de paiement</p>
-                    <img 
-                      src={selectedDeposit.proof_image} 
-                      alt="Proof" 
-                      className="rounded-lg border max-w-full max-h-64 object-contain"
-                    />
+                {/* Client Info */}
+                {selectedDeposit.client_info && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
+                    <p className="font-medium text-blue-800 dark:text-blue-300 mb-2 flex items-center gap-2">
+                      <User size={16} />
+                      Informations Client
+                    </p>
+                    <div className="text-sm space-y-1 text-blue-700 dark:text-blue-400">
+                      <div className="flex items-center gap-2">
+                        <User size={14} />
+                        <span>{selectedDeposit.client_info.full_name || '-'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Mail size={14} />
+                        <span>{selectedDeposit.client_info.email || '-'}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Phone size={14} />
+                        <span>{selectedDeposit.client_info.phone || '-'}</span>
+                      </div>
+                    </div>
                   </div>
+                )}
+
+                {/* Payment Proof */}
+                {selectedDeposit.proof_image && (
+                  <ProofImageViewer src={selectedDeposit.proof_image} />
                 )}
 
                 {selectedDeposit.wallet_address && (

@@ -28,7 +28,8 @@ import {
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
+import { API_BASE } from '@/lib/utils';
+const API = API_BASE;
 
 export default function AgentDeposit() {
   const { language } = useLanguage();
@@ -324,7 +325,7 @@ export default function AgentDeposit() {
   // If user is not an agent and has not requested
   if (!isAgent && !agentRequest) {
     return (
-      <DashboardLayout title={getText('Ajan Depo', 'Agent Dépôt', 'Agent Deposit')}>
+      <DashboardLayout title={getText('Kont Ajan', 'Compte Agent', 'Agent Account')}>
         <Card className="max-w-xl mx-auto">
           <CardContent className="p-8 text-center">
             <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -388,7 +389,7 @@ export default function AgentDeposit() {
   // If agent request is pending
   if (!isAgent && agentRequest?.status === 'pending') {
     return (
-      <DashboardLayout title={getText('Ajan Depo', 'Agent Dépôt', 'Agent Deposit')}>
+      <DashboardLayout title={getText('Kont Ajan', 'Compte Agent', 'Agent Account')}>
         <Card className="max-w-xl mx-auto">
           <CardContent className="p-8 text-center">
             <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
@@ -417,7 +418,7 @@ export default function AgentDeposit() {
   // If agent request was rejected
   if (!isAgent && agentRequest?.status === 'rejected') {
     return (
-      <DashboardLayout title={getText('Ajan Depo', 'Agent Dépôt', 'Agent Deposit')}>
+      <DashboardLayout title={getText('Kont Ajan', 'Compte Agent', 'Agent Account')}>
         <Card className="max-w-xl mx-auto">
           <CardContent className="p-8 text-center">
             <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -442,7 +443,7 @@ export default function AgentDeposit() {
   // Agent deposits disabled
   if (isAgent && settings && !settings.enabled) {
     return (
-      <DashboardLayout title={getText('Ajan Depo', 'Agent Dépôt', 'Agent Deposit')}>
+      <DashboardLayout title={getText('Kont Ajan', 'Compte Agent', 'Agent Account')}>
         <Card className="max-w-xl mx-auto">
           <CardContent className="p-8 text-center">
             <AlertCircle className="mx-auto text-amber-500 mb-4" size={48} />

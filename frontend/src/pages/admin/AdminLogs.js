@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import axios from 'axios';
 import { RefreshCw, Filter, Eye } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+import { API_BASE } from '@/lib/utils';
+const API = API_BASE;
 
 export default function AdminLogs() {
   const { getText } = useLanguage();

@@ -7,9 +7,141 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Check, X, Eye, RefreshCw } from 'lucide-react';
+import { Check, X, Eye, RefreshCw, ZoomIn, Download, ExternalLink } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
+import { API_BASE } from '@/lib/utils';
+const API = API_BASE;
+
+// Image viewer component with zoom and download functionality
+const ImageViewer = ({ label, src, alt }) => {
+  const [showFullscreen, setShowFullscreen] = useState(false);
+  const [imageError, setImageError] = useState(false);
+
+  const handleDownload = () => {
+    if (!src) return;
+    const link = document.createElement('a');
+    link.href = src;
+    link.download = `${alt || 'image'}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const openInNewTab = () => {
+    if (!src) return;
+    const newWindow = window.open();
+    newWindow.document.write(`<img src="${src}" style="max-width:100%;height:auto;" />`);
+  };
+
+  if (!src) {
+    return (
+      <div>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">{label}</p>
+        <div className="h-40 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400">
+          Non fourni
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-sm text-slate-500 dark:text-slate-400 mb-2">{label}</p>
+      <div className="relative group">
+        {imageError ? (
+          <div className="h-40 bg-red-50 dark:bg-red-900/20 rounded-lg flex flex-col items-center justify-center text-red-500 dark:text-red-400 border border-red-200 dark:border-red-800">
+            <X size={24} className="mb-2" />
+            <span className="text-xs">Erreur de chargement</span>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="mt-2"
+              onClick={openInNewTab}
+            >
+              <ExternalLink size={14} className="mr-1" />
+              Ouvrir
+            </Button>
+          </div>
+        ) : (
+          <>
+            <img 
+              src={src} 
+              alt={alt} 
+              className="rounded-lg border border-slate-200 dark:border-slate-700 w-full h-40 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+              onClick={() => setShowFullscreen(true)}
+              onError={() => setImageError(true)}
+            />
+            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-2">
+              <Button 
+                size="sm" 
+                variant="secondary"
+                onClick={() => setShowFullscreen(true)}
+              >
+                <ZoomIn size={16} />
+              </Button>
+              <Button 
+                size="sm" 
+                variant="secondary"
+                onClick={handleDownload}
+              >
+                <Download size={16} />
+              </Button>
+              <Button 
+                size="sm" 
+                variant="secondary"
+                onClick={openInNewTab}
+              >
+                <ExternalLink size={16} />
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Fullscreen Modal */}
+      {showFullscreen && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setShowFullscreen(false)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] w-full">
+            <img 
+              src={src} 
+              alt={alt} 
+              className="w-full h-full object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <div className="absolute top-4 right-4 flex gap-2">
+              <Button 
+                size="sm" 
+                variant="secondary"
+                onClick={(e) => { e.stopPropagation(); handleDownload(); }}
+              >
+                <Download size={16} className="mr-2" />
+                Télécharger
+              </Button>
+              <Button 
+                size="sm" 
+                variant="secondary"
+                onClick={(e) => { e.stopPropagation(); openInNewTab(); }}
+              >
+                <ExternalLink size={16} className="mr-2" />
+                Nouvel onglet
+              </Button>
+              <Button 
+                size="sm" 
+                variant="destructive"
+                onClick={() => setShowFullscreen(false)}
+              >
+                <X size={16} />
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default function AdminKYC() {
   const [submissions, setSubmissions] = useState([]);
@@ -185,48 +317,21 @@ export default function AdminKYC() {
                 </div>
 
                 <div className="grid md:grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-sm text-slate-500 mb-2">ID Recto</p>
-                    {selectedKyc.id_front_image ? (
-                      <img 
-                        src={selectedKyc.id_front_image} 
-                        alt="ID Front" 
-                        className="rounded-lg border w-full h-40 object-cover"
-                      />
-                    ) : (
-                      <div className="h-40 bg-slate-100 rounded-lg flex items-center justify-center">
-                        Non fourni
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500 mb-2">ID Verso</p>
-                    {selectedKyc.id_back_image ? (
-                      <img 
-                        src={selectedKyc.id_back_image} 
-                        alt="ID Back" 
-                        className="rounded-lg border w-full h-40 object-cover"
-                      />
-                    ) : (
-                      <div className="h-40 bg-slate-100 rounded-lg flex items-center justify-center">
-                        Non fourni
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm text-slate-500 mb-2">Selfie avec ID</p>
-                    {selectedKyc.selfie_with_id ? (
-                      <img 
-                        src={selectedKyc.selfie_with_id} 
-                        alt="Selfie" 
-                        className="rounded-lg border w-full h-40 object-cover"
-                      />
-                    ) : (
-                      <div className="h-40 bg-slate-100 rounded-lg flex items-center justify-center">
-                        Non fourni
-                      </div>
-                    )}
-                  </div>
+                  <ImageViewer 
+                    label="ID Recto" 
+                    src={selectedKyc.id_front_image} 
+                    alt="ID Front"
+                  />
+                  <ImageViewer 
+                    label="ID Verso" 
+                    src={selectedKyc.id_back_image} 
+                    alt="ID Back"
+                  />
+                  <ImageViewer 
+                    label="Selfie avec ID" 
+                    src={selectedKyc.selfie_with_id} 
+                    alt="Selfie"
+                  />
                 </div>
 
                 {selectedKyc.status === 'pending' && (

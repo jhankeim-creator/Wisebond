@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 import axios from 'axios';
 import { Send, Users, CheckCircle, AlertCircle } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
+import { API_BASE } from '@/lib/utils';
+const API = API_BASE;
 
 export default function AdminBulkEmail() {
   const [emailData, setEmailData] = useState({

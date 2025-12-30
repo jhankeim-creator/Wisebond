@@ -5,11 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Check, X, Eye, RefreshCw, CreditCard } from 'lucide-react';
+import { Check, X, Eye, RefreshCw, CreditCard, Image, DollarSign, Settings } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
+import { API_BASE } from '@/lib/utils';
+const API = API_BASE;
 
 export default function AdminVirtualCards() {
   const [orders, setOrders] = useState([]);
@@ -21,6 +24,18 @@ export default function AdminVirtualCards() {
   const [adminNotes, setAdminNotes] = useState('');
   const [cardName, setCardName] = useState('');
   const [cardLast4, setCardLast4] = useState('');
+  
+  // Card Settings
+  const [showSettings, setShowSettings] = useState(false);
+  const [cardSettings, setCardSettings] = useState({
+    card_order_fee_htg: 500,
+    card_image_url: '',
+    card_description: '',
+    card_withdrawal_fee_percent: 0,
+    card_withdrawal_fee_fixed: 0,
+    card_provider_name: 'KAYICOM Virtual Card'
+  });
+  const [savingSettings, setSavingSettings] = useState(false);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -38,7 +53,32 @@ export default function AdminVirtualCards() {
 
   useEffect(() => {
     fetchOrders();
+    fetchCardSettings();
   }, [fetchOrders]);
+
+  const fetchCardSettings = async () => {
+    try {
+      const resp = await axios.get(`${API}/admin/card-settings`);
+      if (resp.data.settings) {
+        setCardSettings(prev => ({ ...prev, ...resp.data.settings }));
+      }
+    } catch (e) {
+      // Use defaults
+    }
+  };
+
+  const saveCardSettings = async () => {
+    setSavingSettings(true);
+    try {
+      await axios.put(`${API}/admin/card-settings`, cardSettings);
+      toast.success('Paramèt kat yo anrejistre!');
+      setShowSettings(false);
+    } catch (e) {
+      toast.error('Erè pandan anrejistreman');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
 
   const handleProcess = async (action) => {
     setProcessing(true);
@@ -136,13 +176,103 @@ export default function AdminVirtualCards() {
                   {f === 'pending' ? 'An atant' : f === 'approved' ? 'Apwouve' : f === 'rejected' ? 'Rejte' : 'Tout'}
                 </Button>
               ))}
-              <Button variant="outline" size="sm" onClick={fetchOrders} className="ml-auto">
+              <Button variant="outline" size="sm" onClick={() => setShowSettings(true)} className="ml-auto">
+                <Settings size={16} className="mr-2" />
+                Paramèt Kat
+              </Button>
+              <Button variant="outline" size="sm" onClick={fetchOrders}>
                 <RefreshCw size={16} className="mr-2" />
                 Aktyalize
               </Button>
             </div>
           </CardContent>
         </Card>
+
+        {/* Card Settings Modal */}
+        <Dialog open={showSettings} onOpenChange={setShowSettings}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Settings className="text-[#EA580C]" />
+                Paramèt Kat Vityèl
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Frè Komand Kat (HTG)</Label>
+                <Input
+                  type="number"
+                  value={cardSettings.card_order_fee_htg}
+                  onChange={(e) => setCardSettings({...cardSettings, card_order_fee_htg: parseInt(e.target.value) || 0})}
+                  className="mt-1"
+                />
+                <p className="text-xs text-stone-500 mt-1">Pri pou komande yon kat vityèl</p>
+              </div>
+              
+              <div>
+                <Label>Non Founisè Kat</Label>
+                <Input
+                  value={cardSettings.card_provider_name}
+                  onChange={(e) => setCardSettings({...cardSettings, card_provider_name: e.target.value})}
+                  className="mt-1"
+                  placeholder="Ex: KAYICOM Virtual Card"
+                />
+              </div>
+
+              <div>
+                <Label>URL Imaj Kat</Label>
+                <Input
+                  value={cardSettings.card_image_url}
+                  onChange={(e) => setCardSettings({...cardSettings, card_image_url: e.target.value})}
+                  className="mt-1"
+                  placeholder="https://example.com/card-image.png"
+                />
+                <p className="text-xs text-stone-500 mt-1">Imaj pou montre kliyan yo</p>
+                {cardSettings.card_image_url && (
+                  <img src={cardSettings.card_image_url} alt="Card Preview" className="mt-2 max-h-32 rounded-lg border" />
+                )}
+              </div>
+
+              <div>
+                <Label>Deskripsyon Kat</Label>
+                <Textarea
+                  value={cardSettings.card_description}
+                  onChange={(e) => setCardSettings({...cardSettings, card_description: e.target.value})}
+                  className="mt-1"
+                  rows={3}
+                  placeholder="Enfòmasyon sou kat la..."
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Frè Retrè Kat (%)</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    value={cardSettings.card_withdrawal_fee_percent}
+                    onChange={(e) => setCardSettings({...cardSettings, card_withdrawal_fee_percent: parseFloat(e.target.value) || 0})}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Frè Retrè Kat (Fiks USD)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={cardSettings.card_withdrawal_fee_fixed}
+                    onChange={(e) => setCardSettings({...cardSettings, card_withdrawal_fee_fixed: parseFloat(e.target.value) || 0})}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+
+              <Button onClick={saveCardSettings} disabled={savingSettings} className="w-full btn-primary">
+                {savingSettings ? 'Anrejistreman...' : 'Anrejistre Paramèt'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Orders Table */}
         <Card>

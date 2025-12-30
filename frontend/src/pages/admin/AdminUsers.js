@@ -8,10 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Search, Eye, Ban, DollarSign, RefreshCw, UserX, CheckCircle, Edit, Save } from 'lucide-react';
+import { Search, Eye, Ban, DollarSign, RefreshCw, UserX, CheckCircle, Edit, Save, Wallet, Calendar } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
+import { API_BASE } from '@/lib/utils';
+const API = API_BASE;
 
 export default function AdminUsers() {
   const { getText } = useLanguage();
@@ -301,47 +302,72 @@ export default function AdminUsers() {
                   /* View Mode */
                   <>
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm text-slate-500">{getText('Non konplè', 'Nom complet', 'Full name')}</p>
-                        <p className="font-medium">{selectedUser.user.full_name}</p>
+                      <div className="bg-stone-50 dark:bg-stone-800 p-3 rounded-lg">
+                        <p className="text-sm text-stone-500 dark:text-stone-400">{getText('Non konplè', 'Nom complet', 'Full name')}</p>
+                        <p className="font-medium text-stone-900 dark:text-white">{selectedUser.user.full_name}</p>
                       </div>
-                      <div>
-                        <p className="text-sm text-slate-500">Client ID</p>
-                        <p className="font-mono">{selectedUser.user.client_id}</p>
+                      <div className="bg-stone-50 dark:bg-stone-800 p-3 rounded-lg">
+                        <p className="text-sm text-stone-500 dark:text-stone-400">Client ID</p>
+                        <p className="font-mono text-stone-900 dark:text-white">{selectedUser.user.client_id}</p>
                       </div>
-                      <div>
-                        <p className="text-sm text-slate-500">{getText('Imèl', 'Email', 'Email')}</p>
-                        <p>{selectedUser.user.email}</p>
+                      <div className="bg-stone-50 dark:bg-stone-800 p-3 rounded-lg">
+                        <p className="text-sm text-stone-500 dark:text-stone-400">{getText('Imèl', 'Email', 'Email')}</p>
+                        <p className="text-stone-900 dark:text-white">{selectedUser.user.email}</p>
                       </div>
-                      <div>
-                        <p className="text-sm text-slate-500">{getText('Telefòn', 'Téléphone', 'Phone')}</p>
-                        <p>{selectedUser.user.phone || '-'}</p>
+                      <div className="bg-stone-50 dark:bg-stone-800 p-3 rounded-lg">
+                        <p className="text-sm text-stone-500 dark:text-stone-400">{getText('Telefòn', 'Téléphone', 'Phone')}</p>
+                        <p className="text-stone-900 dark:text-white">{selectedUser.user.phone || '-'}</p>
                       </div>
-                      <div>
-                        <p className="text-sm text-slate-500">{getText('Balans USD', 'Solde USD', 'USD Balance')}</p>
-                        <p className="font-semibold text-emerald-600">${selectedUser.user.wallet_usd?.toFixed(2)}</p>
+                      <div className="bg-emerald-50 dark:bg-emerald-900/30 p-3 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                        <p className="text-sm text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                          <Wallet size={14} />
+                          {getText('Balans USD', 'Solde USD', 'USD Balance')}
+                        </p>
+                        <p className="font-semibold text-emerald-700 dark:text-emerald-300 text-lg">${selectedUser.user.wallet_usd?.toFixed(2)}</p>
                       </div>
-                      <div>
-                        <p className="text-sm text-slate-500">{getText('Balans HTG', 'Solde HTG', 'HTG Balance')}</p>
-                        <p className="font-semibold text-blue-600">G {selectedUser.user.wallet_htg?.toLocaleString()}</p>
+                      <div className="bg-blue-50 dark:bg-blue-900/30 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <p className="text-sm text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                          <Wallet size={14} />
+                          {getText('Balans HTG', 'Solde HTG', 'HTG Balance')}
+                        </p>
+                        <p className="font-semibold text-blue-700 dark:text-blue-300 text-lg">G {selectedUser.user.wallet_htg?.toLocaleString()}</p>
+                      </div>
+                    </div>
+
+                    {/* Additional Info */}
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                      <div className="bg-stone-50 dark:bg-stone-800 p-3 rounded-lg">
+                        <p className="text-sm text-stone-500 dark:text-stone-400">KYC Status</p>
+                        <Badge className={getKycBadge(selectedUser.user.kyc_status)}>
+                          {getKycText(selectedUser.user.kyc_status)}
+                        </Badge>
+                      </div>
+                      <div className="bg-stone-50 dark:bg-stone-800 p-3 rounded-lg">
+                        <p className="text-sm text-stone-500 dark:text-stone-400 flex items-center gap-1">
+                          <Calendar size={14} />
+                          {getText('Enskripsyon', 'Inscription', 'Joined')}
+                        </p>
+                        <p className="text-stone-900 dark:text-white text-sm">
+                          {selectedUser.user.created_at ? new Date(selectedUser.user.created_at).toLocaleDateString() : '-'}
+                        </p>
                       </div>
                     </div>
                     
-                    <div className="border-t pt-4">
-                      <h4 className="font-semibold mb-2">{getText('Dènye Tranzaksyon', 'Transactions récentes', 'Recent Transactions')}</h4>
+                    <div className="border-t border-stone-200 dark:border-stone-700 pt-4">
+                      <h4 className="font-semibold mb-2 text-stone-900 dark:text-white">{getText('Dènye Tranzaksyon', 'Transactions récentes', 'Recent Transactions')}</h4>
                       {selectedUser.recent_transactions?.length > 0 ? (
                         <div className="space-y-2 max-h-48 overflow-y-auto">
                           {selectedUser.recent_transactions.map((tx) => (
-                            <div key={tx.transaction_id} className="flex justify-between p-2 bg-slate-50 dark:bg-slate-800 rounded">
-                              <span className="capitalize">{tx.type.replace('_', ' ')}</span>
-                              <span className={tx.amount >= 0 ? 'text-emerald-600' : 'text-red-500'}>
+                            <div key={tx.transaction_id} className="flex justify-between p-3 bg-stone-50 dark:bg-stone-800 rounded-lg">
+                              <span className="capitalize text-stone-700 dark:text-stone-300">{tx.type.replace('_', ' ')}</span>
+                              <span className={tx.amount >= 0 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-red-500 dark:text-red-400 font-semibold'}>
                                 {tx.amount >= 0 ? '+' : ''}{tx.currency === 'USD' ? '$' : 'G '}{Math.abs(tx.amount).toFixed(2)}
                               </span>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <p className="text-slate-500">{getText('Pa gen tranzaksyon', 'Aucune transaction', 'No transactions')}</p>
+                        <p className="text-stone-500 dark:text-stone-400">{getText('Pa gen tranzaksyon', 'Aucune transaction', 'No transactions')}</p>
                       )}
                     </div>
                   </>

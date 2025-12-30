@@ -713,6 +713,106 @@ async def get_transactions(
 
 # ==================== DEPOSIT ROUTES ====================
 
+# Plisio USDT Networks
+PLISIO_NETWORKS = [
+    {"code": "USDT_TRX", "label": "USDT (TRC-20 / Tron)"},
+    {"code": "USDT_ETH", "label": "USDT (ERC-20 / Ethereum)"},
+    {"code": "USDT_BSC", "label": "USDT (BEP-20 / BSC)"},
+]
+
+async def create_plisio_invoice(amount: float, currency: str, network: str, deposit_id: str, user_email: str):
+    """Create a Plisio invoice for USDT payment"""
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not settings or not settings.get("plisio_enabled") or not settings.get("plisio_api_key"):
+        return None
+    
+    api_key = settings["plisio_api_key"]
+    
+    try:
+        import httpx
+        
+        # Plisio API endpoint for creating invoice
+        url = "https://plisio.net/api/v1/invoices/new"
+        
+        # Callback URL for webhook
+        callback_url = os.environ.get("PLISIO_CALLBACK_URL", "")
+        
+        params = {
+            "api_key": api_key,
+            "currency": network,  # e.g., USDT_TRX
+            "amount": amount,
+            "order_name": f"Deposit {deposit_id[:8]}",
+            "order_number": deposit_id,
+            "email": user_email,
+            "callback_url": callback_url if callback_url else None,
+        }
+        
+        # Remove None values
+        params = {k: v for k, v in params.items() if v is not None}
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            data = response.json()
+            
+            if data.get("status") == "success":
+                return {
+                    "invoice_id": data["data"].get("txn_id"),
+                    "invoice_url": data["data"].get("invoice_url"),
+                    "wallet_address": data["data"].get("wallet_hash"),
+                    "amount_crypto": data["data"].get("amount"),
+                    "expire_utc": data["data"].get("expire_utc"),
+                }
+            else:
+                logger.error(f"Plisio API error: {data}")
+                return None
+    except Exception as e:
+        logger.error(f"Plisio invoice creation failed: {e}")
+        return None
+
+async def check_plisio_status(txn_id: str):
+    """Check Plisio transaction status"""
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not settings or not settings.get("plisio_api_key"):
+        return None
+    
+    api_key = settings["plisio_api_key"]
+    
+    try:
+        import httpx
+        
+        url = f"https://plisio.net/api/v1/operations/{txn_id}"
+        params = {"api_key": api_key}
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
+            data = response.json()
+            
+            if data.get("status") == "success":
+                return data["data"]
+            return None
+    except Exception as e:
+        logger.error(f"Plisio status check failed: {e}")
+        return None
+
+@api_router.get("/deposits/usdt-options")
+async def get_usdt_options():
+    """Get available USDT networks for deposit (Plisio)"""
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    
+    enabled = settings.get("plisio_enabled", False) if settings else False
+    has_key = bool(settings.get("plisio_api_key")) if settings else False
+    
+    if enabled and has_key:
+        return {
+            "enabled": True,
+            "networks": PLISIO_NETWORKS
+        }
+    
+    return {
+        "enabled": False,
+        "networks": []
+    }
+
 @api_router.post("/deposits/create")
 async def create_deposit(request: DepositRequest, current_user: dict = Depends(get_current_user)):
     if current_user["kyc_status"] != "approved":
@@ -733,12 +833,103 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
+    # Handle USDT/Plisio deposits
+    if request.method == "usdt" and request.network:
+        plisio_result = await create_plisio_invoice(
+            amount=request.amount,
+            currency=request.currency,
+            network=request.network,
+            deposit_id=deposit_id,
+            user_email=current_user.get("email", "")
+        )
+        
+        if plisio_result:
+            deposit["provider"] = "plisio"
+            deposit["plisio_txn_id"] = plisio_result.get("invoice_id")
+            deposit["plisio_invoice_url"] = plisio_result.get("invoice_url")
+            deposit["plisio_wallet_address"] = plisio_result.get("wallet_address")
+            deposit["plisio_amount_crypto"] = plisio_result.get("amount_crypto")
+            deposit["provider_status"] = "new"
+        else:
+            raise HTTPException(status_code=500, detail="Failed to create Plisio invoice. Please try again or contact support.")
+    
     await db.deposits.insert_one(deposit)
     await log_action(current_user["user_id"], "deposit_request", {"amount": request.amount, "method": request.method})
     
     if "_id" in deposit:
         del deposit["_id"]
     return {"deposit": deposit}
+
+@api_router.post("/deposits/{deposit_id}/sync")
+async def sync_deposit_status(deposit_id: str, current_user: dict = Depends(get_current_user)):
+    """Sync Plisio deposit status"""
+    deposit = await db.deposits.find_one({
+        "deposit_id": deposit_id,
+        "user_id": current_user["user_id"]
+    })
+    
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    
+    if deposit.get("provider") != "plisio" or not deposit.get("plisio_txn_id"):
+        raise HTTPException(status_code=400, detail="This deposit does not use Plisio")
+    
+    plisio_data = await check_plisio_status(deposit["plisio_txn_id"])
+    
+    if not plisio_data:
+        raise HTTPException(status_code=500, detail="Failed to fetch Plisio status")
+    
+    plisio_status = plisio_data.get("status", "").lower()
+    
+    update_data = {
+        "provider_status": plisio_status,
+        "plisio_actual_amount": plisio_data.get("actual_sum_crypto"),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Map Plisio status to our deposit status
+    # Plisio statuses: new, pending, confirming, completed, expired, cancelled, error
+    if plisio_status in ["completed", "mismatch"]:
+        if deposit["status"] == "pending":
+            update_data["status"] = "completed"
+            
+            # Credit user's wallet
+            currency_key = f"wallet_{deposit['currency'].lower()}"
+            await db.users.update_one(
+                {"user_id": current_user["user_id"]},
+                {"$inc": {currency_key: deposit["amount"]}}
+            )
+            
+            # Create transaction record
+            await db.transactions.insert_one({
+                "transaction_id": str(uuid.uuid4()),
+                "user_id": current_user["user_id"],
+                "type": "deposit",
+                "amount": deposit["amount"],
+                "currency": deposit["currency"],
+                "reference_id": deposit_id,
+                "status": "completed",
+                "description": f"USDT deposit via Plisio ({deposit.get('network', 'USDT')})",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+            await log_action(current_user["user_id"], "deposit_completed_auto", {
+                "amount": deposit["amount"],
+                "method": "usdt",
+                "provider": "plisio"
+            })
+    
+    elif plisio_status in ["expired", "cancelled", "error"]:
+        update_data["status"] = "rejected"
+    
+    await db.deposits.update_one(
+        {"deposit_id": deposit_id},
+        {"$set": update_data}
+    )
+    
+    # Fetch updated deposit
+    updated_deposit = await db.deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+    return {"deposit": updated_deposit}
 
 @api_router.get("/deposits")
 async def get_deposits(
@@ -2955,6 +3146,445 @@ async def admin_test_whatsapp(
         return {"success": True, "message": "Mesaj WhatsApp voye avèk siksè"}
     else:
         return {"success": False, "message": "Echèk voye mesaj WhatsApp. Verifye konfigirasyon API a."}
+
+class TestEmailRequest(BaseModel):
+    email: str
+    subject: str = "Test Email from KAYICOM"
+    message: str = "This is a test email to verify your Resend configuration is working correctly."
+
+@api_router.post("/admin/test-email")
+async def admin_test_email(
+    request: TestEmailRequest,
+    admin: dict = Depends(get_admin_user)
+):
+    """Test Resend email sending"""
+    html_content = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background: linear-gradient(135deg, #EA580C, #F97316); padding: 20px; text-align: center;">
+            <h1 style="color: white; margin: 0;">KAYICOM</h1>
+        </div>
+        <div style="padding: 30px; background: #f9f9f9;">
+            <h2 style="color: #333;">Test Email</h2>
+            <p style="color: #666; line-height: 1.6;">{request.message}</p>
+            <p style="color: #999; font-size: 12px; margin-top: 30px;">
+                This email was sent as a test from the KAYICOM admin panel.
+            </p>
+        </div>
+    </div>
+    """
+    
+    success = await send_email(request.email, request.subject, html_content)
+    
+    # Log the test
+    await db.logs.insert_one({
+        "log_id": str(uuid.uuid4()),
+        "user_id": admin["user_id"],
+        "action": "email_test",
+        "details": {
+            "email": request.email,
+            "success": success
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    if success:
+        return {"success": True, "message": f"Email voye avèk siksè nan {request.email}"}
+    else:
+        return {"success": False, "message": "Echèk voye email. Verifye konfigirasyon Resend API a (kle API ak sender email)."}
+
+# ==================== PLISIO WEBHOOK ====================
+
+@api_router.post("/webhooks/plisio")
+async def plisio_webhook(request: Request):
+    """Handle Plisio payment callbacks"""
+    try:
+        data = await request.json()
+        
+        logger.info(f"Plisio webhook received: {data}")
+        
+        order_number = data.get("order_number")  # This is our deposit_id
+        status = data.get("status", "").lower()
+        txn_id = data.get("txn_id")
+        
+        if not order_number:
+            return {"status": "error", "message": "Missing order_number"}
+        
+        # Find the deposit
+        deposit = await db.deposits.find_one({"deposit_id": order_number})
+        
+        if not deposit:
+            logger.warning(f"Plisio webhook: Deposit not found for order {order_number}")
+            return {"status": "error", "message": "Deposit not found"}
+        
+        # Verify this is a Plisio deposit
+        if deposit.get("provider") != "plisio":
+            return {"status": "error", "message": "Invalid deposit type"}
+        
+        # Verify the transaction ID matches
+        if deposit.get("plisio_txn_id") and deposit.get("plisio_txn_id") != txn_id:
+            logger.warning(f"Plisio webhook: TXN ID mismatch for deposit {order_number}")
+            return {"status": "error", "message": "Transaction ID mismatch"}
+        
+        update_data = {
+            "provider_status": status,
+            "plisio_actual_amount": data.get("actual_sum_crypto"),
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Map Plisio status to our deposit status
+        if status in ["completed", "mismatch"]:
+            if deposit["status"] == "pending":
+                update_data["status"] = "completed"
+                
+                # Credit user's wallet
+                currency_key = f"wallet_{deposit['currency'].lower()}"
+                await db.users.update_one(
+                    {"user_id": deposit["user_id"]},
+                    {"$inc": {currency_key: deposit["amount"]}}
+                )
+                
+                # Create transaction record
+                await db.transactions.insert_one({
+                    "transaction_id": str(uuid.uuid4()),
+                    "user_id": deposit["user_id"],
+                    "type": "deposit",
+                    "amount": deposit["amount"],
+                    "currency": deposit["currency"],
+                    "reference_id": deposit["deposit_id"],
+                    "status": "completed",
+                    "description": f"USDT deposit via Plisio ({deposit.get('network', 'USDT')})",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                })
+                
+                await log_action(deposit["user_id"], "deposit_completed_webhook", {
+                    "amount": deposit["amount"],
+                    "method": "usdt",
+                    "provider": "plisio",
+                    "txn_id": txn_id
+                })
+                
+                # Create notification for user
+                await create_notification(
+                    deposit["user_id"],
+                    "deposit",
+                    f"Your USDT deposit of ${deposit['amount']:.2f} has been confirmed!",
+                    {"deposit_id": deposit["deposit_id"], "amount": deposit["amount"]}
+                )
+        
+        elif status in ["expired", "cancelled", "error"]:
+            update_data["status"] = "rejected"
+            update_data["rejection_reason"] = f"Plisio status: {status}"
+        
+        await db.deposits.update_one(
+            {"deposit_id": order_number},
+            {"$set": update_data}
+        )
+        
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"Plisio webhook error: {e}")
+        return {"status": "error", "message": str(e)}
+
+# ==================== NOTIFICATIONS ROUTES ====================
+
+@api_router.get("/notifications")
+async def get_notifications(
+    limit: int = Query(default=20, le=50),
+    current_user: dict = Depends(get_current_user)
+):
+    """Get user's notifications"""
+    notifications = await db.notifications.find(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    
+    unread_count = await db.notifications.count_documents({
+        "user_id": current_user["user_id"],
+        "read": False
+    })
+    
+    return {
+        "notifications": notifications,
+        "unread_count": unread_count
+    }
+
+@api_router.patch("/notifications/{notification_id}/read")
+async def mark_notification_read(
+    notification_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Mark a notification as read"""
+    await db.notifications.update_one(
+        {"notification_id": notification_id, "user_id": current_user["user_id"]},
+        {"$set": {"read": True}}
+    )
+    return {"message": "Notification marked as read"}
+
+@api_router.patch("/notifications/read-all")
+async def mark_all_notifications_read(current_user: dict = Depends(get_current_user)):
+    """Mark all notifications as read"""
+    await db.notifications.update_many(
+        {"user_id": current_user["user_id"], "read": False},
+        {"$set": {"read": True}}
+    )
+    return {"message": "All notifications marked as read"}
+
+async def create_notification(user_id: str, notification_type: str, title: str, message: str):
+    """Helper function to create a notification"""
+    notification = {
+        "notification_id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "type": notification_type,
+        "title": title,
+        "message": message,
+        "read": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.notifications.insert_one(notification)
+    return notification
+
+# ==================== ANNOUNCEMENTS ROUTES ====================
+
+@api_router.get("/public/announcements")
+async def get_public_announcements():
+    """Get active announcements for all users"""
+    announcements = await db.announcements.find(
+        {"is_active": True},
+        {"_id": 0}
+    ).sort("priority", -1).limit(5).to_list(5)
+    return {"announcements": announcements}
+
+@api_router.get("/admin/announcements")
+async def admin_get_announcements(admin: dict = Depends(get_admin_user)):
+    """Get all announcements"""
+    announcements = await db.announcements.find({}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return {"announcements": announcements}
+
+class AnnouncementCreate(BaseModel):
+    title: str
+    message: str
+    type: str = "info"  # info, warning, success, promo
+    link_url: Optional[str] = None
+    link_text: Optional[str] = None
+    is_active: bool = True
+    priority: int = 0
+
+@api_router.post("/admin/announcements")
+async def admin_create_announcement(
+    data: AnnouncementCreate,
+    admin: dict = Depends(get_admin_user)
+):
+    """Create a new announcement"""
+    announcement = {
+        "announcement_id": str(uuid.uuid4()),
+        **data.model_dump(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": admin["user_id"]
+    }
+    await db.announcements.insert_one(announcement)
+    
+    if "_id" in announcement:
+        del announcement["_id"]
+    return {"announcement": announcement}
+
+@api_router.put("/admin/announcements/{announcement_id}")
+async def admin_update_announcement(
+    announcement_id: str,
+    data: AnnouncementCreate,
+    admin: dict = Depends(get_admin_user)
+):
+    """Update an announcement"""
+    await db.announcements.update_one(
+        {"announcement_id": announcement_id},
+        {"$set": {
+            **data.model_dump(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": admin["user_id"]
+        }}
+    )
+    return {"message": "Announcement updated"}
+
+@api_router.patch("/admin/announcements/{announcement_id}/toggle")
+async def admin_toggle_announcement(
+    announcement_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """Toggle announcement active status"""
+    announcement = await db.announcements.find_one({"announcement_id": announcement_id})
+    if not announcement:
+        raise HTTPException(status_code=404, detail="Announcement not found")
+    
+    new_status = not announcement.get("is_active", True)
+    await db.announcements.update_one(
+        {"announcement_id": announcement_id},
+        {"$set": {"is_active": new_status}}
+    )
+    return {"message": f"Announcement {'activated' if new_status else 'deactivated'}"}
+
+@api_router.delete("/admin/announcements/{announcement_id}")
+async def admin_delete_announcement(
+    announcement_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """Delete an announcement"""
+    await db.announcements.delete_one({"announcement_id": announcement_id})
+    return {"message": "Announcement deleted"}
+
+# ==================== CARD SETTINGS ROUTES ====================
+
+@api_router.get("/admin/card-settings")
+async def admin_get_card_settings(admin: dict = Depends(get_admin_user)):
+    """Get virtual card settings"""
+    settings = await db.card_settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not settings:
+        settings = {
+            "setting_id": "main",
+            "card_order_fee_htg": 500,
+            "card_image_url": "",
+            "card_description": "",
+            "card_withdrawal_fee_percent": 0,
+            "card_withdrawal_fee_fixed": 0,
+            "card_provider_name": "KAYICOM Virtual Card"
+        }
+    return {"settings": settings}
+
+class CardSettingsUpdate(BaseModel):
+    card_order_fee_htg: Optional[int] = None
+    card_image_url: Optional[str] = None
+    card_description: Optional[str] = None
+    card_withdrawal_fee_percent: Optional[float] = None
+    card_withdrawal_fee_fixed: Optional[float] = None
+    card_provider_name: Optional[str] = None
+
+@api_router.put("/admin/card-settings")
+async def admin_update_card_settings(
+    settings: CardSettingsUpdate,
+    admin: dict = Depends(get_admin_user)
+):
+    """Update virtual card settings"""
+    update_doc = {k: v for k, v in settings.model_dump().items() if v is not None}
+    update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_doc["updated_by"] = admin["user_id"]
+    
+    await db.card_settings.update_one(
+        {"setting_id": "main"},
+        {"$set": update_doc},
+        upsert=True
+    )
+    
+    await log_action(admin["user_id"], "card_settings_update", {"fields_updated": list(update_doc.keys())})
+    
+    return {"message": "Card settings updated"}
+
+# ==================== ADMIN DEPOSIT DETAIL WITH CLIENT INFO ====================
+
+@api_router.get("/admin/deposits/{deposit_id}")
+async def admin_get_deposit_detail(
+    deposit_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """Get deposit details with client info"""
+    deposit = await db.deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    
+    # Get client info
+    client = await db.users.find_one(
+        {"user_id": deposit["user_id"]},
+        {"_id": 0, "full_name": 1, "email": 1, "phone": 1, "client_id": 1, "wallet_usd": 1, "wallet_htg": 1}
+    )
+    
+    deposit["client_info"] = client
+    return {"deposit": deposit}
+
+# ==================== ADMIN WITHDRAWAL DETAIL WITH CLIENT INFO ====================
+
+# Override the existing withdrawal view to include client info
+@api_router.get("/admin/withdrawals/{withdrawal_id}")
+async def admin_get_withdrawal_detail(
+    withdrawal_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """Get withdrawal details with client info"""
+    withdrawal = await db.withdrawals.find_one({"withdrawal_id": withdrawal_id}, {"_id": 0})
+    if not withdrawal:
+        raise HTTPException(status_code=404, detail="Withdrawal not found")
+    
+    # Get client info
+    client = await db.users.find_one(
+        {"user_id": withdrawal["user_id"]},
+        {"_id": 0, "full_name": 1, "email": 1, "phone": 1, "client_id": 1, "wallet_usd": 1, "wallet_htg": 1}
+    )
+    
+    withdrawal["client_info"] = client
+    return {"withdrawal": withdrawal}
+
+# ==================== PUBLIC APP CONFIG ====================
+
+@api_router.get("/public/app-config")
+async def get_public_app_config():
+    """Get public app configuration"""
+    # Get main settings
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    
+    # Get card settings
+    card_settings = await db.card_settings.find_one({"setting_id": "main"}, {"_id": 0})
+    
+    # Get affiliate settings
+    affiliate_settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    
+    config = {
+        # Manual deposit config
+        "moncash_enabled": settings.get("moncash_enabled", False) if settings else False,
+        "moncash_number": settings.get("moncash_number") if settings else None,
+        "natcash_enabled": settings.get("natcash_enabled", False) if settings else False,
+        "natcash_number": settings.get("natcash_number") if settings else None,
+        
+        # Card config
+        "card_order_fee_htg": card_settings.get("card_order_fee_htg", 500) if card_settings else 500,
+        "card_image_url": card_settings.get("card_image_url", "") if card_settings else "",
+        "card_description": card_settings.get("card_description", "") if card_settings else "",
+        "card_provider_name": card_settings.get("card_provider_name", "KAYICOM Virtual Card") if card_settings else "KAYICOM Virtual Card",
+        
+        # Affiliate config
+        "affiliate_reward_htg": affiliate_settings.get("affiliate_reward_htg", 2000) if affiliate_settings else 2000,
+        "affiliate_cards_required": affiliate_settings.get("affiliate_cards_required", 5) if affiliate_settings else 5,
+        
+        # Crisp chat
+        "crisp_enabled": settings.get("crisp_enabled", False) if settings else False,
+        "crisp_website_id": settings.get("crisp_website_id") if settings else None
+    }
+    
+    return config
+
+# ==================== VIRTUAL CARD ORDER UPDATE CARD DETAILS ====================
+
+@api_router.patch("/admin/virtual-card-orders/{order_id}/details")
+async def admin_update_card_details(
+    order_id: str,
+    card_name: Optional[str] = None,
+    card_last4: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    """Update card details for an approved order"""
+    order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    update_doc = {}
+    if card_name:
+        update_doc["card_name"] = card_name
+    if card_last4:
+        update_doc["card_last4"] = card_last4
+    
+    if update_doc:
+        update_doc["details_updated_at"] = datetime.now(timezone.utc).isoformat()
+        await db.virtual_card_orders.update_one(
+            {"order_id": order_id},
+            {"$set": update_doc}
+        )
+    
+    return {"message": "Card details updated"}
 
 # ==================== MAIN ROUTES ====================
 
