@@ -25,6 +25,87 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+// Install App Button Component - Shows at bottom of page
+function InstallAppButton({ getText }) {
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+      return;
+    }
+
+    const handleBeforeInstall = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setIsInstalled(true);
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) {
+      alert(getText(
+        'Pou enstale: Klike sou Menu (⋮) nan Chrome epi chwazi "Add to Home screen"',
+        'Pour installer: Cliquez sur Menu (⋮) dans Chrome et choisissez "Ajouter à l\'écran d\'accueil"',
+        'To install: Click Menu (⋮) in Chrome and select "Add to Home screen"'
+      ));
+      return;
+    }
+
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setIsInstalled(true);
+    }
+    setDeferredPrompt(null);
+  };
+
+  if (isInstalled) return null;
+
+  return (
+    <section className="py-8 px-6 bg-stone-800 border-t border-stone-700">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 bg-gradient-to-br from-[#EA580C] to-[#F59E0B] rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/20">
+              <Smartphone size={28} className="text-white" />
+            </div>
+            <div className="text-center sm:text-left">
+              <h3 className="text-white font-bold text-lg">
+                {getText('Enstale App KAYICOM', 'Installer l\'App KAYICOM', 'Install KAYICOM App')}
+              </h3>
+              <p className="text-stone-400 text-sm">
+                {getText('Leje, rapid, travay san entènèt', 'Légère, rapide, fonctionne hors ligne', 'Lightweight, fast, works offline')}
+              </p>
+            </div>
+          </div>
+          
+          <Button
+            onClick={handleInstall}
+            className="bg-gradient-to-r from-[#EA580C] to-[#F59E0B] hover:from-[#C2410C] hover:to-[#D97706] text-white font-bold px-8 py-6 h-auto rounded-full shadow-lg shadow-orange-500/30"
+          >
+            <Download size={20} className="mr-2" />
+            {getText('Enstale', 'Installer', 'Install')}
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // Install App Section Component
 function InstallAppSection({ getText }) {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -668,6 +749,9 @@ export default function Landing() {
           </Link>
         </div>
       </section>
+
+      {/* Install App Button - Bottom */}
+      <InstallAppButton getText={getText} />
 
       {/* Footer */}
       <footer className="py-12 px-6 bg-stone-900">
