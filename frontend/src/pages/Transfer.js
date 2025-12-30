@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
@@ -16,7 +16,12 @@ import {
   AlertCircle,
   User,
   QrCode,
-  Keyboard
+  Keyboard,
+  CheckCircle,
+  Loader2,
+  Phone,
+  Mail,
+  XCircle
 } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
@@ -33,12 +38,61 @@ export default function Transfer() {
   const [loading, setLoading] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [inputMode, setInputMode] = useState('keyboard'); // 'keyboard' or 'qr'
+  
+  // Client info state
+  const [clientInfo, setClientInfo] = useState(null);
+  const [lookingUpClient, setLookingUpClient] = useState(false);
+  const [clientNotFound, setClientNotFound] = useState(false);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
     if (language === 'fr') return fr;
     return en;
   };
+
+  // Lookup client info when recipient ID changes
+  const lookupClient = useCallback(async (identifier) => {
+    if (!identifier || identifier.length < 8) {
+      setClientInfo(null);
+      setClientNotFound(false);
+      return;
+    }
+    
+    setLookingUpClient(true);
+    setClientNotFound(false);
+    
+    try {
+      const response = await axios.post(`${API}/transfers/lookup-recipient`, {
+        client_id: identifier.toUpperCase()
+      });
+      
+      if (response.data && response.data.client_id) {
+        setClientInfo(response.data);
+        setClientNotFound(false);
+      } else {
+        setClientInfo(null);
+        setClientNotFound(true);
+      }
+    } catch (error) {
+      setClientInfo(null);
+      setClientNotFound(true);
+    } finally {
+      setLookingUpClient(false);
+    }
+  }, []);
+
+  // Lookup client when recipientId changes with debounce
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (recipientId.length >= 8) {
+        lookupClient(recipientId);
+      } else {
+        setClientInfo(null);
+        setClientNotFound(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [recipientId, lookupClient]);
 
   // Check if there's a recipient ID in URL params (from QR share link)
   useEffect(() => {
@@ -188,16 +242,83 @@ export default function Transfer() {
             className="pl-10 uppercase font-mono"
             data-testid="transfer-recipient"
           />
-          {recipientId && (
+          {lookingUpClient && (
+            <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 animate-spin" size={20} />
+          )}
+          {recipientId && !lookingUpClient && (
             <button
-              onClick={() => setRecipientId('')}
+              onClick={() => { setRecipientId(''); setClientInfo(null); setClientNotFound(false); }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
             >
               ×
             </button>
           )}
         </div>
-        <p className="text-sm text-stone-500 mt-1">
+        
+        {/* Client Info Card - Shows when client is found */}
+        {clientInfo && (
+          <div className="mt-3 p-4 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700 rounded-xl">
+            <div className="flex items-start gap-3">
+              <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-800 rounded-full flex items-center justify-center flex-shrink-0">
+                <CheckCircle className="text-emerald-600 dark:text-emerald-400" size={24} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-bold text-emerald-800 dark:text-emerald-300 text-lg truncate">
+                  {clientInfo.full_name}
+                </p>
+                <div className="mt-1 space-y-1">
+                  <p className="text-sm text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+                    <User size={14} />
+                    <span className="font-mono">{clientInfo.client_id}</span>
+                  </p>
+                  {clientInfo.phone && (
+                    <p className="text-sm text-emerald-600 dark:text-emerald-500 flex items-center gap-2">
+                      <Phone size={14} />
+                      <span>{clientInfo.phone}</span>
+                    </p>
+                  )}
+                  {clientInfo.email && (
+                    <p className="text-sm text-emerald-600 dark:text-emerald-500 flex items-center gap-2">
+                      <Mail size={14} />
+                      <span className="truncate">{clientInfo.email}</span>
+                    </p>
+                  )}
+                </div>
+                {clientInfo.kyc_status === 'approved' && (
+                  <div className="mt-2 inline-flex items-center gap-1 text-xs bg-emerald-200 dark:bg-emerald-700 text-emerald-800 dark:text-emerald-200 px-2 py-1 rounded-full">
+                    <CheckCircle size={12} />
+                    {getText('Verifye', 'Vérifié', 'Verified')}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Client Not Found - Shows when lookup failed */}
+        {clientNotFound && recipientId.length >= 8 && !lookingUpClient && (
+          <div className="mt-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-xl">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-red-100 dark:bg-red-800 rounded-full flex items-center justify-center flex-shrink-0">
+                <XCircle className="text-red-600 dark:text-red-400" size={20} />
+              </div>
+              <div>
+                <p className="font-semibold text-red-800 dark:text-red-300">
+                  {getText('Kliyan pa jwenn', 'Client non trouvé', 'Client not found')}
+                </p>
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  {getText(
+                    'Verifye ID kliyan an epi eseye ankò',
+                    'Vérifiez l\'ID du client et réessayez',
+                    'Check the client ID and try again'
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        <p className="text-sm text-stone-500 mt-2">
           {getText(
             'Antre ID oswa skane QR code moun nan',
             'Entrez l\'ID ou scannez le QR code du destinataire',
@@ -225,22 +346,26 @@ export default function Transfer() {
       </div>
 
       {/* Summary */}
-      {amount && parseFloat(amount) > 0 && (
-        <div className="bg-slate-50 rounded-xl p-4 space-y-2">
-          <div className="flex justify-between text-slate-600">
-            <span>Montant à envoyer</span>
-            <span>{formatCurrency(parseFloat(amount), currency)}</span>
+      {amount && parseFloat(amount) > 0 && clientInfo && (
+        <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4 space-y-2 border border-stone-200 dark:border-stone-700">
+          <div className="flex justify-between text-stone-600 dark:text-stone-400">
+            <span>{getText('Montan pou voye', 'Montant à envoyer', 'Amount to send')}</span>
+            <span className="font-semibold text-stone-900 dark:text-white">{formatCurrency(parseFloat(amount), currency)}</span>
           </div>
-          <div className="flex justify-between text-slate-600">
-            <span>Destinataire</span>
-            <span className="font-mono">{recipientId || '-'}</span>
+          <div className="flex justify-between text-stone-600 dark:text-stone-400">
+            <span>{getText('Destinatè', 'Destinataire', 'Recipient')}</span>
+            <span className="font-semibold text-stone-900 dark:text-white">{clientInfo.full_name}</span>
+          </div>
+          <div className="flex justify-between text-stone-600 dark:text-stone-400">
+            <span>Client ID</span>
+            <span className="font-mono text-stone-900 dark:text-white">{recipientId}</span>
           </div>
         </div>
       )}
 
       <Button 
         onClick={handleSubmit}
-        disabled={loading || !amount || !recipientId || parseFloat(amount) <= 0}
+        disabled={loading || !amount || !clientInfo || parseFloat(amount) <= 0}
         className="btn-primary w-full"
         data-testid="transfer-submit"
       >
@@ -258,18 +383,20 @@ export default function Transfer() {
 
   const renderSuccess = () => (
     <div className="text-center py-8">
-      <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+      <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
         <Check className="text-emerald-500" size={40} />
       </div>
-      <h3 className="text-2xl font-bold text-slate-900 mb-2">{t('transferSuccess')}</h3>
-      <p className="text-slate-600 mb-2">
-        Vous avez envoyé {formatCurrency(parseFloat(amount), currency)}
+      <h3 className="text-2xl font-bold text-stone-900 dark:text-white mb-2">{t('transferSuccess')}</h3>
+      <p className="text-stone-600 dark:text-stone-400 mb-2">
+        {getText('Ou voye', 'Vous avez envoyé', 'You sent')} {formatCurrency(parseFloat(amount), currency)}
       </p>
-      <p className="text-slate-500 mb-6">
-        à <span className="font-mono font-medium">{recipientId}</span>
+      <p className="text-stone-500 dark:text-stone-400 mb-6">
+        {getText('bay', 'à', 'to')} <span className="font-semibold text-stone-900 dark:text-white">{clientInfo?.full_name}</span>
+        <br />
+        <span className="font-mono text-sm">{recipientId}</span>
       </p>
-      <Button onClick={() => { setStep(1); setAmount(''); setRecipientId(''); }} className="btn-primary">
-        Nouveau transfert
+      <Button onClick={() => { setStep(1); setAmount(''); setRecipientId(''); setClientInfo(null); setClientNotFound(false); }} className="btn-primary">
+        {getText('Nouvo transfè', 'Nouveau transfert', 'New transfer')}
       </Button>
     </div>
   );

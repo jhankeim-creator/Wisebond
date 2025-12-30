@@ -151,11 +151,11 @@
   }
   
   .glass-effect {
-    @apply bg-white/70 backdrop-blur-xl border border-white/20 shadow-sm;
+    @apply bg-white backdrop-blur-xl border border-stone-200 shadow-sm;
   }
   
   .glass-dark {
-    @apply bg-stone-900/70 backdrop-blur-xl border border-white/10 shadow-lg;
+    @apply bg-stone-900 backdrop-blur-xl border border-stone-700 shadow-lg;
   }
   
   .gradient-text {

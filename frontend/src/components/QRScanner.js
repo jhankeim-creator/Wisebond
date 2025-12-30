@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { useLanguage } from '@/context/LanguageContext';
 import { Button } from '@/components/ui/button';
-import { Camera, X, FlipHorizontal } from 'lucide-react';
+import { Camera, X, AlertCircle } from 'lucide-react';
 
 export function QRScanner({ onScan, onClose }) {
   const { language } = useLanguage();
@@ -82,9 +82,9 @@ export function QRScanner({ onScan, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black">
+    <div className="fixed inset-0 z-50 bg-stone-900">
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-10 p-4 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent">
+      <div className="absolute top-0 left-0 right-0 z-10 p-4 flex items-center justify-between bg-stone-800 border-b border-stone-700">
         <h2 className="text-white font-semibold">
           {getText('Skane QR Code', 'Scanner QR Code', 'Scan QR Code')}
         </h2>
@@ -92,20 +92,23 @@ export function QRScanner({ onScan, onClose }) {
           variant="ghost"
           size="sm"
           onClick={handleClose}
-          className="text-white hover:bg-white/20"
+          className="text-white hover:bg-stone-700 bg-stone-700"
         >
           <X size={24} />
         </Button>
       </div>
 
       {/* Scanner Area */}
-      <div className="h-full flex flex-col items-center justify-center p-4">
+      <div className="h-full flex flex-col items-center justify-center p-4 pt-20">
         {!isScanning && !error && (
-          <div className="text-center">
-            <div className="w-24 h-24 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <div className="text-center bg-stone-800 rounded-2xl p-8 border border-stone-700">
+            <div className="w-24 h-24 bg-[#EA580C] rounded-2xl flex items-center justify-center mx-auto mb-6">
               <Camera size={48} className="text-white" />
             </div>
-            <p className="text-white/80 mb-6 max-w-xs">
+            <h3 className="text-white text-xl font-bold mb-2">
+              {getText('Skane QR Code', 'Scanner QR Code', 'Scan QR Code')}
+            </h3>
+            <p className="text-stone-400 mb-6 max-w-xs">
               {getText(
                 'Skane QR code lòt kliyan an pou voye li lajan',
                 'Scannez le QR code d\'un autre client pour lui envoyer de l\'argent',
@@ -114,7 +117,7 @@ export function QRScanner({ onScan, onClose }) {
             </p>
             <Button
               onClick={startScanner}
-              className="bg-[#EA580C] hover:bg-[#C2410C] text-white px-8 py-6 h-auto rounded-full"
+              className="bg-[#EA580C] hover:bg-[#C2410C] text-white px-8 py-6 h-auto rounded-full font-bold"
             >
               <Camera size={20} className="mr-2" />
               {getText('Louvri Kamera', 'Ouvrir Caméra', 'Open Camera')}
@@ -123,15 +126,17 @@ export function QRScanner({ onScan, onClose }) {
         )}
 
         {error && (
-          <div className="text-center">
-            <div className="w-24 h-24 bg-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
-              <X size={48} className="text-red-500" />
+          <div className="text-center bg-stone-800 rounded-2xl p-8 border border-red-500">
+            <div className="w-24 h-24 bg-red-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <AlertCircle size={48} className="text-white" />
             </div>
+            <h3 className="text-white text-xl font-bold mb-2">
+              {getText('Erè', 'Erreur', 'Error')}
+            </h3>
             <p className="text-red-400 mb-6">{error}</p>
             <Button
               onClick={startScanner}
-              variant="outline"
-              className="text-white border-white/30 hover:bg-white/10"
+              className="bg-stone-700 hover:bg-stone-600 text-white border border-stone-600"
             >
               {getText('Eseye ankò', 'Réessayer', 'Try again')}
             </Button>
@@ -147,8 +152,8 @@ export function QRScanner({ onScan, onClose }) {
         />
 
         {isScanning && (
-          <div className="mt-6 text-center">
-            <p className="text-white/60 text-sm">
+          <div className="mt-6 text-center bg-stone-800 rounded-xl px-6 py-4 border border-stone-700">
+            <p className="text-stone-300 text-sm">
               {getText(
                 'Vize QR code la nan kad la',
                 'Visez le QR code dans le cadre',
@@ -160,14 +165,16 @@ export function QRScanner({ onScan, onClose }) {
       </div>
 
       {/* Bottom hint */}
-      <div className="absolute bottom-8 left-0 right-0 text-center">
-        <p className="text-white/40 text-xs">
-          {getText(
-            'QR code dwe genyen Client ID KAYICOM',
-            'Le QR code doit contenir un ID Client KAYICOM',
-            'QR code must contain a KAYICOM Client ID'
-          )}
-        </p>
+      <div className="absolute bottom-8 left-0 right-0 text-center px-4">
+        <div className="bg-stone-800 rounded-xl px-4 py-3 border border-stone-700 inline-block">
+          <p className="text-stone-400 text-xs">
+            {getText(
+              'QR code dwe genyen Client ID KAYICOM',
+              'Le QR code doit contenir un ID Client KAYICOM',
+              'QR code must contain a KAYICOM Client ID'
+            )}
+          </p>
+        </div>
       </div>
     </div>
   );

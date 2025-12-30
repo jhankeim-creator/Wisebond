@@ -146,11 +146,11 @@ export default function Dashboard() {
                   ≈ ${htgToUsd(user?.wallet_htg || 0)} USD
                 </p>
               </div>
-              <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
+              <div className="w-14 h-14 bg-orange-700 rounded-xl flex items-center justify-center">
                 <span className="text-3xl font-bold">G</span>
               </div>
             </div>
-            <div className="flex items-center justify-between pt-4 border-t border-white/20">
+            <div className="flex items-center justify-between pt-4 border-t border-orange-300/50">
               <div className="flex items-center gap-2">
                 <div>
                   <p className="text-orange-200 text-xs">Client ID</p>
@@ -158,13 +158,13 @@ export default function Dashboard() {
                 </div>
                 <button 
                   onClick={copyClientId}
-                  className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg transition-colors"
+                  className="p-1.5 bg-orange-700 hover:bg-orange-600 rounded-lg transition-colors"
                   title={getText('Kopye ID', 'Copier ID', 'Copy ID')}
                 >
                   {copied ? <Check size={16} className="text-emerald-300" /> : <Copy size={16} />}
                 </button>
               </div>
-              <Logo size="small" className="opacity-70" />
+              <Logo size="small" />
             </div>
           </div>
 
@@ -180,14 +180,14 @@ export default function Dashboard() {
                   ≈ G {usdToHtg(user?.wallet_usd || 0)} HTG
                 </p>
               </div>
-              <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
+              <div className="w-14 h-14 bg-amber-600 rounded-xl flex items-center justify-center">
                 <span className="text-3xl font-bold">$</span>
               </div>
             </div>
-            <div className="flex items-center justify-between pt-4 border-t border-white/20">
+            <div className="flex items-center justify-between pt-4 border-t border-amber-400/50">
               <div className="flex items-center gap-2">
                 <span className={`w-2 h-2 rounded-full ${
-                  user?.kyc_status === 'approved' ? 'bg-white' : 'bg-white/50'
+                  user?.kyc_status === 'approved' ? 'bg-white' : 'bg-amber-300'
                 }`} />
                 <span className="text-sm text-amber-200 capitalize">{user?.kyc_status === 'approved' ? getText('Verifye', 'Vérifié', 'Verified') : user?.kyc_status}</span>
               </div>

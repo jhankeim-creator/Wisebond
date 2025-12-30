@@ -365,7 +365,7 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-[#FAFAF9]">
       {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 glass-effect border-b border-stone-200">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-stone-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <Logo />
@@ -379,7 +379,7 @@ export default function Landing() {
               ) : (
                 <>
                   <Link to="/login">
-                    <Button variant="ghost" className="font-medium text-stone-600 hover:text-[#EA580C]">
+                    <Button variant="ghost" className="font-medium text-stone-600 hover:text-[#EA580C] hover:bg-stone-100">
                       {t('login')}
                     </Button>
                   </Link>
@@ -471,7 +471,7 @@ export default function Landing() {
                 />
                 {/* Overlay Card */}
                 <div className="absolute bottom-6 left-6 right-6">
-                  <div className="bg-white/95 backdrop-blur-lg rounded-2xl p-5 shadow-xl">
+                  <div className="bg-white rounded-2xl p-5 shadow-xl border border-stone-200">
                     <div className="flex items-center gap-4 mb-3">
                       <div className="w-12 h-12 bg-gradient-to-br from-[#EA580C] to-amber-500 rounded-full flex items-center justify-center">
                         <DollarSign className="text-white" size={24} />
@@ -482,11 +482,11 @@ export default function Landing() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <div className="flex-1 bg-emerald-50 rounded-lg p-2 text-center">
+                      <div className="flex-1 bg-emerald-100 rounded-lg p-2 text-center border border-emerald-200">
                         <p className="text-emerald-600 font-semibold text-sm">+12.5%</p>
                         <p className="text-xs text-stone-500">{getText('Mwa sa', 'Ce mois', 'This month')}</p>
                       </div>
-                      <div className="flex-1 bg-orange-50 rounded-lg p-2 text-center">
+                      <div className="flex-1 bg-orange-100 rounded-lg p-2 text-center border border-orange-200">
                         <p className="text-[#EA580C] font-semibold text-sm">G 431K</p>
                         <p className="text-xs text-stone-500">HTG</p>
                       </div>
@@ -546,7 +546,7 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto relative">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 rounded-full text-amber-400 text-sm font-semibold mb-6">
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-900 rounded-full text-amber-400 text-sm font-semibold mb-6 border border-amber-700">
                 <CreditCard size={16} />
                 <span>{getText('Nouvo', 'Nouveau', 'New')}</span>
               </div>
