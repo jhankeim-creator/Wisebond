@@ -730,6 +730,75 @@ async def get_deposits(
     deposits = await db.deposits.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
     return {"deposits": deposits}
 
+# ==================== USER PAYMENT METHODS ====================
+
+class UserPaymentMethod(BaseModel):
+    method_type: str  # moncash, natcash, zelle, paypal, usdt, bank_usa, etc.
+    label: str  # User-friendly name like "My MonCash"
+    account_info: str  # Phone number, email, wallet address, or bank info
+
+@api_router.get("/user/payment-methods")
+async def get_user_payment_methods(current_user: dict = Depends(get_current_user)):
+    """Get all saved payment methods for the current user"""
+    methods = await db.user_payment_methods.find(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
+    return {"methods": methods}
+
+@api_router.post("/user/payment-methods")
+async def add_user_payment_method(
+    method: UserPaymentMethod,
+    current_user: dict = Depends(get_current_user)
+):
+    """Add a new payment method for the user"""
+    # Validate method type
+    valid_types = ['moncash', 'natcash', 'zelle', 'paypal', 'usdt', 'bank_usa', 'bank_mexico', 'bank_brazil', 'bank_chile']
+    if method.method_type not in valid_types:
+        raise HTTPException(status_code=400, detail=f"Invalid method type. Must be one of: {', '.join(valid_types)}")
+    
+    # Check if this exact account_info already exists for this user and method type
+    existing = await db.user_payment_methods.find_one({
+        "user_id": current_user["user_id"],
+        "method_type": method.method_type,
+        "account_info": method.account_info.strip()
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail="This payment method already exists")
+    
+    # Create the payment method
+    method_id = str(uuid.uuid4())
+    payment_method = {
+        "id": method_id,
+        "user_id": current_user["user_id"],
+        "method_type": method.method_type,
+        "label": method.label.strip() or method.method_type.replace('_', ' ').title(),
+        "account_info": method.account_info.strip(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.user_payment_methods.insert_one(payment_method)
+    
+    # Return without _id
+    payment_method.pop("_id", None)
+    return {"message": "Payment method added", "method": payment_method}
+
+@api_router.delete("/user/payment-methods/{method_id}")
+async def delete_user_payment_method(
+    method_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete a saved payment method"""
+    result = await db.user_payment_methods.delete_one({
+        "id": method_id,
+        "user_id": current_user["user_id"]
+    })
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+    
+    return {"message": "Payment method deleted"}
+
 # ==================== WITHDRAWAL ROUTES ====================
 
 @api_router.post("/withdrawals/create")
