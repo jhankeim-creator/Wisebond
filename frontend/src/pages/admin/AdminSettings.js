@@ -9,7 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Save, Key, Mail, Wallet, CreditCard, DollarSign, Shield, MessageSquare, Phone, Smartphone } from 'lucide-react';
+import { Save, Key, Mail, Wallet, CreditCard, DollarSign, Shield, MessageSquare, Phone, Smartphone, Send } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
@@ -34,6 +34,11 @@ export default function AdminSettings() {
     ultramsg_token: '',
     waha_api_url: '',
     waha_session: 'default',
+    
+    // Telegram (FREE & Unlimited)
+    telegram_enabled: false,
+    telegram_bot_token: '',
+    telegram_chat_id: '',
     
     // USDT (Plisio)
     plisio_enabled: false,
@@ -502,6 +507,97 @@ export default function AdminSettings() {
                     </div>
                   </div>
                 )}
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
+        {/* Telegram Notifications (FREE) */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Send size={20} className="text-blue-500" />
+                  Telegram Bot
+                  <Badge className="bg-emerald-500 text-white text-xs">GRATIS / FREE</Badge>
+                </CardTitle>
+                <CardDescription>
+                  {getText('Notifikasyon Telegram gratis e san limit', 'Notifications Telegram gratuites et illimitées', 'Free and unlimited Telegram notifications')}
+                </CardDescription>
+              </div>
+              <Switch
+                checked={settings.telegram_enabled}
+                onCheckedChange={(checked) => setSettings({...settings, telegram_enabled: checked})}
+              />
+            </div>
+          </CardHeader>
+          {settings.telegram_enabled && (
+            <CardContent className="space-y-4 border-t pt-4">
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+                <h4 className="font-semibold text-blue-800 dark:text-blue-300 mb-3">
+                  {getText('Kijan pou konfigire Telegram Bot:', 'Comment configurer le bot Telegram:', 'How to setup Telegram Bot:')}
+                </h4>
+                <ol className="list-decimal list-inside text-blue-700 dark:text-blue-400 space-y-2 text-sm">
+                  <li>{getText('Chèche', 'Recherchez', 'Search for')} <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">@BotFather</code> {getText('nan Telegram', 'sur Telegram', 'on Telegram')}</li>
+                  <li>{getText('Voye', 'Envoyez', 'Send')} <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">/newbot</code> {getText('epi swiv enstriksyon yo', 'et suivez les instructions', 'and follow instructions')}</li>
+                  <li>{getText('Kopye Bot Token ou resevwa a', 'Copiez le Bot Token reçu', 'Copy the Bot Token you receive')}</li>
+                  <li>{getText('Voye yon mesaj bay bot ou a', 'Envoyez un message à votre bot', 'Send a message to your bot')}</li>
+                  <li>{getText('Ale sou', 'Allez sur', 'Go to')} <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">https://api.telegram.org/bot[TOKEN]/getUpdates</code></li>
+                  <li>{getText('Jwenn', 'Trouvez', 'Find')} <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">chat.id</code> {getText('nan repons lan', 'dans la réponse', 'in the response')}</li>
+                </ol>
+              </div>
+              
+              <div>
+                <Label>Bot Token</Label>
+                <Input
+                  type="password"
+                  placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+                  value={settings.telegram_bot_token || ''}
+                  onChange={(e) => setSettings({...settings, telegram_bot_token: e.target.value})}
+                  className="mt-1 font-mono"
+                />
+              </div>
+              
+              <div>
+                <Label>Chat ID</Label>
+                <Input
+                  placeholder="-1001234567890"
+                  value={settings.telegram_chat_id || ''}
+                  onChange={(e) => setSettings({...settings, telegram_chat_id: e.target.value})}
+                  className="mt-1 font-mono"
+                />
+                <p className="text-xs text-stone-500 mt-1">
+                  {getText('Chat ID ou oswa ID gwoup la', 'Votre Chat ID ou ID du groupe', 'Your Chat ID or group ID')}
+                </p>
+              </div>
+              
+              {/* Test Telegram */}
+              <div className="bg-stone-100 dark:bg-stone-800 rounded-xl p-4">
+                <h4 className="font-semibold mb-3">
+                  {getText('Teste Notifikasyon Telegram', 'Tester Notification Telegram', 'Test Telegram Notification')}
+                </h4>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const res = await axios.post(`${API}/admin/test-telegram`, {
+                        message: '🔔 Tès notifikasyon depi KAYICOM Admin!'
+                      });
+                      if (res.data.success) {
+                        toast.success(getText('Mesaj Telegram voye! ✅', 'Message Telegram envoyé! ✅', 'Telegram message sent! ✅'));
+                      } else {
+                        toast.error(res.data.message);
+                      }
+                    } catch (e) {
+                      toast.error(getText('Erè nan tès', 'Erreur de test', 'Test error'));
+                    }
+                  }}
+                  className="w-full"
+                >
+                  <Send size={16} className="mr-2" />
+                  {getText('Voye Tès Telegram', 'Envoyer Test Telegram', 'Send Telegram Test')}
+                </Button>
               </div>
             </CardContent>
           )}

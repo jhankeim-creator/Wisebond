@@ -194,6 +194,11 @@ class AdminSettingsUpdate(BaseModel):
     # WAHA (self-hosted)
     waha_api_url: Optional[str] = None
     waha_session: Optional[str] = None
+    
+    # Telegram Bot (free, unlimited)
+    telegram_enabled: Optional[bool] = None
+    telegram_bot_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
 
     # USDT (Plisio)
     plisio_enabled: Optional[bool] = None
@@ -383,6 +388,43 @@ async def send_email(to_email: str, subject: str, html_content: str):
         return True
     except Exception as e:
         logger.error(f"Failed to send email: {e}")
+        return False
+
+async def send_telegram_notification(message: str):
+    """Send Telegram notification using bot"""
+    import httpx
+    
+    try:
+        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+        if not settings or not settings.get("telegram_enabled"):
+            return False
+        
+        bot_token = settings.get("telegram_bot_token")
+        chat_id = settings.get("telegram_chat_id")
+        
+        if not bot_token or not chat_id:
+            logger.warning("Telegram bot token or chat_id not configured")
+            return False
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={
+                    "chat_id": chat_id,
+                    "text": message,
+                    "parse_mode": "HTML"
+                },
+                timeout=30.0
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"Telegram notification sent successfully")
+                return True
+            else:
+                logger.error(f"Telegram error: {response.text}")
+                return False
+    except Exception as e:
+        logger.error(f"Failed to send Telegram notification: {e}")
         return False
 
 async def send_whatsapp_notification(phone_number: str, message: str):
@@ -3331,6 +3373,31 @@ async def admin_test_whatsapp(
         return {"success": True, "message": "Mesaj WhatsApp voye avèk siksè"}
     else:
         return {"success": False, "message": "Echèk voye mesaj WhatsApp. Verifye konfigirasyon API a."}
+
+class TestTelegramRequest(BaseModel):
+    message: str = "🔔 Tès notifikasyon Telegram depi KAYICOM"
+
+@api_router.post("/admin/test-telegram")
+async def admin_test_telegram(
+    request: TestTelegramRequest,
+    admin: dict = Depends(get_admin_user)
+):
+    """Test Telegram notification sending"""
+    success = await send_telegram_notification(request.message)
+    
+    # Log the test
+    await db.logs.insert_one({
+        "log_id": str(uuid.uuid4()),
+        "user_id": admin["user_id"],
+        "action": "telegram_test",
+        "details": {"success": success},
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+    
+    if success:
+        return {"success": True, "message": "Mesaj Telegram voye avèk siksè! ✅"}
+    else:
+        return {"success": False, "message": "Echèk voye mesaj Telegram. Verifye Bot Token ak Chat ID."}
 
 # ==================== MAIN ROUTES ====================
 
