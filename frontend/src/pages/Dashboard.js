@@ -21,7 +21,10 @@ import {
   Users,
   Copy,
   Check,
-  QrCode
+  QrCode,
+  Eye,
+  Plus,
+  Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -36,6 +39,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
+  const [virtualCards, setVirtualCards] = useState([]);
 
   const copyClientId = () => {
     if (user?.client_id) {
@@ -58,12 +62,16 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
-      const [txResponse, ratesResponse] = await Promise.all([
+      const [txResponse, ratesResponse, cardsResponse] = await Promise.all([
         axios.get(`${API}/wallet/transactions?limit=5`),
-        axios.get(`${API}/exchange-rates`)
+        axios.get(`${API}/exchange-rates`),
+        axios.get(`${API}/virtual-cards/orders`).catch(() => ({ data: { orders: [] } }))
       ]);
       setTransactions(txResponse.data.transactions);
       setRates(ratesResponse.data);
+      // Only show approved cards
+      const approvedCards = (cardsResponse.data.orders || []).filter(c => c.status === 'approved');
+      setVirtualCards(approvedCards);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -329,26 +337,105 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Virtual Card Banner */}
-        <div className="bg-stone-900 rounded-2xl p-6 text-white relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_50%,rgba(234,88,12,0.2),transparent_50%)]" />
-          <div className="relative flex items-center justify-between">
-            <div>
-              <h3 className="text-xl font-bold mb-2">
-                {getText('Komande Kat Vityèl Ou', 'Commandez votre Carte Virtuelle', 'Order your Virtual Card')}
-              </h3>
-              <p className="text-stone-400">
-                {getText('Peye toupatou nan mond lan ak kat KAYICOM ou', 'Payez partout dans le monde avec votre carte KAYICOM', 'Pay anywhere in the world with your KAYICOM card')}
-              </p>
+        {/* User's Virtual Cards Section */}
+        {virtualCards.length > 0 && (
+          <Card className="overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-purple-600 to-purple-800 text-white">
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CreditCard size={20} />
+                  {getText('Kat Vityèl Mwen', 'Mes Cartes Virtuelles', 'My Virtual Cards')}
+                </div>
+                <Link to="/virtual-card">
+                  <Button size="sm" variant="secondary" className="bg-white/20 hover:bg-white/30 text-white border-0">
+                    {getText('Jere', 'Gérer', 'Manage')}
+                    <ChevronRight size={16} className="ml-1" />
+                  </Button>
+                </Link>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-4">
+              <div className="grid gap-4">
+                {virtualCards.slice(0, 2).map((card) => (
+                  <div 
+                    key={card.order_id} 
+                    className={`relative rounded-xl p-4 text-white overflow-hidden ${
+                      card.card_type === 'mastercard' 
+                        ? 'bg-gradient-to-br from-orange-500 via-red-500 to-pink-600' 
+                        : 'bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-white/70 text-xs uppercase tracking-wide mb-1">
+                          {card.card_brand || getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card')}
+                        </p>
+                        <p className="font-mono text-lg tracking-wider">
+                          •••• •••• •••• {card.card_last4 || '****'}
+                        </p>
+                        <p className="text-white/80 text-sm mt-2">{card.card_email}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <div className="w-12 h-8 bg-white/20 rounded flex items-center justify-center">
+                          <span className="font-bold text-sm uppercase">{card.card_type || 'VISA'}</span>
+                        </div>
+                        <Link to="/virtual-card">
+                          <Button size="sm" variant="ghost" className="text-white/80 hover:text-white hover:bg-white/20 h-7 px-2">
+                            <Eye size={14} className="mr-1" />
+                            {getText('Detay', 'Détails', 'Details')}
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Quick Top-up CTA */}
+              <div className="mt-4 pt-4 border-t border-stone-200 dark:border-stone-700 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-stone-700 dark:text-stone-300">
+                    {getText('Balans USD disponib', 'Solde USD disponible', 'Available USD Balance')}
+                  </p>
+                  <p className="text-lg font-bold text-emerald-600">${(user?.wallet_usd || 0).toFixed(2)}</p>
+                </div>
+                <Link to="/virtual-card">
+                  <Button size="sm" className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                    <Plus size={16} className="mr-1" />
+                    {getText('Top-up kat', 'Recharger carte', 'Top-up card')}
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Virtual Card Banner - Show only if no cards */}
+        {virtualCards.length === 0 && (
+          <div className="bg-stone-900 rounded-2xl p-6 text-white relative overflow-hidden">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_50%,rgba(234,88,12,0.2),transparent_50%)]" />
+            <div className="relative flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="text-amber-400" size={20} />
+                  <span className="text-amber-400 text-sm font-medium">{getText('NOUVO', 'NOUVEAU', 'NEW')}</span>
+                </div>
+                <h3 className="text-xl font-bold mb-2">
+                  {getText('Komande Kat Vityèl Ou', 'Commandez votre Carte Virtuelle', 'Order your Virtual Card')}
+                </h3>
+                <p className="text-stone-400">
+                  {getText('Peye toupatou nan mond lan ak kat KAYICOM ou', 'Payez partout dans le monde avec votre carte KAYICOM', 'Pay anywhere in the world with your KAYICOM card')}
+                </p>
+              </div>
+              <Link to="/virtual-card">
+                <Button className="bg-gradient-to-r from-[#EA580C] to-[#F59E0B] hover:opacity-90">
+                  <CreditCard className="mr-2" size={18} />
+                  {getText('Komande', 'Commander', 'Order')}
+                </Button>
+              </Link>
             </div>
-            <Link to="/virtual-card">
-              <Button className="bg-gradient-to-r from-[#EA580C] to-[#F59E0B] hover:opacity-90">
-                <CreditCard className="mr-2" size={18} />
-                {getText('Komande', 'Commander', 'Order')}
-              </Button>
-            </Link>
           </div>
-        </div>
+        )}
       </div>
 
       {/* QR Code Modal for Receiving Money */}

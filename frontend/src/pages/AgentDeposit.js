@@ -24,9 +24,13 @@ import {
   Download,
   Flag,
   CheckCircle,
-  Loader2
+  Loader2,
+  QrCode,
+  Camera,
+  ScanLine
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import { QRScanner } from '@/components/QRScanner';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
@@ -56,12 +60,37 @@ export default function AgentDeposit() {
   const [reportReason, setReportReason] = useState('');
   const [reportDetails, setReportDetails] = useState('');
   const [reports, setReports] = useState([]);
+  
+  // QR Scanner
+  const [showQRScanner, setShowQRScanner] = useState(false);
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
     if (language === 'fr') return fr;
     return en;
   }, [language]);
+
+  // Handle QR code scan
+  const handleQRScan = (scannedData) => {
+    setShowQRScanner(false);
+    
+    // The QR code can contain client ID (KC12345) or phone number
+    // Try to extract the client identifier
+    let identifier = scannedData.trim();
+    
+    // If it's a KAYICOM QR code format, extract the ID
+    if (identifier.includes('kayicom:')) {
+      identifier = identifier.replace('kayicom:', '');
+    }
+    
+    // Set the identifier and trigger lookup
+    setClientIdentifier(identifier);
+    toast.success(getText(
+      'QR Code skane! Rechèch kliyan...',
+      'QR Code scanné! Recherche du client...',
+      'QR Code scanned! Looking up client...'
+    ));
+  };
 
   // Check agent status on mount
   useEffect(() => {
@@ -600,7 +629,29 @@ export default function AgentDeposit() {
                   onChange={(e) => setClientIdentifier(e.target.value)}
                   className="flex-1"
                 />
+                <Button
+                  type="button"
+                  onClick={() => setShowQRScanner(true)}
+                  className="bg-[#EA580C] hover:bg-[#C2410C] text-white px-4"
+                  title={getText('Skane QR Code kliyan', 'Scanner QR Code client', 'Scan client QR Code')}
+                >
+                  <QrCode size={20} />
+                </Button>
                 {lookingUpClient && <Loader2 className="animate-spin text-stone-400 mt-2" size={20} />}
+              </div>
+              
+              {/* QR Scan Hint */}
+              <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg">
+                <div className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                  <ScanLine size={16} />
+                  <span className="text-sm font-medium">
+                    {getText(
+                      'Ou ka skane QR code kliyan an pou jwenn li pi vit!',
+                      'Vous pouvez scanner le QR code du client pour le trouver plus rapidement!',
+                      'You can scan the client\'s QR code to find them faster!'
+                    )}
+                  </span>
+                </div>
               </div>
               
               {/* Client Info Display - Enhanced Card */}
@@ -908,6 +959,14 @@ export default function AgentDeposit() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* QR Scanner Modal */}
+        {showQRScanner && (
+          <QRScanner
+            onScan={handleQRScan}
+            onClose={() => setShowQRScanner(false)}
+          />
+        )}
       </div>
     </DashboardLayout>
   );
