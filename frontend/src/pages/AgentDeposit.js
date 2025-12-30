@@ -465,7 +465,7 @@ export default function AgentDeposit() {
   // Main agent dashboard
   return (
     <DashboardLayout title={getText('Ajan Depo', 'Agent Dépôt', 'Agent Deposit')}>
-      <div className="max-w-4xl mx-auto space-y-6" data-testid="agent-deposit-page">
+      <div className="max-w-4xl mx-auto space-y-6 w-full px-0" data-testid="agent-deposit-page">
         
         {/* Agent Dashboard Stats */}
         {dashboard && (

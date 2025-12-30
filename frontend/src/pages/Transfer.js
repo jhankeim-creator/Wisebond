@@ -173,7 +173,7 @@ export default function Transfer() {
   const renderForm = () => (
     <div className="space-y-6">
       {/* Balance Display */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <button
           onClick={() => setCurrency('HTG')}
           className={`p-4 rounded-xl border-2 transition-all ${
@@ -429,7 +429,7 @@ export default function Transfer() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="max-w-xl mx-auto">
+        <Card className="max-w-xl mx-auto w-full">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Send size={24} className="text-[#EA580C]" />

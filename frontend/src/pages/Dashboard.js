@@ -133,7 +133,7 @@ export default function Dashboard() {
         )}
 
         {/* Wallet Cards - Bento Grid */}
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 w-full">
           {/* HTG Wallet */}
           <div className="wallet-card-htg" data-testid="wallet-htg">
             <div className="flex justify-between items-start mb-6">
@@ -202,7 +202,7 @@ export default function Dashboard() {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-5 gap-3 md:gap-4">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3 md:gap-4">
           {quickActions.map((action) => {
             const Icon = action.icon;
             

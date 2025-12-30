@@ -129,8 +129,8 @@ export default function Register() {
       </div>
       
       {/* Right Panel - Form */}
-      <div className="flex-1 flex flex-col justify-center px-6 py-12 lg:px-20 overflow-y-auto">
-        <div className="max-w-md w-full mx-auto">
+      <div className="flex-1 flex flex-col justify-center px-4 sm:px-6 py-8 sm:py-12 lg:px-20 overflow-y-auto w-full">
+        <div className="max-w-md w-full mx-auto px-0">
           {/* Logo */}
           <Link to="/" className="block mb-8">
             <Logo />

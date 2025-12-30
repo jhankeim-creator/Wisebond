@@ -256,6 +256,7 @@
   margin-left: 280px;
   min-height: 100vh;
   background: #FAFAF9;
+  width: calc(100% - 280px);
 }
 
 @media (max-width: 1024px) {
@@ -270,6 +271,23 @@
   
   .main-content {
     margin-left: 0;
+    width: 100%;
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+/* Mobile centering fixes */
+@media (max-width: 640px) {
+  .main-content > div {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  
+  .max-w-xl, .max-w-md, .max-w-2xl, .max-w-4xl {
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
   }
 }
 
