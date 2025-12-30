@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useLanguage } from '@/context/LanguageContext';
-import { Download, X, Smartphone, Check } from 'lucide-react';
+import { Download, Smartphone, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function InstallPrompt() {
   const { language } = useLanguage();
   const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showBanner, setShowBanner] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
+  const [showButton, setShowButton] = useState(false);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -23,29 +22,28 @@ export function InstallPrompt() {
       return;
     }
 
-    // Check if dismissed recently (24 hours)
-    const dismissedTime = localStorage.getItem('pwa-dismissed');
-    if (dismissedTime && Date.now() - parseInt(dismissedTime) < 24 * 60 * 60 * 1000) {
-      setDismissed(true);
-      return;
-    }
-
     // Listen for beforeinstallprompt event
     const handleBeforeInstall = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      setShowBanner(true);
+      setShowButton(true);
     };
 
     // Listen for app installed event
     const handleAppInstalled = () => {
       setIsInstalled(true);
-      setShowBanner(false);
+      setShowButton(false);
       setDeferredPrompt(null);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
     window.addEventListener('appinstalled', handleAppInstalled);
+
+    // Show button on Android even without prompt
+    const userAgent = navigator.userAgent.toLowerCase();
+    if (/android/i.test(userAgent)) {
+      setShowButton(true);
+    }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -54,7 +52,15 @@ export function InstallPrompt() {
   }, []);
 
   const handleInstall = async () => {
-    if (!deferredPrompt) return;
+    if (!deferredPrompt) {
+      // Show manual instructions if no prompt available
+      alert(getText(
+        'Pou enstale: Klike sou Menu (⋮) nan Chrome epi chwazi "Add to Home screen"',
+        'Pour installer: Cliquez sur Menu (⋮) dans Chrome et choisissez "Ajouter à l\'écran d\'accueil"',
+        'To install: Click Menu (⋮) in Chrome and select "Add to Home screen"'
+      ));
+      return;
+    }
 
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
@@ -64,65 +70,40 @@ export function InstallPrompt() {
     }
     
     setDeferredPrompt(null);
-    setShowBanner(false);
   };
 
-  const handleDismiss = () => {
-    localStorage.setItem('pwa-dismissed', Date.now().toString());
-    setDismissed(true);
-    setShowBanner(false);
-  };
+  // Don't show if installed
+  if (isInstalled) return null;
 
-  // Don't show if installed, dismissed, or no prompt
-  if (isInstalled || dismissed || !showBanner) return null;
+  // Don't show if not on mobile/no prompt
+  if (!showButton) return null;
 
   return (
     <>
-      {/* Fixed bottom banner */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 animate-slide-up">
-        <div className="bg-gradient-to-r from-stone-900 via-stone-800 to-stone-900 border-t border-stone-700 shadow-2xl">
-          <div className="max-w-screen-lg mx-auto px-4 py-3">
-            <div className="flex items-center justify-between gap-3">
-              {/* Icon & Text */}
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="w-12 h-12 bg-gradient-to-br from-[#EA580C] to-[#F59E0B] rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg">
-                  <span className="text-white font-black text-xl">K</span>
-                </div>
-                <div className="min-w-0">
-                  <p className="text-white font-semibold text-sm truncate">
-                    {getText('Enstale KAYICOM', 'Installer KAYICOM', 'Install KAYICOM')}
-                  </p>
-                  <p className="text-stone-400 text-xs truncate">
-                    {getText('App leje, rapid, san entènèt', 'App légère, rapide, hors ligne', 'Lightweight, fast, offline')}
-                  </p>
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <Button
-                  onClick={handleInstall}
-                  size="sm"
-                  className="bg-gradient-to-r from-[#EA580C] to-[#F59E0B] hover:from-[#C2410C] hover:to-[#D97706] text-white font-semibold shadow-lg"
-                >
-                  <Download size={16} className="mr-1" />
-                  {getText('Enstale', 'Installer', 'Install')}
-                </Button>
-                <button
-                  onClick={handleDismiss}
-                  className="p-2 text-stone-400 hover:text-white transition-colors"
-                  aria-label="Close"
-                >
-                  <X size={20} />
-                </button>
-              </div>
+      {/* Fixed button at bottom */}
+      <div className="fixed bottom-4 left-4 right-4 z-50 flex justify-center pointer-events-none">
+        <Button
+          onClick={handleInstall}
+          className="pointer-events-auto bg-gradient-to-r from-[#EA580C] to-[#F59E0B] hover:from-[#C2410C] hover:to-[#D97706] text-white font-bold shadow-2xl shadow-orange-500/30 rounded-full px-6 py-6 h-auto animate-slide-up"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+              <Download size={20} />
+            </div>
+            <div className="text-left">
+              <p className="font-bold text-sm">
+                {getText('Enstale App', 'Installer App', 'Install App')}
+              </p>
+              <p className="text-xs text-orange-100 font-normal">
+                {getText('Leje & Rapid', 'Légère & Rapide', 'Light & Fast')}
+              </p>
             </div>
           </div>
-        </div>
+        </Button>
       </div>
 
-      {/* Add some padding to prevent content being hidden */}
-      <div className="h-20" />
+      {/* Spacer to prevent content overlap */}
+      <div className="h-24" />
     </>
   );
 }
