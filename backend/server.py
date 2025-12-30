@@ -279,6 +279,9 @@ class UserInfoUpdate(BaseModel):
     phone: Optional[str] = None
     full_name: Optional[str] = None
 
+class AccountDeleteRequest(BaseModel):
+    reason: str
+
 class CardApprovalWithDetails(BaseModel):
     card_name: Optional[str] = None
     card_last4: Optional[str] = None
@@ -2562,6 +2565,91 @@ async def admin_adjust_balance(user_id: str, adjustment: BalanceAdjustment, admi
     
     return {"message": "Balance adjusted successfully"}
 
+@api_router.delete("/admin/users/{user_id}")
+async def admin_delete_user(
+    user_id: str,
+    reason: str = Query(..., min_length=5, description="Reason for account deletion"),
+    admin: dict = Depends(get_admin_user)
+):
+    """Admin: Delete a user account and all associated data"""
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Don't allow deleting admin accounts
+    if user.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Cannot delete admin accounts")
+    
+    # Log the deletion before removing
+    await log_action(admin["user_id"], "user_account_delete", {
+        "deleted_user_id": user_id,
+        "deleted_user_email": user.get("email"),
+        "deleted_user_client_id": user.get("client_id"),
+        "reason": reason
+    })
+    
+    # Delete all associated data
+    await db.kyc.delete_many({"user_id": user_id})
+    await db.deposits.delete_many({"user_id": user_id})
+    await db.withdrawals.delete_many({"user_id": user_id})
+    await db.transactions.delete_many({"user_id": user_id})
+    await db.virtual_card_orders.delete_many({"user_id": user_id})
+    await db.virtual_card_deposits.delete_many({"user_id": user_id})
+    
+    # Finally delete the user
+    await db.users.delete_one({"user_id": user_id})
+    
+    return {"message": f"User account and all associated data deleted. Reason: {reason}"}
+
+# User self-delete account
+@api_router.delete("/users/me")
+async def user_delete_own_account(
+    request: AccountDeleteRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """User: Delete own account and all associated data"""
+    user_id = current_user["user_id"]
+    
+    # Don't allow deleting admin accounts
+    if current_user.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Admin accounts cannot self-delete")
+    
+    # Log the deletion before removing
+    await log_action(user_id, "user_self_delete", {
+        "user_email": current_user.get("email"),
+        "user_client_id": current_user.get("client_id"),
+        "reason": request.reason
+    })
+    
+    # Send confirmation email before deletion
+    try:
+        await send_email(
+            current_user["email"],
+            "KAYICOM - Kont Ou Efase / Account Deleted",
+            f"""
+            <h2>Kont Ou Efase / Your Account Has Been Deleted</h2>
+            <p>Demann sipresyon kont ou a te trete avèk siksè.</p>
+            <p>Your account deletion request has been processed successfully.</p>
+            <p><strong>Rezon / Reason:</strong> {request.reason}</p>
+            <p>Mèsi pou itilize KAYICOM. Thank you for using KAYICOM.</p>
+            """
+        )
+    except:
+        pass  # Continue even if email fails
+    
+    # Delete all associated data
+    await db.kyc.delete_many({"user_id": user_id})
+    await db.deposits.delete_many({"user_id": user_id})
+    await db.withdrawals.delete_many({"user_id": user_id})
+    await db.transactions.delete_many({"user_id": user_id})
+    await db.virtual_card_orders.delete_many({"user_id": user_id})
+    await db.virtual_card_deposits.delete_many({"user_id": user_id})
+    
+    # Finally delete the user
+    await db.users.delete_one({"user_id": user_id})
+    
+    return {"message": "Your account has been deleted successfully"}
+
 # KYC Admin
 @api_router.get("/admin/kyc")
 async def admin_get_kyc_submissions(
@@ -2623,6 +2711,29 @@ async def admin_review_kyc(
         await send_email(user["email"], subject, content)
     
     return {"message": f"KYC {action}d successfully"}
+
+@api_router.delete("/admin/kyc/{kyc_id}")
+async def admin_delete_kyc(
+    kyc_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """Delete a KYC submission so user can resubmit"""
+    kyc = await db.kyc.find_one({"kyc_id": kyc_id}, {"_id": 0})
+    if not kyc:
+        raise HTTPException(status_code=404, detail="KYC submission not found")
+    
+    # Delete the KYC record
+    await db.kyc.delete_one({"kyc_id": kyc_id})
+    
+    # Reset user's KYC status to allow resubmission
+    await db.users.update_one(
+        {"user_id": kyc["user_id"]},
+        {"$set": {"kyc_status": None}}
+    )
+    
+    await log_action(admin["user_id"], "kyc_delete", {"kyc_id": kyc_id, "user_id": kyc["user_id"]})
+    
+    return {"message": "KYC submission deleted. User can now resubmit."}
 
 # Deposits Admin
 @api_router.get("/admin/deposits")

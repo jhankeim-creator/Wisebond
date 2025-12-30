@@ -36,6 +36,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
+  const [approvedCards, setApprovedCards] = useState([]);
 
   const copyClientId = () => {
     if (user?.client_id) {
@@ -58,12 +59,16 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
-      const [txResponse, ratesResponse] = await Promise.all([
+      const [txResponse, ratesResponse, cardsResponse] = await Promise.all([
         axios.get(`${API}/wallet/transactions?limit=5`),
-        axios.get(`${API}/exchange-rates`)
+        axios.get(`${API}/exchange-rates`),
+        axios.get(`${API}/virtual-cards/orders`).catch(() => ({ data: { orders: [] } }))
       ]);
       setTransactions(txResponse.data.transactions);
       setRates(ratesResponse.data);
+      // Filter only approved cards
+      const approved = (cardsResponse.data.orders || []).filter(o => o.status === 'approved');
+      setApprovedCards(approved);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -329,26 +334,80 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Virtual Card Banner */}
-        <div className="bg-stone-900 rounded-2xl p-6 text-white relative overflow-hidden">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_50%,rgba(234,88,12,0.2),transparent_50%)]" />
-          <div className="relative flex items-center justify-between">
-            <div>
-              <h3 className="text-xl font-bold mb-2">
-                {getText('Komande Kat Vityèl Ou', 'Commandez votre Carte Virtuelle', 'Order your Virtual Card')}
-              </h3>
-              <p className="text-stone-400">
-                {getText('Peye toupatou nan mond lan ak kat KAYICOM ou', 'Payez partout dans le monde avec votre carte KAYICOM', 'Pay anywhere in the world with your KAYICOM card')}
-              </p>
+        {/* My Virtual Cards Section - Only show if user has approved cards */}
+        {approvedCards.length > 0 && (
+          <Card className="bg-gradient-to-br from-purple-600 to-indigo-700 text-white border-0 overflow-hidden">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <CreditCard size={20} />
+                  {getText('Kat Mwen Yo', 'Mes Cartes', 'My Cards')}
+                </h3>
+                <Link to="/virtual-card" className="text-purple-200 hover:text-white text-sm flex items-center gap-1">
+                  {getText('Wè tout', 'Voir tout', 'View all')}
+                  <ChevronRight size={16} />
+                </Link>
+              </div>
+              
+              <div className="space-y-3">
+                {approvedCards.slice(0, 2).map((card) => (
+                  <div key={card.order_id} className="bg-white/10 backdrop-blur-sm rounded-xl p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                        <CreditCard size={18} className="text-white" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-white">
+                          {card.card_brand || getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card')}
+                        </p>
+                        <p className="text-purple-200 text-sm font-mono">
+                          •••• •••• •••• {card.card_last4 || '****'}
+                        </p>
+                      </div>
+                    </div>
+                    <Link to="/virtual-card">
+                      <Button 
+                        size="sm" 
+                        className="bg-white/20 hover:bg-white/30 text-white border-0"
+                      >
+                        {getText('Detay', 'Détails', 'Details')}
+                      </Button>
+                    </Link>
+                  </div>
+                ))}
+              </div>
+              
+              {approvedCards.length > 2 && (
+                <p className="text-center text-purple-200 text-sm mt-3">
+                  +{approvedCards.length - 2} {getText('lòt kat', 'autres cartes', 'more cards')}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Virtual Card Banner - Only show if user doesn't have approved cards */}
+        {approvedCards.length === 0 && (
+          <div className="bg-stone-900 rounded-2xl p-6 text-white relative overflow-hidden">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_50%,rgba(234,88,12,0.2),transparent_50%)]" />
+            <div className="relative flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold mb-2">
+                  {getText('Komande Kat Vityèl Ou', 'Commandez votre Carte Virtuelle', 'Order your Virtual Card')}
+                </h3>
+                <p className="text-stone-400">
+                  {getText('Peye toupatou nan mond lan ak kat KAYICOM ou', 'Payez partout dans le monde avec votre carte KAYICOM', 'Pay anywhere in the world with your KAYICOM card')}
+                </p>
+              </div>
+              <Link to="/virtual-card">
+                <Button className="bg-gradient-to-r from-[#EA580C] to-[#F59E0B] hover:opacity-90">
+                  <CreditCard className="mr-2" size={18} />
+                  {getText('Komande', 'Commander', 'Order')}
+                </Button>
+              </Link>
             </div>
-            <Link to="/virtual-card">
-              <Button className="bg-gradient-to-r from-[#EA580C] to-[#F59E0B] hover:opacity-90">
-                <CreditCard className="mr-2" size={18} />
-                {getText('Komande', 'Commander', 'Order')}
-              </Button>
-            </Link>
           </div>
-        </div>
+        )}
       </div>
 
       {/* QR Code Modal for Receiving Money */}

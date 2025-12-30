@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Search, Eye, Ban, DollarSign, RefreshCw, UserX, CheckCircle, Edit, Save } from 'lucide-react';
+import { Search, Eye, Ban, DollarSign, RefreshCw, UserX, CheckCircle, Edit, Save, Trash2, AlertTriangle } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
@@ -23,6 +23,9 @@ export default function AdminUsers() {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({ email: '', phone: '', full_name: '' });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteReason, setDeleteReason] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -87,6 +90,32 @@ export default function AdminUsers() {
       fetchUsers();
     } catch (error) {
       toast.error(getText('Erè pandan mizajou', 'Erreur lors de la mise à jour', 'Error updating'));
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!selectedUser || !deleteReason.trim()) {
+      toast.error(getText('Antre rezon sipresyon an', 'Veuillez entrer une raison', 'Please enter a reason'));
+      return;
+    }
+
+    if (deleteReason.length < 5) {
+      toast.error(getText('Rezon an dwe gen omwen 5 karaktè', 'La raison doit contenir au moins 5 caractères', 'Reason must be at least 5 characters'));
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      await axios.delete(`${API}/admin/users/${selectedUser.user.user_id}?reason=${encodeURIComponent(deleteReason)}`);
+      toast.success(getText('Kont kliyan an efase', 'Compte client supprimé', 'Client account deleted'));
+      setShowDeleteModal(false);
+      setShowModal(false);
+      setDeleteReason('');
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || getText('Erè pandan sipresyon', 'Erreur lors de la suppression', 'Error deleting'));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -344,10 +373,81 @@ export default function AdminUsers() {
                         <p className="text-slate-500">{getText('Pa gen tranzaksyon', 'Aucune transaction', 'No transactions')}</p>
                       )}
                     </div>
+
+                    {/* Delete Account Button */}
+                    <div className="border-t pt-4 mt-4">
+                      <Button 
+                        onClick={() => setShowDeleteModal(true)}
+                        variant="outline"
+                        className="w-full text-red-600 border-red-300 hover:bg-red-50"
+                      >
+                        <Trash2 size={16} className="mr-2" />
+                        {getText('Siprime kont kliyan sa a', 'Supprimer ce compte client', 'Delete this client account')}
+                      </Button>
+                    </div>
                   </>
                 )}
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Modal */}
+        <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-red-600">
+                <AlertTriangle size={24} />
+                {getText('Siprime Kont Kliyan', 'Supprimer le Compte Client', 'Delete Client Account')}
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
+                <p className="text-red-700 dark:text-red-400 text-sm">
+                  <strong>{getText('Atansyon!', 'Attention!', 'Warning!')}</strong> {getText(
+                    'Aksyon sa a pap ka anile. Tout done ki asosye ak kont sa a (KYC, tranzaksyon, depo, retrè, kat vityèl) ap efase pou tout tan.',
+                    'Cette action est irréversible. Toutes les données associées à ce compte (KYC, transactions, dépôts, retraits, cartes virtuelles) seront définitivement supprimées.',
+                    'This action cannot be undone. All data associated with this account (KYC, transactions, deposits, withdrawals, virtual cards) will be permanently deleted.'
+                  )}
+                </p>
+              </div>
+
+              {selectedUser && (
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4">
+                  <p className="text-sm text-slate-500 mb-1">{getText('Kliyan', 'Client', 'Client')}</p>
+                  <p className="font-semibold">{selectedUser.user.full_name}</p>
+                  <p className="text-sm text-slate-500">{selectedUser.user.email}</p>
+                  <p className="text-xs text-slate-400 font-mono">{selectedUser.user.client_id}</p>
+                </div>
+              )}
+
+              <div>
+                <Label className="text-red-700 dark:text-red-400">{getText('Rezon pou sipresyon (Obligatwa)', 'Raison de suppression (Obligatoire)', 'Reason for deletion (Required)')}</Label>
+                <Input
+                  placeholder={getText('Ekri rezon an isit...', 'Écrivez la raison ici...', 'Write the reason here...')}
+                  value={deleteReason}
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                  className="mt-2"
+                />
+                <p className="text-xs text-slate-500 mt-1">{getText('Omwen 5 karaktè', 'Minimum 5 caractères', 'Minimum 5 characters')}</p>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <Button variant="outline" onClick={() => setShowDeleteModal(false)} className="flex-1">
+                  {getText('Anile', 'Annuler', 'Cancel')}
+                </Button>
+                <Button 
+                  onClick={handleDeleteUser}
+                  disabled={deleting || !deleteReason.trim() || deleteReason.length < 5}
+                  variant="destructive"
+                  className="flex-1"
+                >
+                  <Trash2 size={16} className="mr-2" />
+                  {deleting ? getText('Sipresyon...', 'Suppression...', 'Deleting...') : getText('Siprime', 'Supprimer', 'Delete')}
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
