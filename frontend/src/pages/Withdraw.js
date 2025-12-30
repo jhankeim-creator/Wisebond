@@ -24,7 +24,7 @@ const API = API_BASE;
 
 // Metòd retrè separe pa deviz
 // HTG: MonCash, NatCash sèlman
-// USD: Zelle, PayPal, USDT, Bank USA, Kat Vityèl
+// USD: Zelle, PayPal, USDT, Banks (USA, Mexico, Brazil, Chile), Kat Vityèl
 const fallbackWithdrawalMethodsByTargetCurrency = {
   HTG: [
     { id: 'moncash', name: 'MonCash', icon: Smartphone, placeholder: 'Nimewo telefòn MonCash' },
@@ -35,7 +35,10 @@ const fallbackWithdrawalMethodsByTargetCurrency = {
     { id: 'zelle', name: 'Zelle', icon: DollarSign, placeholder: 'Email ou telefòn Zelle' },
     { id: 'paypal', name: 'PayPal', icon: DollarSign, placeholder: 'Email PayPal' },
     { id: 'usdt', name: 'USDT', icon: Wallet, placeholder: 'Adrès USDT (TRC-20 ou ERC-20)' },
-    { id: 'bank_usa', name: 'Bank USA', icon: Building, placeholder: 'Routing + Account Number' }
+    { id: 'bank_usa', name: 'Bank USA 🇺🇸', icon: Building, placeholder: 'Routing + Account Number' },
+    { id: 'bank_mexico', name: 'Bank Mexico 🇲🇽', icon: Building, placeholder: 'CLABE (18 chif)' },
+    { id: 'bank_brazil', name: 'Bank Brazil 🇧🇷', icon: Building, placeholder: 'CPF/CNPJ + Chave PIX' },
+    { id: 'bank_chile', name: 'Bank Chile 🇨🇱', icon: Building, placeholder: 'RUT + Nimewo kont' }
   ]
 };
 
@@ -140,7 +143,12 @@ export default function Withdraw() {
     if (method === 'card') {
       const amt = parseFloat(amount);
       const range = (cardFees || []).find((f) => amt >= f.min_amount && amt <= f.max_amount);
-      return range ? Number(range.fee || 0) : 0;
+      if (!range) return 0;
+      // Support percentage fees for card
+      if (range.is_percentage) {
+        return amt * (range.fee / 100);
+      }
+      return Number(range.fee || 0);
     }
     
     const feeConfig = fees.find(f => 

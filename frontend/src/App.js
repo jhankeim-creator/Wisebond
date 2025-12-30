@@ -26,6 +26,8 @@ import Settings from "@/pages/Settings";
 import VirtualCard from "@/pages/VirtualCard";
 import TopUp from "@/pages/TopUp";
 import AgentDeposit from "@/pages/AgentDeposit";
+import Terms from "@/pages/Terms";
+import Privacy from "@/pages/Privacy";
 
 // Admin Pages
 import AdminDashboard from "@/pages/admin/AdminDashboard";
@@ -95,6 +97,8 @@ function AppRoutes() {
       <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
       <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
       <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/privacy" element={<Privacy />} />
       
       {/* Protected Routes */}
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

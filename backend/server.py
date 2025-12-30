@@ -208,8 +208,18 @@ class AdminSettingsUpdate(BaseModel):
     # Manual HTG deposits
     moncash_enabled: Optional[bool] = None
     moncash_number: Optional[str] = None
+    moncash_name: Optional[str] = None
+    moncash_qr: Optional[str] = None
     natcash_enabled: Optional[bool] = None
     natcash_number: Optional[str] = None
+    natcash_name: Optional[str] = None
+    natcash_qr: Optional[str] = None
+    
+    # USD payment methods
+    zelle_email: Optional[str] = None
+    zelle_name: Optional[str] = None
+    paypal_email: Optional[str] = None
+    paypal_name: Optional[str] = None
 
 class BulkEmailRequest(BaseModel):
     subject: str
@@ -876,7 +886,8 @@ async def get_withdrawals(
 async def get_withdrawal_fees():
     fees = await db.fees.find({}, {"_id": 0}).to_list(100)
     limits = await db.withdrawal_limits.find({}, {"_id": 0}).to_list(100)
-    return {"fees": fees, "limits": limits}
+    card_fees = await db.card_fees.find({}, {"_id": 0}).sort("min_amount", 1).to_list(100)
+    return {"fees": fees, "limits": limits, "card_fees": card_fees}
 
 # ==================== SWAP ROUTES ====================
 
@@ -2640,6 +2651,7 @@ class CardFeeConfig(BaseModel):
     min_amount: float
     max_amount: float
     fee: float
+    is_percentage: bool = False  # If true, fee is a percentage (e.g., 5 means 5%)
 
 @api_router.get("/admin/card-fees")
 async def admin_get_card_fees(admin: dict = Depends(get_admin_user)):
@@ -2738,15 +2750,33 @@ async def get_public_app_config():
         return {
             "moncash_enabled": False,
             "moncash_number": None,
+            "moncash_name": None,
+            "moncash_qr": None,
             "natcash_enabled": False,
-            "natcash_number": None
+            "natcash_number": None,
+            "natcash_name": None,
+            "natcash_qr": None,
+            "zelle_email": "payments@kayicom.com",
+            "zelle_name": "KAYICOM",
+            "paypal_email": "payments@kayicom.com",
+            "paypal_name": "KAYICOM",
+            "card_order_fee_htg": 500
         }
     
     return {
         "moncash_enabled": settings.get("moncash_enabled", False),
         "moncash_number": settings.get("moncash_number") if settings.get("moncash_enabled") else None,
+        "moncash_name": settings.get("moncash_name") if settings.get("moncash_enabled") else None,
+        "moncash_qr": settings.get("moncash_qr") if settings.get("moncash_enabled") else None,
         "natcash_enabled": settings.get("natcash_enabled", False),
-        "natcash_number": settings.get("natcash_number") if settings.get("natcash_enabled") else None
+        "natcash_number": settings.get("natcash_number") if settings.get("natcash_enabled") else None,
+        "natcash_name": settings.get("natcash_name") if settings.get("natcash_enabled") else None,
+        "natcash_qr": settings.get("natcash_qr") if settings.get("natcash_enabled") else None,
+        "zelle_email": settings.get("zelle_email", "payments@kayicom.com"),
+        "zelle_name": settings.get("zelle_name", "KAYICOM"),
+        "paypal_email": settings.get("paypal_email", "payments@kayicom.com"),
+        "paypal_name": settings.get("paypal_name", "KAYICOM"),
+        "card_order_fee_htg": settings.get("card_order_fee_htg", 500)
     }
 
 @api_router.put("/admin/settings")

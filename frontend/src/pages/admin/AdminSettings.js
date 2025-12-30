@@ -43,8 +43,18 @@ export default function AdminSettings() {
     // Manual HTG deposits
     moncash_enabled: true,
     moncash_number: '',
+    moncash_name: '',
+    moncash_qr: '',
     natcash_enabled: true,
     natcash_number: '',
+    natcash_name: '',
+    natcash_qr: '',
+    
+    // USD payment info
+    zelle_email: '',
+    zelle_name: '',
+    paypal_email: '',
+    paypal_name: '',
     
     // Fees & Affiliate
     card_order_fee_htg: 500,
@@ -583,7 +593,7 @@ export default function AdminSettings() {
                 <div>
                   <p className="font-semibold">MonCash</p>
                   <p className="text-sm text-stone-500 dark:text-stone-400">
-                    {getText('Mete nimewo a (ex: +509XXXXXXXX)', 'Numéro (ex: +509XXXXXXXX)', 'Number (e.g. +509XXXXXXXX)')}
+                    {getText('Enfòmasyon pou kliyan yo voye lajan', 'Informations pour que les clients envoient de l\'argent', 'Information for clients to send money')}
                   </p>
                 </div>
                 <Switch
@@ -591,15 +601,41 @@ export default function AdminSettings() {
                   onCheckedChange={(checked) => setSettings({ ...settings, moncash_enabled: checked })}
                 />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="moncash_name">{getText('Non Reseptè', 'Nom du destinataire', 'Recipient Name')}</Label>
+                  <Input
+                    id="moncash_name"
+                    placeholder="KAYICOM"
+                    value={settings.moncash_name || ''}
+                    onChange={(e) => setSettings({ ...settings, moncash_name: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="moncash_number">{getText('Nimewo MonCash', 'Numéro MonCash', 'MonCash number')}</Label>
+                  <Input
+                    id="moncash_number"
+                    placeholder="+50900000000"
+                    value={settings.moncash_number || ''}
+                    onChange={(e) => setSettings({ ...settings, moncash_number: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
               <div>
-                <Label htmlFor="moncash_number">{getText('Nimewo MonCash', 'Numéro MonCash', 'MonCash number')}</Label>
+                <Label htmlFor="moncash_qr">{getText('QR Kod (URL imaj)', 'QR Code (URL image)', 'QR Code (image URL)')}</Label>
                 <Input
-                  id="moncash_number"
-                  placeholder="+50900000000"
-                  value={settings.moncash_number || ''}
-                  onChange={(e) => setSettings({ ...settings, moncash_number: e.target.value })}
+                  id="moncash_qr"
+                  placeholder="https://example.com/qr-moncash.png"
+                  value={settings.moncash_qr || ''}
+                  onChange={(e) => setSettings({ ...settings, moncash_qr: e.target.value })}
                   className="mt-1"
                 />
+                <p className="text-xs text-stone-500 mt-1">{getText('Opsyonèl - ap afiche sou paj depo a', 'Optionnel - s\'affichera sur la page de dépôt', 'Optional - will display on deposit page')}</p>
+                {settings.moncash_qr && (
+                  <img src={settings.moncash_qr} alt="MonCash QR" className="mt-2 w-24 h-24 object-contain rounded border" />
+                )}
               </div>
             </div>
 
@@ -608,7 +644,7 @@ export default function AdminSettings() {
                 <div>
                   <p className="font-semibold">NatCash</p>
                   <p className="text-sm text-stone-500 dark:text-stone-400">
-                    {getText('Mete nimewo a (ex: +509XXXXXXXX)', 'Numéro (ex: +509XXXXXXXX)', 'Number (e.g. +509XXXXXXXX)')}
+                    {getText('Enfòmasyon pou kliyan yo voye lajan', 'Informations pour que les clients envoient de l\'argent', 'Information for clients to send money')}
                   </p>
                 </div>
                 <Switch
@@ -616,15 +652,94 @@ export default function AdminSettings() {
                   onCheckedChange={(checked) => setSettings({ ...settings, natcash_enabled: checked })}
                 />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label htmlFor="natcash_name">{getText('Non Reseptè', 'Nom du destinataire', 'Recipient Name')}</Label>
+                  <Input
+                    id="natcash_name"
+                    placeholder="KAYICOM"
+                    value={settings.natcash_name || ''}
+                    onChange={(e) => setSettings({ ...settings, natcash_name: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="natcash_number">{getText('Nimewo NatCash', 'Numéro NatCash', 'NatCash number')}</Label>
+                  <Input
+                    id="natcash_number"
+                    placeholder="+50900000000"
+                    value={settings.natcash_number || ''}
+                    onChange={(e) => setSettings({ ...settings, natcash_number: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
               <div>
-                <Label htmlFor="natcash_number">{getText('Nimewo NatCash', 'Numéro NatCash', 'NatCash number')}</Label>
+                <Label htmlFor="natcash_qr">{getText('QR Kod (URL imaj)', 'QR Code (URL image)', 'QR Code (image URL)')}</Label>
                 <Input
-                  id="natcash_number"
-                  placeholder="+50900000000"
-                  value={settings.natcash_number || ''}
-                  onChange={(e) => setSettings({ ...settings, natcash_number: e.target.value })}
+                  id="natcash_qr"
+                  placeholder="https://example.com/qr-natcash.png"
+                  value={settings.natcash_qr || ''}
+                  onChange={(e) => setSettings({ ...settings, natcash_qr: e.target.value })}
                   className="mt-1"
                 />
+                <p className="text-xs text-stone-500 mt-1">{getText('Opsyonèl - ap afiche sou paj depo a', 'Optionnel - s\'affichera sur la page de dépôt', 'Optional - will display on deposit page')}</p>
+                {settings.natcash_qr && (
+                  <img src={settings.natcash_qr} alt="NatCash QR" className="mt-2 w-24 h-24 object-contain rounded border" />
+                )}
+              </div>
+            </div>
+
+            {/* USD Payment Methods */}
+            <div className="border-t pt-4 mt-4">
+              <h4 className="font-semibold text-stone-800 dark:text-stone-200 mb-3">{getText('Metòd USD', 'Méthodes USD', 'USD Methods')}</h4>
+              
+              <div className="border rounded-xl p-4 space-y-3 mb-4">
+                <p className="font-medium">Zelle</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>{getText('Non Reseptè', 'Nom du destinataire', 'Recipient Name')}</Label>
+                    <Input
+                      placeholder="KAYICOM"
+                      value={settings.zelle_name || ''}
+                      onChange={(e) => setSettings({ ...settings, zelle_name: e.target.value })}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label>Email Zelle</Label>
+                    <Input
+                      placeholder="payments@kayicom.com"
+                      value={settings.zelle_email || ''}
+                      onChange={(e) => setSettings({ ...settings, zelle_email: e.target.value })}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border rounded-xl p-4 space-y-3">
+                <p className="font-medium">PayPal</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label>{getText('Non Reseptè', 'Nom du destinataire', 'Recipient Name')}</Label>
+                    <Input
+                      placeholder="KAYICOM"
+                      value={settings.paypal_name || ''}
+                      onChange={(e) => setSettings({ ...settings, paypal_name: e.target.value })}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label>Email PayPal</Label>
+                    <Input
+                      placeholder="payments@kayicom.com"
+                      value={settings.paypal_email || ''}
+                      onChange={(e) => setSettings({ ...settings, paypal_email: e.target.value })}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>

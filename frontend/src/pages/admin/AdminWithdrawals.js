@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/AdminLayout';
+import { useLanguage } from '@/context/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -11,12 +12,19 @@ import { Check, X, Eye, RefreshCw } from 'lucide-react';
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminWithdrawals() {
+  const { language } = useLanguage();
   const [withdrawals, setWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('pending');
   const [selectedWithdrawal, setSelectedWithdrawal] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [processing, setProcessing] = useState(false);
+
+  const getText = (ht, fr, en) => {
+    if (language === 'ht') return ht;
+    if (language === 'fr') return fr;
+    return en;
+  };
 
   const fetchWithdrawals = useCallback(async () => {
     setLoading(true);
@@ -40,11 +48,13 @@ export default function AdminWithdrawals() {
     setProcessing(true);
     try {
       await axios.patch(`${API}/admin/withdrawals/${selectedWithdrawal.withdrawal_id}?action=${action}`);
-      toast.success(action === 'approve' ? 'Retrait approuvé!' : 'Retrait rejeté (montant remboursé)');
+      toast.success(action === 'approve' 
+        ? getText('Retrè apwouve!', 'Retrait approuvé!', 'Withdrawal approved!') 
+        : getText('Retrè rejte (lajan ranbouse)', 'Retrait rejeté (montant remboursé)', 'Withdrawal rejected (amount refunded)'));
       setShowModal(false);
       fetchWithdrawals();
     } catch (error) {
-      toast.error('Erreur lors du traitement');
+      toast.error(getText('Erè pandan tretman', 'Erreur lors du traitement', 'Error processing'));
     } finally {
       setProcessing(false);
     }
@@ -56,7 +66,7 @@ export default function AdminWithdrawals() {
   };
 
   return (
-    <AdminLayout title="Gestion des retraits">
+    <AdminLayout title={getText('Jesyon Retrè', 'Gestion des retraits', 'Withdrawal Management')}>
       <div className="space-y-6" data-testid="admin-withdrawals">
         {/* Filters */}
         <Card>
@@ -68,14 +78,17 @@ export default function AdminWithdrawals() {
                   variant={filter === f ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => setFilter(f)}
-                  className={filter === f ? 'bg-[#0047AB]' : ''}
+                  className={filter === f ? 'bg-[#EA580C]' : ''}
                 >
-                  {f === 'pending' ? 'En attente' : f === 'completed' ? 'Complétés' : f === 'rejected' ? 'Rejetés' : 'Tous'}
+                  {f === 'pending' ? getText('An Atant', 'En attente', 'Pending') : 
+                   f === 'completed' ? getText('Konplete', 'Complétés', 'Completed') : 
+                   f === 'rejected' ? getText('Rejte', 'Rejetés', 'Rejected') : 
+                   getText('Tout', 'Tous', 'All')}
                 </Button>
               ))}
               <Button variant="outline" size="sm" onClick={fetchWithdrawals} className="ml-auto">
                 <RefreshCw size={16} className="mr-2" />
-                Actualiser
+                {getText('Aktyalize', 'Actualiser', 'Refresh')}
               </Button>
             </div>
           </CardContent>
@@ -84,7 +97,7 @@ export default function AdminWithdrawals() {
         {/* Withdrawals Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Retraits ({withdrawals.length})</CardTitle>
+            <CardTitle>{getText('Retrè', 'Retraits', 'Withdrawals')} ({withdrawals.length})</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -92,24 +105,24 @@ export default function AdminWithdrawals() {
                 <thead>
                   <tr>
                     <th>Client ID</th>
-                    <th>Montant</th>
-                    <th>Frais</th>
-                    <th>Net</th>
-                    <th>Méthode</th>
-                    <th>Destination</th>
+                    <th>{getText('Montan', 'Montant', 'Amount')}</th>
+                    <th>{getText('Frè', 'Frais', 'Fee')}</th>
+                    <th>{getText('Nèt', 'Net', 'Net')}</th>
+                    <th>{getText('Metòd', 'Méthode', 'Method')}</th>
+                    <th>{getText('Destinasyon', 'Destination', 'Destination')}</th>
                     <th>Date</th>
-                    <th>Statut</th>
-                    <th>Actions</th>
+                    <th>{getText('Statis', 'Statut', 'Status')}</th>
+                    <th>{getText('Aksyon', 'Actions', 'Actions')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="9" className="text-center py-8">Chargement...</td>
+                      <td colSpan="9" className="text-center py-8">{getText('Chajman...', 'Chargement...', 'Loading...')}</td>
                     </tr>
                   ) : withdrawals.length === 0 ? (
                     <tr>
-                      <td colSpan="9" className="text-center py-8">Aucun retrait</td>
+                      <td colSpan="9" className="text-center py-8">{getText('Pa gen retrè', 'Aucun retrait', 'No withdrawals')}</td>
                     </tr>
                   ) : (
                     withdrawals.map((w) => (
@@ -152,7 +165,7 @@ export default function AdminWithdrawals() {
         <Dialog open={showModal} onOpenChange={setShowModal}>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Détails du retrait</DialogTitle>
+              <DialogTitle>{getText('Detay Retrè', 'Détails du retrait', 'Withdrawal Details')}</DialogTitle>
             </DialogHeader>
             {selectedWithdrawal && (
               <div className="space-y-4">
@@ -162,33 +175,33 @@ export default function AdminWithdrawals() {
                     <p className="font-mono">{selectedWithdrawal.client_id}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-slate-500">Montant brut</p>
+                    <p className="text-sm text-slate-500">{getText('Montan brit', 'Montant brut', 'Gross Amount')}</p>
                     <p className="font-semibold">{fmt(selectedWithdrawal.amount, selectedWithdrawal.currency)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-slate-500">Frais</p>
+                    <p className="text-sm text-slate-500">{getText('Frè', 'Frais', 'Fee')}</p>
                     <p className="text-red-500">-{fmt(selectedWithdrawal.fee, selectedWithdrawal.currency)}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-slate-500">Montant net</p>
+                    <p className="text-sm text-slate-500">{getText('Montan nèt', 'Montant net', 'Net Amount')}</p>
                     <p className="font-semibold text-emerald-600">{fmt(selectedWithdrawal.net_amount, selectedWithdrawal.currency)}</p>
                   </div>
                 </div>
 
                 {selectedWithdrawal.source_currency && selectedWithdrawal.source_currency !== selectedWithdrawal.currency && (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                    Déduit du solde {selectedWithdrawal.source_currency}: {fmt(selectedWithdrawal.amount_deducted, selectedWithdrawal.source_currency)} (conversion)
+                    {getText('Dedwi nan balans', 'Déduit du solde', 'Deducted from balance')} {selectedWithdrawal.source_currency}: {fmt(selectedWithdrawal.amount_deducted, selectedWithdrawal.source_currency)} ({getText('konvèsyon', 'conversion', 'conversion')})
                   </div>
                 )}
 
                 <div>
-                  <p className="text-sm text-slate-500">Méthode</p>
+                  <p className="text-sm text-slate-500">{getText('Metòd', 'Méthode', 'Method')}</p>
                   <p className="capitalize">{selectedWithdrawal.method?.replace('_', ' ')}</p>
                 </div>
 
                 <div>
-                  <p className="text-sm text-slate-500">Destination</p>
-                  <code className="text-sm bg-slate-100 p-2 rounded block break-all">
+                  <p className="text-sm text-slate-500">{getText('Destinasyon', 'Destination', 'Destination')}</p>
+                  <code className="text-sm bg-slate-100 dark:bg-slate-800 p-2 rounded block break-all">
                     {selectedWithdrawal.destination}
                   </code>
                 </div>
@@ -201,7 +214,7 @@ export default function AdminWithdrawals() {
                       className="flex-1 bg-emerald-500 hover:bg-emerald-600"
                     >
                       <Check size={18} className="mr-2" />
-                      Approuver
+                      {getText('Apwouve', 'Approuver', 'Approve')}
                     </Button>
                     <Button 
                       onClick={() => handleProcess('reject')}
@@ -210,7 +223,7 @@ export default function AdminWithdrawals() {
                       className="flex-1"
                     >
                       <X size={18} className="mr-2" />
-                      Rejeter
+                      {getText('Rejte', 'Rejeter', 'Reject')}
                     </Button>
                   </div>
                 )}

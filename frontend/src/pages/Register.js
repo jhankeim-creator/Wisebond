@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Mail, Lock, User, Phone, ArrowRight, Gift, CreditCard, Shield } from 'lucide-react';
+import { Mail, Lock, User, Phone, ArrowRight, Gift, CreditCard, Shield, CheckSquare } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export default function Register() {
   const { t, language } = useLanguage();
@@ -26,6 +27,7 @@ export default function Register() {
     language: language
   });
   const [loading, setLoading] = useState(false);
+  const [acceptTerms, setAcceptTerms] = useState(false);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -35,6 +37,11 @@ export default function Register() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!acceptTerms) {
+      toast.error(getText('Ou dwe aksepte kondisyon yo', 'Vous devez accepter les conditions', 'You must accept the terms'));
+      return;
+    }
     
     if (formData.password !== formData.confirmPassword) {
       toast.error(getText('Modpas yo pa matche', 'Les mots de passe ne correspondent pas', 'Passwords do not match'));
@@ -242,10 +249,34 @@ export default function Register() {
               </div>
             </div>
             
+            {/* Terms Acceptance */}
+            <div className="flex items-start gap-3">
+              <Checkbox 
+                id="accept-terms" 
+                checked={acceptTerms}
+                onCheckedChange={(checked) => setAcceptTerms(checked)}
+                className="mt-1"
+              />
+              <label htmlFor="accept-terms" className="text-sm text-stone-600 leading-relaxed cursor-pointer">
+                {getText(
+                  'Mwen aksepte ',
+                  'J\'accepte les ',
+                  'I accept the '
+                )}
+                <Link to="/terms" className="text-[#EA580C] hover:underline font-medium">
+                  {getText('Kondisyon Sèvis', 'Conditions d\'Utilisation', 'Terms of Service')}
+                </Link>
+                {getText(' ak ', ' et la ', ' and ')}
+                <Link to="/privacy" className="text-[#EA580C] hover:underline font-medium">
+                  {getText('Politik Konfidansyalite', 'Politique de Confidentialité', 'Privacy Policy')}
+                </Link>
+              </label>
+            </div>
+
             <Button 
               type="submit" 
               className="btn-primary w-full h-12"
-              disabled={loading}
+              disabled={loading || !acceptTerms}
               data-testid="register-submit"
             >
               {loading ? t('loading') : t('register')}

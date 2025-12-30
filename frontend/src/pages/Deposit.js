@@ -39,8 +39,22 @@ export default function Deposit() {
   const [manualConfig, setManualConfig] = useState({
     moncash_enabled: false,
     moncash_number: null,
+    moncash_name: null,
+    moncash_qr: null,
     natcash_enabled: false,
-    natcash_number: null
+    natcash_number: null,
+    natcash_name: null,
+    natcash_qr: null,
+    zelle_email: null,
+    zelle_name: null,
+    paypal_email: null,
+    paypal_name: null
+  });
+  
+  // Sender info for deposit proof
+  const [senderInfo, setSenderInfo] = useState({
+    sender_name: '',
+    sender_phone: ''
   });
 
   const getText = useCallback((ht, fr, en) => {
@@ -55,15 +69,31 @@ export default function Deposit() {
       setManualConfig({
         moncash_enabled: !!resp.data?.moncash_enabled,
         moncash_number: resp.data?.moncash_number || null,
+        moncash_name: resp.data?.moncash_name || null,
+        moncash_qr: resp.data?.moncash_qr || null,
         natcash_enabled: !!resp.data?.natcash_enabled,
-        natcash_number: resp.data?.natcash_number || null
+        natcash_number: resp.data?.natcash_number || null,
+        natcash_name: resp.data?.natcash_name || null,
+        natcash_qr: resp.data?.natcash_qr || null,
+        zelle_email: resp.data?.zelle_email || 'payments@kayicom.com',
+        zelle_name: resp.data?.zelle_name || 'KAYICOM',
+        paypal_email: resp.data?.paypal_email || 'payments@kayicom.com',
+        paypal_name: resp.data?.paypal_name || 'KAYICOM'
       });
     } catch (e) {
       setManualConfig({
         moncash_enabled: false,
         moncash_number: null,
+        moncash_name: null,
+        moncash_qr: null,
         natcash_enabled: false,
-        natcash_number: null
+        natcash_number: null,
+        natcash_name: null,
+        natcash_qr: null,
+        zelle_email: 'payments@kayicom.com',
+        zelle_name: 'KAYICOM',
+        paypal_email: 'payments@kayicom.com',
+        paypal_name: 'KAYICOM'
       });
     }
   }, []);

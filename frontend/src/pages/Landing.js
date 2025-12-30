@@ -448,15 +448,12 @@ export default function Landing() {
             </p>
             
             <div className="flex items-center gap-6">
-              <a href="#" className="text-stone-400 hover:text-white transition-colors">
+              <Link to="/terms" className="text-stone-400 hover:text-white transition-colors">
                 {getText('Kondisyon', 'Conditions', 'Terms')}
-              </a>
-              <a href="#" className="text-stone-400 hover:text-white transition-colors">
+              </Link>
+              <Link to="/privacy" className="text-stone-400 hover:text-white transition-colors">
                 {getText('Konfidansyalite', 'Confidentialité', 'Privacy')}
-              </a>
-              <a href="#" className="text-stone-400 hover:text-white transition-colors">
-                {getText('Kontak', 'Contact', 'Contact')}
-              </a>
+              </Link>
             </div>
           </div>
         </div>

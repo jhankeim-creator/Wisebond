@@ -32,7 +32,8 @@ export default function AdminFees() {
   const [newCardFee, setNewCardFee] = useState({
     min_amount: 0,
     max_amount: 100,
-    fee: 5
+    fee: 5,
+    is_percentage: false
   });
   const [newLimit, setNewLimit] = useState({
     method: 'zelle',
@@ -41,7 +42,7 @@ export default function AdminFees() {
     waiting_hours: 24
   });
 
-  const methods = ['zelle', 'paypal', 'usdt', 'bank_mexico', 'bank_usa', 'moncash', 'natcash', 'internal_transfer'];
+  const methods = ['zelle', 'paypal', 'usdt', 'bank_usa', 'bank_mexico', 'bank_brazil', 'bank_chile', 'moncash', 'natcash', 'card', 'internal_transfer'];
 
   useEffect(() => {
     fetchData();
@@ -228,6 +229,7 @@ export default function AdminFees() {
                       <th>{getText('Limit Min', 'Limite Min', 'Min Limit')}</th>
                       <th>{getText('Limit Max', 'Limite Max', 'Max Limit')}</th>
                       <th>{getText('Frè', 'Frais', 'Fee')}</th>
+                      <th>{getText('Tip', 'Type', 'Type')}</th>
                       <th>{getText('Aksyon', 'Actions', 'Actions')}</th>
                     </tr>
                   </thead>
@@ -235,8 +237,9 @@ export default function AdminFees() {
                     {cardFees.map((fee) => (
                       <tr key={fee.fee_id}>
                         <td className="font-semibold">${fee.min_amount}</td>
-                        <td className="font-semibold">${fee.max_amount}</td>
-                        <td className="font-bold text-purple-600">${fee.fee}</td>
+                        <td className="font-semibold">{fee.max_amount >= 999999 ? '∞' : `$${fee.max_amount}`}</td>
+                        <td className="font-bold text-purple-600">{fee.is_percentage ? `${fee.fee}%` : `$${fee.fee}`}</td>
+                        <td>{fee.is_percentage ? getText('Pousantaj', 'Pourcentage', 'Percentage') : getText('Fiks', 'Fixe', 'Fixed')}</td>
                         <td>
                           <Button size="sm" variant="destructive" onClick={() => deleteCardFee(fee.fee_id)}>
                             <Trash2 size={16} />
@@ -368,9 +371,9 @@ export default function AdminFees() {
               <div className="bg-purple-50 dark:bg-purple-900/30 p-3 rounded-lg">
                 <p className="text-sm text-purple-700 dark:text-purple-300">
                   {getText(
-                    'Egzanp: Si retrè a ant $0 ak $100, frè a ap $5. Si li ant $101 ak $500, frè a ap $10.',
-                    'Exemple: Si le retrait est entre $0 et $100, les frais seront de $5. Entre $101 et $500, $10.',
-                    'Example: If withdrawal is between $0 and $100, fee is $5. Between $101 and $500, fee is $10.'
+                    'Egzanp: $5-$19 → $2.5 (fiks), $1500+ → 5% (pousantaj)',
+                    'Exemple: $5-$19 → $2.5 (fixe), $1500+ → 5% (pourcentage)',
+                    'Example: $5-$19 → $2.5 (fixed), $1500+ → 5% (percentage)'
                   )}
                 </p>
               </div>
@@ -384,7 +387,7 @@ export default function AdminFees() {
                   />
                 </div>
                 <div>
-                  <Label>{getText('Limit Max ($)', 'Limite Max ($)', 'Max Limit ($)')}</Label>
+                  <Label>{getText('Limit Max ($) - 999999 = enfini', 'Limite Max ($) - 999999 = infini', 'Max Limit ($) - 999999 = infinity')}</Label>
                   <Input
                     type="number"
                     value={newCardFee.max_amount}
@@ -393,7 +396,19 @@ export default function AdminFees() {
                 </div>
               </div>
               <div>
-                <Label>{getText('Frè ($)', 'Frais ($)', 'Fee ($)')}</Label>
+                <Label>{getText('Tip Frè', 'Type de frais', 'Fee Type')}</Label>
+                <Select value={newCardFee.is_percentage ? 'percentage' : 'fixed'} onValueChange={(v) => setNewCardFee({...newCardFee, is_percentage: v === 'percentage'})}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixed">{getText('Fiks ($)', 'Fixe ($)', 'Fixed ($)')}</SelectItem>
+                    <SelectItem value="percentage">{getText('Pousantaj (%)', 'Pourcentage (%)', 'Percentage (%)')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>{newCardFee.is_percentage ? getText('Pousantaj (%)', 'Pourcentage (%)', 'Percentage (%)') : getText('Frè ($)', 'Frais ($)', 'Fee ($)')}</Label>
                 <Input
                   type="number"
                   step="0.01"
