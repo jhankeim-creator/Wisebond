@@ -1478,9 +1478,8 @@ async def admin_create_card_manually(
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     
-    # Process affiliate reward if user was referred
-    if user.get("referred_by"):
-        await process_card_affiliate_reward(user["referred_by"])
+    # NOTE: Manual cards do NOT count for affiliate rewards
+    # Only cards ordered by users themselves count
     
     await log_action(admin["user_id"], "card_manual_create", {"order_id": order["order_id"], "user_id": payload.user_id})
     
