@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Check, X, Eye, RefreshCw, CreditCard, Upload, Wallet, DollarSign } from 'lucide-react';
+import { Check, X, Eye, RefreshCw, CreditCard, Upload, Wallet, Plus, Search } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
@@ -41,8 +41,15 @@ export default function AdminVirtualCards() {
   const [showTopupModal, setShowTopupModal] = useState(false);
   const [deliveryInfo, setDeliveryInfo] = useState('');
   
+  // Add Card Modal state
+  const [showAddCardModal, setShowAddCardModal] = useState(false);
+  const [searchClientId, setSearchClientId] = useState('');
+  const [foundClient, setFoundClient] = useState(null);
+  const [searchingClient, setSearchingClient] = useState(false);
+  
   // Card details for manual entry
   const [cardDetails, setCardDetails] = useState({
+    card_email: '', // Email for the card
     card_brand: '',
     card_type: 'visa',
     card_holder_name: '',
@@ -112,6 +119,78 @@ export default function AdminVirtualCards() {
     }
   };
 
+  // Search for client by ID
+  const searchClient = async () => {
+    if (!searchClientId.trim()) return;
+    setSearchingClient(true);
+    setFoundClient(null);
+    try {
+      const response = await axios.get(`${API}/admin/users?search=${searchClientId}&limit=1`);
+      if (response.data.users && response.data.users.length > 0) {
+        setFoundClient(response.data.users[0]);
+      } else {
+        toast.error(getText('Kliyan pa jwenn', 'Client non trouvé', 'Client not found'));
+      }
+    } catch (error) {
+      toast.error(getText('Erè nan rechèch', 'Erreur de recherche', 'Search error'));
+    } finally {
+      setSearchingClient(false);
+    }
+  };
+
+  // Create card manually for client
+  const createCardManually = async () => {
+    if (!foundClient) {
+      toast.error(getText('Chwazi yon kliyan', 'Choisissez un client', 'Choose a client'));
+      return;
+    }
+    if (!cardDetails.card_email) {
+      toast.error(getText('Antre email kat la', 'Entrez l\'email de la carte', 'Enter card email'));
+      return;
+    }
+    
+    setProcessing(true);
+    try {
+      const payload = {
+        user_id: foundClient.user_id,
+        client_id: foundClient.client_id,
+        card_email: cardDetails.card_email,
+        ...cardDetails,
+        card_last4: cardDetails.card_number ? cardDetails.card_number.slice(-4) : cardDetails.card_last4
+      };
+      
+      await axios.post(`${API}/admin/virtual-card-orders/create-manual`, payload);
+      toast.success(getText('Kat kreye avèk siksè!', 'Carte créée avec succès!', 'Card created successfully!'));
+      setShowAddCardModal(false);
+      resetAddCardForm();
+      fetchOrders();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || getText('Erè nan kreyasyon', 'Erreur de création', 'Creation error'));
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const resetAddCardForm = () => {
+    setSearchClientId('');
+    setFoundClient(null);
+    setCardDetails({
+      card_email: '',
+      card_brand: '',
+      card_type: 'visa',
+      card_holder_name: '',
+      card_number: '',
+      card_last4: '',
+      card_expiry: '',
+      card_cvv: '',
+      billing_address: '',
+      billing_city: '',
+      billing_country: '',
+      billing_zip: '',
+      card_image: ''
+    });
+  };
+
   // Process order (approve/reject)
   const handleProcessOrder = async (action) => {
     setProcessing(true);
@@ -165,6 +244,7 @@ export default function AdminVirtualCards() {
   const resetOrderForm = () => {
     setAdminNotes('');
     setCardDetails({
+      card_email: '',
       card_brand: '',
       card_type: 'visa',
       card_holder_name: '',
@@ -184,6 +264,7 @@ export default function AdminVirtualCards() {
     setSelectedOrder(order);
     setAdminNotes(order.admin_notes || '');
     setCardDetails({
+      card_email: order.card_email || '',
       card_brand: order.card_brand || '',
       card_type: order.card_type || 'visa',
       card_holder_name: order.card_holder_name || '',
@@ -239,6 +320,14 @@ export default function AdminVirtualCards() {
               <p className="text-purple-600 dark:text-purple-400 text-sm">{getText('Total Livere', 'Total Livré', 'Total Delivered')}</p>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Add Card Button */}
+        <div className="flex justify-end">
+          <Button onClick={() => setShowAddCardModal(true)} className="bg-emerald-500 hover:bg-emerald-600">
+            <Plus size={18} className="mr-2" />
+            {getText('Ajoute Kat Manyèl', 'Ajouter Carte Manuellement', 'Add Card Manually')}
+          </Button>
         </div>
 
         {/* Tabs */}
@@ -489,6 +578,18 @@ export default function AdminVirtualCards() {
                         {getText('Enfòmasyon Kat la', 'Informations de la Carte', 'Card Information')}
                       </h4>
 
+                      {/* Card Email */}
+                      <div>
+                        <Label className="text-[#EA580C]">{getText('Email Kat la', 'Email de la Carte', 'Card Email')}</Label>
+                        <Input 
+                          placeholder="card@email.com" 
+                          value={cardDetails.card_email || selectedOrder?.card_email || ''} 
+                          onChange={(e) => setCardDetails({...cardDetails, card_email: e.target.value})} 
+                          className="mt-1" 
+                          type="email"
+                        />
+                      </div>
+
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <Label>{getText('Mak Kat', 'Marque', 'Brand')}</Label>
@@ -683,6 +784,150 @@ export default function AdminVirtualCards() {
                 )}
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Add Card Manually Modal */}
+        <Dialog open={showAddCardModal} onOpenChange={setShowAddCardModal}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Plus className="text-emerald-500" />
+                {getText('Ajoute Kat Manyèl pou Kliyan', 'Ajouter Carte Manuellement', 'Add Card Manually for Client')}
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              {/* Client Search */}
+              <div className="p-4 bg-stone-50 dark:bg-stone-800 rounded-xl">
+                <Label>{getText('Rechèch Kliyan (ID oswa Email)', 'Rechercher Client (ID ou Email)', 'Search Client (ID or Email)')}</Label>
+                <div className="flex gap-2 mt-2">
+                  <Input
+                    placeholder="KYC-XXXXXX ou email@example.com"
+                    value={searchClientId}
+                    onChange={(e) => setSearchClientId(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && searchClient()}
+                  />
+                  <Button onClick={searchClient} disabled={searchingClient} variant="outline">
+                    <Search size={18} />
+                  </Button>
+                </div>
+                
+                {foundClient && (
+                  <div className="mt-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-emerald-800 dark:text-emerald-300">{foundClient.full_name}</p>
+                        <p className="text-sm text-emerald-600">{foundClient.email}</p>
+                        <p className="text-xs font-mono text-stone-500">{foundClient.client_id}</p>
+                      </div>
+                      <Badge className="bg-emerald-500">
+                        <Check size={14} className="mr-1" />
+                        {getText('Jwenn', 'Trouvé', 'Found')}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Card Email */}
+              <div className="border rounded-xl p-4 space-y-4">
+                <h4 className="font-semibold flex items-center gap-2">
+                  <CreditCard size={18} />
+                  {getText('Enfòmasyon Kat la', 'Informations de la Carte', 'Card Information')}
+                </h4>
+
+                <div>
+                  <Label className="text-[#EA580C]">{getText('Email Kat la *', 'Email de la Carte *', 'Card Email *')}</Label>
+                  <Input 
+                    placeholder="card@email.com" 
+                    value={cardDetails.card_email} 
+                    onChange={(e) => setCardDetails({...cardDetails, card_email: e.target.value})} 
+                    className="mt-1 border-[#EA580C]" 
+                    type="email"
+                  />
+                  <p className="text-xs text-stone-500 mt-1">{getText('Email asosye ak kat la', 'Email associé à la carte', 'Email associated with the card')}</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>{getText('Mak Kat', 'Marque', 'Brand')}</Label>
+                    <Input placeholder="Wise, Payoneer" value={cardDetails.card_brand} onChange={(e) => setCardDetails({...cardDetails, card_brand: e.target.value})} className="mt-1" />
+                  </div>
+                  <div>
+                    <Label>{getText('Tip Kat', 'Type', 'Type')}</Label>
+                    <Select value={cardDetails.card_type} onValueChange={(v) => setCardDetails({...cardDetails, card_type: v})}>
+                      <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="visa">Visa</SelectItem>
+                        <SelectItem value="mastercard">Mastercard</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div>
+                  <Label>{getText('Non sou Kat', 'Nom sur Carte', 'Name on Card')}</Label>
+                  <Input value={cardDetails.card_holder_name} onChange={(e) => setCardDetails({...cardDetails, card_holder_name: e.target.value.toUpperCase()})} className="mt-1 uppercase" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>{getText('Nimewo Kat', 'Numéro Carte', 'Card Number')}</Label>
+                    <Input value={cardDetails.card_number} onChange={(e) => setCardDetails({...cardDetails, card_number: e.target.value})} className="mt-1 font-mono" maxLength={19} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
+                      <Input placeholder="MM/YY" value={cardDetails.card_expiry} onChange={(e) => setCardDetails({...cardDetails, card_expiry: e.target.value})} className="mt-1" maxLength={5} />
+                    </div>
+                    <div>
+                      <Label>CVV</Label>
+                      <Input value={cardDetails.card_cvv} onChange={(e) => setCardDetails({...cardDetails, card_cvv: e.target.value})} className="mt-1" maxLength={4} type="password" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <h5 className="font-medium mb-3">{getText('Adrès Faktirasyon', 'Adresse Facturation', 'Billing Address')}</h5>
+                  <div className="space-y-3">
+                    <Input placeholder={getText('Adrès', 'Adresse', 'Address')} value={cardDetails.billing_address} onChange={(e) => setCardDetails({...cardDetails, billing_address: e.target.value})} />
+                    <div className="grid grid-cols-3 gap-2">
+                      <Input placeholder={getText('Vil', 'Ville', 'City')} value={cardDetails.billing_city} onChange={(e) => setCardDetails({...cardDetails, billing_city: e.target.value})} />
+                      <Input placeholder={getText('Peyi', 'Pays', 'Country')} value={cardDetails.billing_country} onChange={(e) => setCardDetails({...cardDetails, billing_country: e.target.value})} />
+                      <Input placeholder="ZIP" value={cardDetails.billing_zip} onChange={(e) => setCardDetails({...cardDetails, billing_zip: e.target.value})} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t pt-4">
+                  <Label>{getText('Imaj Kat', 'Image Carte', 'Card Image')}</Label>
+                  <div className="mt-2 border-2 border-dashed rounded-xl p-4 text-center cursor-pointer" onClick={() => document.getElementById('add-card-image-upload').click()}>
+                    {cardDetails.card_image ? (
+                      <img src={cardDetails.card_image} alt="Card" className="max-h-32 mx-auto rounded-lg" />
+                    ) : (
+                      <><Upload className="mx-auto text-stone-400 mb-2" size={32} /><p className="text-stone-500">{getText('Klike pou telechaje', 'Cliquez pour télécharger', 'Click to upload')}</p></>
+                    )}
+                  </div>
+                  <input id="add-card-image-upload" type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-4 pt-4 border-t">
+                <Button variant="outline" onClick={() => { setShowAddCardModal(false); resetAddCardForm(); }} className="flex-1">
+                  {getText('Anile', 'Annuler', 'Cancel')}
+                </Button>
+                <Button 
+                  onClick={createCardManually} 
+                  disabled={processing || !foundClient || !cardDetails.card_email} 
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-600"
+                >
+                  <Plus size={18} className="mr-2" />
+                  {processing ? getText('Kreyasyon...', 'Création...', 'Creating...') : getText('Kreye Kat', 'Créer Carte', 'Create Card')}
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

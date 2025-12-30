@@ -1402,6 +1402,92 @@ async def admin_get_card_orders(
     orders = await db.virtual_card_orders.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     return {"orders": orders}
 
+# Pydantic model for manual card creation
+class ManualCardCreate(BaseModel):
+    user_id: str
+    client_id: str
+    card_email: str
+    card_brand: Optional[str] = None
+    card_type: Optional[str] = "visa"
+    card_holder_name: Optional[str] = None
+    card_number: Optional[str] = None
+    card_last4: Optional[str] = None
+    card_expiry: Optional[str] = None
+    card_cvv: Optional[str] = None
+    billing_address: Optional[str] = None
+    billing_city: Optional[str] = None
+    billing_country: Optional[str] = None
+    billing_zip: Optional[str] = None
+    card_image: Optional[str] = None
+
+# Admin: Create card manually for a client
+@api_router.post("/admin/virtual-card-orders/create-manual")
+async def admin_create_card_manually(
+    payload: ManualCardCreate,
+    admin: dict = Depends(get_admin_user)
+):
+    """Admin creates a virtual card manually for a client (already approved)"""
+    # Verify user exists
+    user = await db.users.find_one({"user_id": payload.user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Create card order directly as approved
+    order = {
+        "order_id": str(uuid.uuid4()),
+        "user_id": payload.user_id,
+        "client_id": payload.client_id,
+        "card_email": payload.card_email.lower(),
+        "card_brand": payload.card_brand,
+        "card_type": payload.card_type,
+        "card_holder_name": payload.card_holder_name,
+        "card_number": payload.card_number,
+        "card_last4": payload.card_number[-4:] if payload.card_number else payload.card_last4,
+        "card_expiry": payload.card_expiry,
+        "card_cvv": payload.card_cvv,
+        "billing_address": payload.billing_address,
+        "billing_city": payload.billing_city,
+        "billing_country": payload.billing_country,
+        "billing_zip": payload.billing_zip,
+        "card_image": payload.card_image,
+        "fee": 0,  # No fee for manual creation
+        "status": "approved",  # Already approved
+        "admin_notes": "Created manually by admin",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_by": admin["user_id"]
+    }
+    
+    await db.virtual_card_orders.insert_one(order)
+    
+    # Add $5 USD bonus to user's wallet
+    await db.users.update_one(
+        {"user_id": payload.user_id},
+        {"$inc": {"wallet_usd": CARD_BONUS_USD}}
+    )
+    
+    # Create bonus transaction
+    await db.transactions.insert_one({
+        "transaction_id": str(uuid.uuid4()),
+        "user_id": payload.user_id,
+        "type": "card_bonus",
+        "amount": CARD_BONUS_USD,
+        "currency": "USD",
+        "status": "completed",
+        "description": "Virtual card bonus (admin created)",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    # Process affiliate reward if user was referred
+    if user.get("referred_by"):
+        await process_card_affiliate_reward(user["referred_by"])
+    
+    await log_action(admin["user_id"], "card_manual_create", {"order_id": order["order_id"], "user_id": payload.user_id})
+    
+    if "_id" in order:
+        del order["_id"]
+    return {"order": order, "message": "Card created successfully"}
+
 # Pydantic model for card details
 class CardDetailsPayload(BaseModel):
     action: Optional[str] = None  # approve or reject
