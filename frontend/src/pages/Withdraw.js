@@ -52,6 +52,7 @@ export default function Withdraw() {
   const [loading, setLoading] = useState(false);
   const [availableMethods, setAvailableMethods] = useState(withdrawalMethodsByCurrency);
   const [methodMeta, setMethodMeta] = useState({});
+  const [methodsLoading, setMethodsLoading] = useState(true);
   
   // Currency selection - source = target (no cross-currency)
   const [currency, setCurrency] = useState('HTG');
@@ -80,10 +81,10 @@ export default function Withdraw() {
   }, []);
 
   const fetchPaymentMethods = useCallback(async (cur) => {
+    setMethodsLoading(true);
     try {
       const res = await axios.get(`${API}/public/payment-methods?flow=withdrawal&currency=${cur}`);
       const list = Array.isArray(res.data) ? res.data : [];
-      if (list.length === 0) return;
 
       const metaById = {};
       const mapped = list
@@ -102,9 +103,15 @@ export default function Withdraw() {
         });
 
       setMethodMeta((prev) => ({ ...prev, ...metaById }));
-      setAvailableMethods((prev) => ({ ...prev, [cur]: mapped }));
+      // Use API methods if available, otherwise keep fallback
+      if (mapped.length > 0) {
+        setAvailableMethods((prev) => ({ ...prev, [cur]: mapped }));
+      }
     } catch (e) {
-      // Silent fallback
+      // Silent fallback - keep default methods
+      console.error('Error fetching withdrawal methods:', e);
+    } finally {
+      setMethodsLoading(false);
     }
   }, []);
 
@@ -266,9 +273,13 @@ export default function Withdraw() {
           {getText('Chwazi metòd retrè', 'Choisir la méthode de retrait', 'Choose withdrawal method')}
         </h3>
         <div className="space-y-3">
-          {currentMethods.length === 0 ? (
+          {methodsLoading ? (
             <div className="text-center py-8 text-stone-500">
-              <p>{getText('Pa gen metòd disponib', 'Aucune méthode disponible', 'No methods available')}</p>
+              {getText('Chajman metod yo...', 'Chargement des methodes...', 'Loading methods...')}
+            </div>
+          ) : currentMethods.length === 0 ? (
+            <div className="text-center py-8 text-stone-500">
+              <p>{getText(`Pa gen metod disponib pou ${currency}`, `Aucune methode disponible pour ${currency}`, `No methods available for ${currency}`)}</p>
             </div>
           ) : (
             currentMethods.map((m) => {

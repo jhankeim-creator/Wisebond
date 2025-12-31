@@ -3325,6 +3325,312 @@ async def admin_test_telegram(
     else:
         return {"success": False, "message": "Echèk voye mesaj Telegram. Verifye Bot Token ak Chat ID."}
 
+# ==================== PAYMENT METHODS MANAGEMENT ====================
+
+class PaymentMethodCreate(BaseModel):
+    method_id: str
+    flow: str  # 'deposit' or 'withdrawal'
+    currencies: List[str]  # ['HTG'], ['USD'], or ['HTG', 'USD']
+    display_name: str
+    enabled: bool = True
+    sort_order: int = 0
+    public: Optional[dict] = {}  # Public info (recipient, instructions, etc.)
+    private: Optional[dict] = {}  # Private info (API keys, credentials)
+
+# Admin: Get all payment methods
+@api_router.get("/admin/payment-methods")
+async def admin_get_payment_methods(
+    flow: Optional[str] = None,
+    currency: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    """Get all payment methods, optionally filtered by flow and/or currency"""
+    query = {}
+    if flow:
+        query["flow"] = flow
+    if currency:
+        query["currencies"] = currency.upper()
+    
+    methods = await db.payment_methods.find(query, {"_id": 0}).sort("sort_order", 1).to_list(100)
+    return {"methods": methods}
+
+# Admin: Create or update a payment method
+@api_router.put("/admin/payment-methods")
+async def admin_upsert_payment_method(
+    method: PaymentMethodCreate,
+    admin: dict = Depends(get_admin_user)
+):
+    """Create or update a payment method by method_id and flow"""
+    method_doc = {
+        "method_id": method.method_id,
+        "flow": method.flow,
+        "currencies": [c.upper() for c in method.currencies],
+        "display_name": method.display_name,
+        "enabled": method.enabled,
+        "sort_order": method.sort_order,
+        "public": method.public or {},
+        "private": method.private or {},
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # Upsert by method_id + flow
+    result = await db.payment_methods.update_one(
+        {"method_id": method.method_id, "flow": method.flow},
+        {"$set": method_doc, "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    
+    await log_action(admin["user_id"], "payment_method_upsert", {
+        "method_id": method.method_id,
+        "flow": method.flow
+    })
+    
+    return {"message": "Payment method saved", "method": method_doc}
+
+# Admin: Delete a payment method
+@api_router.delete("/admin/payment-methods/{flow}/{method_id}")
+async def admin_delete_payment_method(
+    flow: str,
+    method_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """Delete a payment method by flow and method_id"""
+    result = await db.payment_methods.delete_one({"method_id": method_id, "flow": flow})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+    
+    await log_action(admin["user_id"], "payment_method_delete", {
+        "method_id": method_id,
+        "flow": flow
+    })
+    
+    return {"message": "Payment method deleted"}
+
+# Admin: Seed default payment methods
+@api_router.post("/admin/payment-methods/seed")
+async def admin_seed_payment_methods(admin: dict = Depends(get_admin_user)):
+    """Seed default payment methods for deposits and withdrawals"""
+    
+    default_methods = [
+        # HTG Deposit Methods
+        {
+            "method_id": "moncash",
+            "flow": "deposit",
+            "currencies": ["HTG"],
+            "display_name": "MonCash",
+            "enabled": True,
+            "sort_order": 1,
+            "public": {
+                "recipient": "",
+                "instructions": "Voye montan an nan MonCash, epi telechaje prèv la."
+            },
+            "private": {}
+        },
+        {
+            "method_id": "natcash",
+            "flow": "deposit",
+            "currencies": ["HTG"],
+            "display_name": "NatCash",
+            "enabled": True,
+            "sort_order": 2,
+            "public": {
+                "recipient": "",
+                "instructions": "Voye montan an nan NatCash, epi telechaje prèv la."
+            },
+            "private": {}
+        },
+        # USD Deposit Methods
+        {
+            "method_id": "zelle",
+            "flow": "deposit",
+            "currencies": ["USD"],
+            "display_name": "Zelle",
+            "enabled": True,
+            "sort_order": 1,
+            "public": {
+                "recipient": "payments@kayicom.com",
+                "name": "KAYICOM",
+                "instructions": "Voye nan Zelle, epi telechaje prèv la."
+            },
+            "private": {}
+        },
+        {
+            "method_id": "paypal",
+            "flow": "deposit",
+            "currencies": ["USD"],
+            "display_name": "PayPal",
+            "enabled": True,
+            "sort_order": 2,
+            "public": {
+                "recipient": "payments@kayicom.com",
+                "name": "KAYICOM",
+                "instructions": "Voye nan PayPal, epi telechaje prèv la."
+            },
+            "private": {}
+        },
+        {
+            "method_id": "usdt",
+            "flow": "deposit",
+            "currencies": ["USD"],
+            "display_name": "USDT (Crypto)",
+            "enabled": False,
+            "sort_order": 3,
+            "public": {
+                "instructions": "Depo USDT via Plisio."
+            },
+            "private": {}
+        },
+        # HTG Withdrawal Methods
+        {
+            "method_id": "moncash",
+            "flow": "withdrawal",
+            "currencies": ["HTG"],
+            "display_name": "MonCash",
+            "enabled": True,
+            "sort_order": 1,
+            "public": {
+                "placeholder": "Nimewo telefòn MonCash"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "natcash",
+            "flow": "withdrawal",
+            "currencies": ["HTG"],
+            "display_name": "NatCash",
+            "enabled": True,
+            "sort_order": 2,
+            "public": {
+                "placeholder": "Nimewo telefòn NatCash"
+            },
+            "private": {}
+        },
+        # USD Withdrawal Methods
+        {
+            "method_id": "zelle",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "Zelle",
+            "enabled": True,
+            "sort_order": 1,
+            "public": {
+                "placeholder": "Email ou telefòn Zelle"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "paypal",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "PayPal",
+            "enabled": True,
+            "sort_order": 2,
+            "public": {
+                "placeholder": "Email PayPal"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "usdt",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "USDT (TRC-20)",
+            "enabled": True,
+            "sort_order": 3,
+            "public": {
+                "placeholder": "Adrès USDT TRC-20"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "bank_usa",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "Bank USA 🇺🇸",
+            "enabled": True,
+            "sort_order": 4,
+            "public": {
+                "placeholder": "Routing + Account Number"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "bank_mexico",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "Bank Mexico 🇲🇽",
+            "enabled": True,
+            "sort_order": 5,
+            "public": {
+                "placeholder": "CLABE (18 chif)"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "bank_brazil",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "Bank Brazil 🇧🇷",
+            "enabled": True,
+            "sort_order": 6,
+            "public": {
+                "placeholder": "CPF/CNPJ + Chave PIX"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "bank_chile",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "Bank Chile 🇨🇱",
+            "enabled": True,
+            "sort_order": 7,
+            "public": {
+                "placeholder": "RUT + Nimewo kont"
+            },
+            "private": {}
+        }
+    ]
+    
+    count = 0
+    for m in default_methods:
+        await db.payment_methods.update_one(
+            {"method_id": m["method_id"], "flow": m["flow"]},
+            {
+                "$set": {
+                    **m,
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                },
+                "$setOnInsert": {"created_at": datetime.now(timezone.utc).isoformat()}
+            },
+            upsert=True
+        )
+        count += 1
+    
+    await log_action(admin["user_id"], "payment_methods_seed", {"count": count})
+    
+    return {"message": f"Seeded {count} payment methods"}
+
+# Public: Get available payment methods
+@api_router.get("/public/payment-methods")
+async def get_public_payment_methods(
+    flow: Optional[str] = None,
+    currency: Optional[str] = None
+):
+    """Get enabled payment methods for public use (deposits/withdrawals)"""
+    query = {"enabled": True}
+    if flow:
+        query["flow"] = flow
+    if currency:
+        query["currencies"] = currency.upper()
+    
+    methods = await db.payment_methods.find(
+        query,
+        {"_id": 0, "private": 0}  # Exclude private data
+    ).sort("sort_order", 1).to_list(100)
+    
+    return methods
+
 # ==================== MAIN ROUTES ====================
 
 @api_router.get("/")
@@ -3365,6 +3671,8 @@ async def startup():
     await db.agent_deposits.create_index([("agent_id", 1), ("status", 1)])
     await db.agent_deposits.create_index([("client_user_id", 1)])
     await db.agent_requests.create_index([("user_id", 1)])
+    await db.payment_methods.create_index([("method_id", 1), ("flow", 1)], unique=True)
+    await db.payment_methods.create_index([("flow", 1), ("currencies", 1), ("enabled", 1)])
     
     # Create default admin if not exists, or update existing admin email
     admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
