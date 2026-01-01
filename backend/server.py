@@ -102,6 +102,7 @@ class UserResponse(BaseModel):
     is_active: bool
     is_admin: bool
     created_at: str
+    telegram_chat_id: Optional[str] = None
 
 class PasswordReset(BaseModel):
     email: EmailStr
@@ -109,6 +110,9 @@ class PasswordReset(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str
     new_password: str
+
+class ProfileUpdate(BaseModel):
+    telegram_chat_id: Optional[str] = None
 
 class DepositRequest(BaseModel):
     amount: float
@@ -350,18 +354,31 @@ async def log_action(user_id: str, action: str, details: dict):
     await db.logs.insert_one(log_entry)
 
 async def send_email(to_email: str, subject: str, html_content: str):
+    """Send email notification using Resend"""
     try:
         settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-        # Backward-compatible: only block if explicitly disabled
-        if settings and ("resend_enabled" in settings) and (not settings["resend_enabled"]):
-            logger.info("Resend email disabled in settings")
-            return False
+        
+        # Check if Resend is enabled (must be explicitly True)
+        if settings:
+            resend_enabled = settings.get("resend_enabled", False)
+            if not resend_enabled:
+                logger.info("Resend email disabled in settings")
+                return False
+        else:
+            # If no settings, check environment variable
+            if not os.environ.get("RESEND_API_KEY"):
+                logger.info("Resend not configured")
+                return False
 
         resend_key = (settings.get("resend_api_key") if settings else None) or os.environ.get("RESEND_API_KEY")
         sender = (settings.get("sender_email") if settings else None) or os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
         
         if not resend_key:
             logger.warning("Resend API key not configured")
+            return False
+        
+        if not sender:
+            logger.warning("Sender email not configured")
             return False
         
         import resend
@@ -373,14 +390,21 @@ async def send_email(to_email: str, subject: str, html_content: str):
             "subject": subject,
             "html": html_content
         }
-        await asyncio.to_thread(resend.Emails.send, params)
+        
+        result = await asyncio.to_thread(resend.Emails.send, params)
+        logger.info(f"Email sent successfully to {to_email}: {result}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send email: {e}")
+        logger.error(f"Failed to send email to {to_email}: {e}")
         return False
 
-async def send_telegram_notification(message: str):
-    """Send Telegram notification using bot"""
+async def send_telegram_notification(message: str, chat_id: Optional[str] = None):
+    """Send Telegram notification using bot
+    
+    Args:
+        message: The message to send
+        chat_id: Optional chat ID. If not provided, uses the default chat_id from settings
+    """
     import httpx
     
     try:
@@ -389,7 +413,10 @@ async def send_telegram_notification(message: str):
             return False
         
         bot_token = settings.get("telegram_bot_token")
-        chat_id = settings.get("telegram_chat_id")
+        
+        # Use provided chat_id or fall back to settings chat_id
+        if not chat_id:
+            chat_id = settings.get("telegram_chat_id")
         
         if not bot_token or not chat_id:
             logger.warning("Telegram bot token or chat_id not configured")
@@ -407,7 +434,7 @@ async def send_telegram_notification(message: str):
             )
             
             if response.status_code == 200:
-                logger.info(f"Telegram notification sent successfully")
+                logger.info(f"Telegram notification sent successfully to chat_id: {chat_id}")
                 return True
             else:
                 logger.error(f"Telegram error: {response.text}")
@@ -663,6 +690,28 @@ async def reset_password(request: PasswordResetConfirm):
 @api_router.get("/auth/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_user)):
     return UserResponse(**current_user)
+
+@api_router.patch("/profile")
+async def update_profile(
+    update: ProfileUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update user profile (Telegram chat ID, etc.)"""
+    update_doc = {}
+    
+    if update.telegram_chat_id is not None:
+        update_doc["telegram_chat_id"] = update.telegram_chat_id
+    
+    if update_doc:
+        await db.users.update_one(
+            {"user_id": current_user["user_id"]},
+            {"$set": update_doc}
+        )
+        await log_action(current_user["user_id"], "profile_update", update_doc)
+    
+    # Return updated user
+    updated_user = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0, "password_hash": 0})
+    return {"user": updated_user, "message": "Profile updated successfully"}
 
 # ==================== WALLET ROUTES ====================
 
@@ -973,6 +1022,22 @@ async def swap_currency(request: SwapRequest, current_user: dict = Depends(get_c
         "rate_used": rate_used
     })
     
+    # Send email notification
+    user_email = current_user.get("email")
+    if user_email:
+        subject = "KAYICOM - Currency Swap Completed"
+        content = f"""
+        <h2>Currency Swap Completed</h2>
+        <p>Hello {current_user.get('full_name', 'User')},</p>
+        <p>Your currency swap has been completed successfully.</p>
+        <p><strong>From:</strong> {request.amount} {from_currency}</p>
+        <p><strong>To:</strong> {converted_amount} {to_currency}</p>
+        <p><strong>Rate Used:</strong> {rate_used}</p>
+        <p>Transaction ID: <code>{swap_id}</code></p>
+        <p>Thank you for using KAYICOM!</p>
+        """
+        await send_email(user_email, subject, content)
+    
     return {
         "swap_id": swap_id,
         "from_amount": request.amount,
@@ -1055,6 +1120,33 @@ async def send_transfer(request: TransferRequest, current_user: dict = Depends(g
         "amount": request.amount,
         "recipient": request.recipient_client_id
     })
+    
+    # Send email notifications to both sender and recipient
+    sender_email = current_user.get("email")
+    recipient_email = recipient.get("email")
+    
+    if sender_email:
+        subject = "KAYICOM - Transfer Sent"
+        content = f"""
+        <h2>Transfer Sent</h2>
+        <p>Hello {current_user.get('full_name', 'User')},</p>
+        <p>You have successfully sent <strong>{request.amount} {request.currency}</strong> to <strong>{request.recipient_client_id}</strong>.</p>
+        <p>Fee: <strong>{fee} {request.currency}</strong></p>
+        <p>Transaction ID: <code>{transfer_id}</code></p>
+        <p>Thank you for using KAYICOM!</p>
+        """
+        await send_email(sender_email, subject, content)
+    
+    if recipient_email:
+        subject = "KAYICOM - Transfer Received"
+        content = f"""
+        <h2>Transfer Received</h2>
+        <p>Hello {recipient.get('full_name', 'User')},</p>
+        <p>You have received <strong>{request.amount} {request.currency}</strong> from <strong>{current_user['client_id']}</strong>.</p>
+        <p>Transaction ID: <code>{transfer_id}</code></p>
+        <p>Thank you for using KAYICOM!</p>
+        """
+        await send_email(recipient_email, subject, content)
     
     return {
         "transfer_id": transfer_id,
@@ -2142,19 +2234,50 @@ async def admin_process_agent_deposit(
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         
-        # Send WhatsApp notification to agent
+        # Send Telegram notification to agent
         agent_settings = await db.agent_settings.find_one({"setting_id": "main"}, {"_id": 0})
         if agent_settings and agent_settings.get("agent_whatsapp_notifications", True):
-            agent_whatsapp = deposit.get("agent_whatsapp") or deposit.get("agent_phone")
-            if agent_whatsapp:
-                message = f"""✅ Depo Apwouve!
+            # Get agent's Telegram chat ID
+            agent = await db.users.find_one({"user_id": deposit["agent_id"]}, {"_id": 0, "telegram_chat_id": 1})
+            agent_telegram_chat_id = agent.get("telegram_chat_id") if agent else None
+            
+            if agent_telegram_chat_id:
+                message = f"""✅ <b>Depo Apwouve!</b>
 
 Kliyan: {deposit['client_name']}
 Montan: ${deposit['amount_usd']:.2f} USD
 Komisyon ou: ${deposit['commission_usd']:.2f} USD
 
 Mèsi pou sèvis ou ak KAYICOM!"""
-                await send_whatsapp_notification(agent_whatsapp, message)
+                await send_telegram_notification(message, agent_telegram_chat_id)
+        
+        # Send email notification to agent
+        agent = await db.users.find_one({"user_id": deposit["agent_id"]}, {"_id": 0, "email": 1, "full_name": 1})
+        if agent and agent.get("email"):
+            subject = "KAYICOM - Agent Deposit Approved"
+            content = f"""
+            <h2>Agent Deposit Approved</h2>
+            <p>Hello {agent.get('full_name', 'Agent')},</p>
+            <p>Your deposit for client <strong>{deposit['client_name']}</strong> has been approved.</p>
+            <p><strong>Amount:</strong> ${deposit['amount_usd']:.2f} USD</p>
+            <p><strong>Your Commission:</strong> ${deposit['commission_usd']:.2f} USD</p>
+            <p>Transaction ID: <code>{deposit_id}</code></p>
+            <p>Thank you for your service with KAYICOM!</p>
+            """
+            await send_email(agent["email"], subject, content)
+        
+        # Send email notification to client
+        client = await db.users.find_one({"user_id": deposit["client_user_id"]}, {"_id": 0, "email": 1, "full_name": 1})
+        if client and client.get("email"):
+            subject = "KAYICOM - Deposit Received"
+            content = f"""
+            <h2>Deposit Received</h2>
+            <p>Hello {client.get('full_name', 'User')},</p>
+            <p>Your deposit of <strong>${deposit['amount_usd']:.2f} USD</strong> from agent <strong>{deposit['agent_name']}</strong> has been approved and credited to your account.</p>
+            <p>Transaction ID: <code>{deposit_id}</code></p>
+            <p>Thank you for using KAYICOM!</p>
+            """
+            await send_email(client["email"], subject, content)
     
     await log_action(admin["user_id"], "agent_deposit_process", {"deposit_id": deposit_id, "action": action})
     
@@ -2677,6 +2800,16 @@ async def admin_get_deposits(
     deposits = await db.deposits.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     return {"deposits": deposits}
 
+@api_router.get("/admin/deposits/{deposit_id}")
+async def admin_get_deposit(
+    deposit_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    deposit = await db.deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    return {"deposit": deposit}
+
 @api_router.patch("/admin/deposits/{deposit_id}")
 async def admin_process_deposit(
     deposit_id: str,
@@ -2718,6 +2851,29 @@ async def admin_process_deposit(
             "description": f"Deposit via {deposit['method']}",
             "created_at": datetime.now(timezone.utc).isoformat()
         })
+    
+    # Send email notification
+    user = await db.users.find_one({"user_id": deposit["user_id"]}, {"_id": 0, "email": 1, "full_name": 1})
+    if user:
+        if action == "approve":
+            subject = "KAYICOM - Deposit Approved"
+            content = f"""
+            <h2>Deposit Approved</h2>
+            <p>Hello {user.get('full_name', 'User')},</p>
+            <p>Your deposit of <strong>{deposit['amount']} {deposit['currency']}</strong> via <strong>{deposit['method']}</strong> has been approved and credited to your account.</p>
+            <p>Transaction ID: <code>{deposit_id}</code></p>
+            <p>Thank you for using KAYICOM!</p>
+            """
+        else:
+            subject = "KAYICOM - Deposit Rejected"
+            content = f"""
+            <h2>Deposit Rejected</h2>
+            <p>Hello {user.get('full_name', 'User')},</p>
+            <p>Your deposit of <strong>{deposit['amount']} {deposit['currency']}</strong> via <strong>{deposit['method']}</strong> has been rejected.</p>
+            <p>Transaction ID: <code>{deposit_id}</code></p>
+            <p>Please contact support if you have any questions.</p>
+            """
+        await send_email(user["email"], subject, content)
     
     await log_action(admin["user_id"], "deposit_process", {"deposit_id": deposit_id, "action": action})
     
@@ -2796,6 +2952,31 @@ async def admin_process_withdrawal(
         {"reference_id": withdrawal_id, "type": "withdrawal"},
         {"$set": {"status": new_status}}
     )
+    
+    # Send email notification
+    user = await db.users.find_one({"user_id": withdrawal["user_id"]}, {"_id": 0, "email": 1, "full_name": 1})
+    if user:
+        if action == "approve":
+            subject = "KAYICOM - Withdrawal Processed"
+            content = f"""
+            <h2>Withdrawal Processed</h2>
+            <p>Hello {user.get('full_name', 'User')},</p>
+            <p>Your withdrawal of <strong>{withdrawal['amount']} {withdrawal['currency']}</strong> via <strong>{withdrawal['method']}</strong> has been processed and sent.</p>
+            <p>Destination: <strong>{withdrawal.get('destination', 'N/A')}</strong></p>
+            <p>Transaction ID: <code>{withdrawal_id}</code></p>
+            <p>Thank you for using KAYICOM!</p>
+            """
+        else:
+            subject = "KAYICOM - Withdrawal Rejected"
+            content = f"""
+            <h2>Withdrawal Rejected</h2>
+            <p>Hello {user.get('full_name', 'User')},</p>
+            <p>Your withdrawal of <strong>{withdrawal['amount']} {withdrawal['currency']}</strong> via <strong>{withdrawal['method']}</strong> has been rejected.</p>
+            <p>The amount has been refunded to your account.</p>
+            <p>Transaction ID: <code>{withdrawal_id}</code></p>
+            <p>Please contact support if you have any questions.</p>
+            """
+        await send_email(user["email"], subject, content)
     
     await log_action(admin["user_id"], "withdrawal_process", {"withdrawal_id": withdrawal_id, "action": action})
     
