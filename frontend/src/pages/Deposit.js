@@ -326,7 +326,7 @@ export default function Deposit() {
                   <p className="text-sm text-amber-700 mt-2">
                     {getText(
                       'Plisio pa disponib kounye a. Kontakte admin pou aktive li.',
-                      'Plisio n'est pas disponible pour le moment. Contactez l'admin pour l'activer.',
+                      'Plisio n\'est pas disponible pour le moment. Contactez l\'admin pour l\'activer.',
                       'Plisio is currently unavailable. Contact admin to activate it.'
                     )}
                   </p>
