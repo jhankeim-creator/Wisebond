@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -8,24 +8,54 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
+import axios from 'axios';
 import { 
   User, 
   Lock, 
   Globe,
   Shield,
-  Bell
+  Bell,
+  MessageSquare
 } from 'lucide-react';
+import { API_BASE } from '@/lib/utils';
+
+const API = API_BASE;
 
 export default function Settings() {
   const { t, language, setLanguage } = useLanguage();
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
   
   const [notifications, setNotifications] = useState(true);
   const [twoFactor, setTwoFactor] = useState(user?.two_factor_enabled || false);
+  const [telegramChatId, setTelegramChatId] = useState(user?.telegram_chat_id || '');
+  const [savingTelegram, setSavingTelegram] = useState(false);
+
+  useEffect(() => {
+    if (user?.telegram_chat_id) {
+      setTelegramChatId(user.telegram_chat_id);
+    }
+  }, [user]);
 
   const handleLanguageChange = (lang) => {
     setLanguage(lang);
     toast.success(lang === 'fr' ? 'Langue changée en français' : 'Language changed to English');
+  };
+
+  const handleSaveTelegram = async () => {
+    setSavingTelegram(true);
+    try {
+      const response = await axios.patch(`${API}/profile`, {
+        telegram_chat_id: telegramChatId || null
+      });
+      setUser(response.data.user);
+      toast.success(language === 'fr' 
+        ? 'Chat ID Telegram enregistré avec succès!' 
+        : 'Telegram chat ID saved successfully!');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Erreur lors de la sauvegarde');
+    } finally {
+      setSavingTelegram(false);
+    }
   };
 
   return (
@@ -147,7 +177,7 @@ export default function Settings() {
               Notifications
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
               <div className="flex items-center gap-3">
                 <Bell size={20} className="text-slate-500" />
@@ -160,6 +190,51 @@ export default function Settings() {
                 checked={notifications} 
                 onCheckedChange={setNotifications}
               />
+            </div>
+
+            {/* Telegram Notifications */}
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl">
+              <div className="flex items-center gap-3 mb-3">
+                <MessageSquare size={20} className="text-blue-600" />
+                <div>
+                  <p className="font-medium text-blue-900 dark:text-blue-300">
+                    {language === 'fr' ? 'Notifications Telegram' : 'Telegram Notifications'}
+                  </p>
+                  <p className="text-sm text-blue-700 dark:text-blue-400">
+                    {language === 'fr' 
+                      ? 'Recevez des notifications sur Telegram pour vos dépôts d\'agent' 
+                      : 'Receive notifications on Telegram for your agent deposits'}
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm">
+                  {language === 'fr' ? 'Chat ID Telegram' : 'Telegram Chat ID'}
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder={language === 'fr' ? '-1001234567890' : '-1001234567890'}
+                    value={telegramChatId}
+                    onChange={(e) => setTelegramChatId(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                  <Button 
+                    onClick={handleSaveTelegram}
+                    disabled={savingTelegram}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {savingTelegram 
+                      ? (language === 'fr' ? 'Enregistrement...' : 'Saving...')
+                      : (language === 'fr' ? 'Enregistrer' : 'Save')
+                    }
+                  </Button>
+                </div>
+                <p className="text-xs text-blue-600 dark:text-blue-400">
+                  {language === 'fr' 
+                    ? 'Pour trouver votre Chat ID, recherchez @userinfobot sur Telegram'
+                    : 'To find your Chat ID, search for @userinfobot on Telegram'}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
