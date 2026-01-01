@@ -311,7 +311,7 @@ export default function Deposit() {
                 <Label>{getText('Rezo USDT', 'Réseau USDT', 'USDT Network')}</Label>
                 {usdtLoading ? (
                   <div className="text-sm text-stone-600 mt-2">{getText('Chajman rezo yo...', 'Chargement des réseaux...', 'Loading networks...')}</div>
-                ) : (
+                ) : usdtNetworks.length > 0 ? (
                   <Select value={usdtNetwork} onValueChange={setUsdtNetwork}>
                     <SelectTrigger className="mt-2">
                       <SelectValue placeholder={getText('Chwazi rezo a', 'Choisir le réseau', 'Select network')} />
@@ -322,13 +322,12 @@ export default function Deposit() {
                       ))}
                     </SelectContent>
                   </Select>
-                )}
-                {!usdtLoading && usdtNetworks.length === 0 && (
+                ) : (
                   <p className="text-sm text-amber-700 mt-2">
                     {getText(
                       'Plisio pa disponib kounye a. Kontakte admin pou aktive li.',
-                      'Plisio n’est pas disponible pour le moment. Contactez l’admin pour l’activer.',
-                      'Plisio is not available right now. Ask admin to enable it.'
+                      'Plisio n'est pas disponible pour le moment. Contactez l'admin pour l'activer.',
+                      'Plisio is currently unavailable. Contact admin to activate it.'
                     )}
                   </p>
                 )}

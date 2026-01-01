@@ -358,19 +358,19 @@ export default function AdminAgentSettings() {
                   </Button>
                 </div>
 
-                {/* WhatsApp Notifications */}
+                {/* Telegram Notifications */}
                 <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl p-4">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="font-semibold text-green-800 dark:text-green-300 flex items-center gap-2">
                         <Bell size={18} />
-                        {getText('Notifikasyon WhatsApp', 'Notifications WhatsApp', 'WhatsApp Notifications')}
+                        {getText('Notifikasyon Telegram', 'Notifications Telegram', 'Telegram Notifications')}
                       </h3>
                       <p className="text-sm text-green-700 dark:text-green-400 mt-1">
                         {getText(
-                          'Voye notifikasyon bay ajan an lè depo a apwouve',
-                          'Envoyer une notification à l\'agent quand le dépôt est approuvé',
-                          'Send notification to agent when deposit is approved'
+                          'Voye notifikasyon Telegram bay ajan an lè depo a apwouve',
+                          'Envoyer une notification Telegram à l\'agent quand le dépôt est approuvé',
+                          'Send Telegram notification to agent when deposit is approved'
                         )}
                       </p>
                     </div>

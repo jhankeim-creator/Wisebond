@@ -49,7 +49,7 @@ export default function AdminAgentDeposits() {
     try {
       await axios.patch(`${API}/admin/agent-deposits/${selectedDeposit.deposit_id}?action=${action}`);
       toast.success(action === 'approve' 
-        ? getText('Depo apwouve! Notifikasyon WhatsApp voye bay ajan an.', 'Dépôt approuvé! Notification WhatsApp envoyée.', 'Deposit approved! WhatsApp notification sent.')
+        ? getText('Depo apwouve! Notifikasyon Telegram voye bay ajan an.', 'Dépôt approuvé! Notification Telegram envoyée.', 'Deposit approved! Telegram notification sent.')
         : getText('Depo rejte', 'Dépôt rejeté', 'Deposit rejected'));
       setShowModal(false);
       fetchDeposits();

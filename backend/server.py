@@ -730,6 +730,35 @@ async def get_deposits(
     deposits = await db.deposits.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
     return {"deposits": deposits}
 
+@api_router.get("/deposits/usdt-options")
+async def get_usdt_options(current_user: dict = Depends(get_current_user)):
+    """Get available USDT networks for Plisio deposits"""
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    
+    plisio_enabled = settings.get("plisio_enabled", False) if settings else False
+    plisio_api_key = settings.get("plisio_api_key", "") if settings else ""
+    
+    # Available USDT networks supported by Plisio
+    networks = [
+        {"code": "USDTTRC20", "label": "USDT (TRC-20) - Tron"},
+        {"code": "USDTERC20", "label": "USDT (ERC-20) - Ethereum"},
+        {"code": "USDTBEP20", "label": "USDT (BEP-20) - Binance Smart Chain"},
+        {"code": "USDTPOLYGON", "label": "USDT (Polygon)"},
+        {"code": "USDTARBITRUM", "label": "USDT (Arbitrum)"}
+    ]
+    
+    # Only return networks if Plisio is enabled and API key is configured
+    if plisio_enabled and plisio_api_key:
+        return {
+            "enabled": True,
+            "networks": networks
+        }
+    else:
+        return {
+            "enabled": False,
+            "networks": []
+        }
+
 # ==================== WITHDRAWAL ROUTES ====================
 
 @api_router.post("/withdrawals/create")
@@ -2575,6 +2604,16 @@ async def admin_get_kyc_submissions(
     
     submissions = await db.kyc.find(query, {"_id": 0}).sort("submitted_at", -1).limit(limit).to_list(limit)
     return {"submissions": submissions}
+
+@api_router.get("/admin/kyc/{kyc_id}")
+async def admin_get_kyc(
+    kyc_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    kyc = await db.kyc.find_one({"kyc_id": kyc_id}, {"_id": 0})
+    if not kyc:
+        raise HTTPException(status_code=404, detail="KYC submission not found")
+    return {"kyc": kyc}
 
 @api_router.patch("/admin/kyc/{kyc_id}")
 async def admin_review_kyc(
