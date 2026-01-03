@@ -4070,13 +4070,16 @@ async def admin_send_bulk_email(request: BulkEmailRequest, admin: dict = Depends
     return {"message": f"Emails sent: {success_count} success, {fail_count} failed"}
 
 # Test Resend Email
+class TestEmailRequest(BaseModel):
+    email: Optional[str] = None
+
 @api_router.post("/admin/test-email")
 async def admin_test_email(
-    request: dict,
+    request: TestEmailRequest,
     admin: dict = Depends(get_admin_user)
 ):
     """Test Resend email configuration"""
-    test_email = request.get("email", admin.get("email"))
+    test_email = request.email or admin.get("email")
     
     if not test_email:
         raise HTTPException(status_code=400, detail="Email address required")
