@@ -25,7 +25,8 @@ import {
   Bell,
   MessageSquare,
   Shield,
-  UserPlus
+  UserPlus,
+  Wallet
 } from 'lucide-react';
 
 export const AdminLayout = ({ children, title }) => {
@@ -58,6 +59,7 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/topup', icon: Phone, label: getText('Komand Minit', 'Commandes Minutes', 'Minute Orders') },
     { path: '/admin/rates', icon: RefreshCw, label: getText('To chanj', 'Taux de change', 'Exchange Rates') },
     { path: '/admin/fees', icon: DollarSign, label: getText('Frè', 'Frais', 'Fees') },
+    { path: '/admin/payment-methods', icon: Wallet, label: getText('Mwayen Peman', 'Moyens de paiement', 'Payment Methods') },
     { path: '/admin/bulk-email', icon: Mail, label: getText('Imèl', 'Emails', 'Emails') },
     { path: '/admin/team', icon: Shield, label: getText('Ekip', 'Équipe', 'Team') },
     { path: '/admin/logs', icon: MessageSquare, label: getText('Mesaj', 'Journaux', 'Logs') },

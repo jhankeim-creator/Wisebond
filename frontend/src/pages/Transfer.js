@@ -104,16 +104,37 @@ export default function Transfer() {
 
   const handleQRScan = (scannedData) => {
     // Extract client ID from scanned data
-    let clientId = scannedData.trim().toUpperCase();
+    let clientId = scannedData.trim();
     
-    // If it's a URL, extract the 'to' parameter
-    if (scannedData.includes('transfer?to=')) {
-      const url = new URL(scannedData);
-      clientId = url.searchParams.get('to')?.toUpperCase() || clientId;
+    // If it's a URL with transfer?to= parameter, extract it
+    if (clientId.includes('transfer?to=')) {
+      try {
+        const url = new URL(clientId);
+        clientId = url.searchParams.get('to') || clientId;
+      } catch (e) {
+        // If URL parsing fails, try manual extraction
+        const match = clientId.match(/transfer\?to=([A-Z0-9]+)/i);
+        if (match) {
+          clientId = match[1];
+        }
+      }
+    } else if (clientId.includes('/')) {
+      // If it's a URL path, try to extract from path
+      const match = clientId.match(/transfer\?to=([A-Z0-9]+)/i);
+      if (match) {
+        clientId = match[1];
+      } else {
+        // Fallback: get last part of URL
+        const parts = clientId.split('/');
+        clientId = parts[parts.length - 1];
+      }
     }
     
-    // Validate it looks like a client ID
-    if (clientId && clientId.length >= 8) {
+    // Clean up and validate client ID
+    clientId = clientId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    
+    // Validate it looks like a client ID (starts with KC and has sufficient length)
+    if (clientId && clientId.length >= 8 && clientId.startsWith('KC')) {
       setRecipientId(clientId);
       setShowScanner(false);
       toast.success(getText('ID kliyan jwenn!', 'ID client trouvé!', 'Client ID found!'));

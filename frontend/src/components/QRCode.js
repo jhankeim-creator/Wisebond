@@ -15,8 +15,11 @@ export function UserQRCode({ clientId, userName, size = 200 }) {
     return en;
   };
 
-  // QR code contains just the client ID - simple and lightweight
-  const qrValue = clientId;
+  // QR code contains a URL format for better compatibility and direct navigation
+  // Format: https://domain.com/transfer?to=CLIENT_ID
+  const qrValue = typeof window !== 'undefined' 
+    ? `${window.location.origin}/transfer?to=${clientId}`
+    : clientId;
 
   const copyClientId = () => {
     navigator.clipboard.writeText(clientId);

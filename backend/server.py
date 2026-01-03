@@ -245,6 +245,16 @@ class TopUpOrder(BaseModel):
     price: float
     phone_number: str
 
+class PaymentMethodUpdate(BaseModel):
+    method_id: str
+    flow: str  # 'deposit' or 'withdrawal'
+    currencies: List[str]  # ['HTG', 'USD']
+    display_name: str
+    enabled: bool = True
+    sort_order: int = 0
+    public: dict = {}  # Public info shown to users (recipient, instructions, etc.)
+    private: dict = {}  # Private info for admin only
+
 # ==================== AGENT DEPOSIT MODELS ====================
 
 class AgentDepositRequest(BaseModel):
@@ -358,44 +368,63 @@ async def send_email(to_email: str, subject: str, html_content: str):
     try:
         settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
         
-        # Check if Resend is enabled (must be explicitly True)
+        # Check if Resend is enabled (handle both boolean and string values)
+        resend_enabled = False
         if settings:
-            resend_enabled = settings.get("resend_enabled", False)
+            resend_enabled_val = settings.get("resend_enabled", False)
+            # Handle string "true"/"True" or boolean True
+            if isinstance(resend_enabled_val, bool):
+                resend_enabled = resend_enabled_val
+            elif isinstance(resend_enabled_val, str):
+                resend_enabled = resend_enabled_val.lower() in ("true", "1", "yes")
+            elif isinstance(resend_enabled_val, (int, float)):
+                resend_enabled = bool(resend_enabled_val)
+            
             if not resend_enabled:
-                logger.info("Resend email disabled in settings")
+                logger.info(f"Resend email disabled in settings (value: {resend_enabled_val}, type: {type(resend_enabled_val).__name__})")
                 return False
         else:
             # If no settings, check environment variable
             if not os.environ.get("RESEND_API_KEY"):
-                logger.info("Resend not configured")
+                logger.info("Resend not configured - no settings found and no RESEND_API_KEY env var")
                 return False
 
         resend_key = (settings.get("resend_api_key") if settings else None) or os.environ.get("RESEND_API_KEY")
         sender = (settings.get("sender_email") if settings else None) or os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
         
-        if not resend_key:
-            logger.warning("Resend API key not configured")
+        if not resend_key or resend_key.strip() == "":
+            logger.warning("Resend API key not configured or empty")
             return False
         
-        if not sender:
-            logger.warning("Sender email not configured")
+        if not sender or sender.strip() == "":
+            logger.warning("Sender email not configured or empty")
             return False
         
-        import resend
-        resend.api_key = resend_key
+        # Import resend and set API key
+        try:
+            import resend
+        except ImportError:
+            logger.error("Resend package not installed. Run: pip install resend")
+            return False
+        
+        resend.api_key = resend_key.strip()
         
         params = {
-            "from": sender,
-            "to": [to_email],
+            "from": sender.strip(),
+            "to": [to_email.strip()],
             "subject": subject,
             "html": html_content
         }
         
+        logger.info(f"Attempting to send email to {to_email} from {sender.strip()}")
         result = await asyncio.to_thread(resend.Emails.send, params)
-        logger.info(f"Email sent successfully to {to_email}: {result}")
+        logger.info(f"Email sent successfully to {to_email}. Result: {result}")
         return True
     except Exception as e:
-        logger.error(f"Failed to send email to {to_email}: {e}")
+        error_msg = str(e)
+        error_type = type(e).__name__
+        logger.error(f"Failed to send email to {to_email}: {error_type}: {error_msg}")
+        logger.exception("Full traceback:")
         return False
 
 async def send_telegram_notification(message: str, chat_id: Optional[str] = None):
@@ -712,6 +741,172 @@ async def update_profile(
     # Return updated user
     updated_user = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0, "password_hash": 0})
     return {"user": updated_user, "message": "Profile updated successfully"}
+
+@api_router.post("/telegram/generate-activation-code")
+async def generate_telegram_activation_code(current_user: dict = Depends(get_current_user)):
+    """Generate a unique activation code for Telegram bot activation"""
+    import secrets
+    
+    # Generate a unique 8-character activation code
+    activation_code = secrets.token_urlsafe(6).upper().replace('_', '').replace('-', '')[:8]
+    
+    # Store activation code with user_id and expiration (24 hours)
+    activation_doc = {
+        "activation_code": activation_code,
+        "user_id": current_user["user_id"],
+        "client_id": current_user["client_id"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat(),
+        "used": False
+    }
+    
+    await db.telegram_activations.insert_one(activation_doc)
+    
+    return {
+        "activation_code": activation_code,
+        "bot_username": None,  # Will be filled from settings
+        "message": "Activation code generated. Send /start CODE to the bot on Telegram."
+    }
+
+@api_router.post("/telegram/webhook")
+async def telegram_webhook(request: dict):
+    """Webhook endpoint for Telegram bot to receive updates"""
+    import httpx
+    
+    try:
+        # Get update from Telegram
+        if "message" not in request:
+            return {"ok": True}
+        
+        message = request["message"]
+        chat_id = str(message["chat"]["id"])
+        text = message.get("text", "").strip()
+        
+        # Check if it's a /start command with activation code
+        if text.startswith("/start"):
+            parts = text.split()
+            activation_code = parts[1] if len(parts) > 1 else None
+            
+            if activation_code:
+                # Find activation code in database
+                activation = await db.telegram_activations.find_one(
+                    {
+                        "activation_code": activation_code.upper(),
+                        "used": False
+                    },
+                    {"_id": 0}
+                )
+                
+                if activation:
+                    # Check if expired
+                    expires_at = datetime.fromisoformat(activation["expires_at"])
+                    if datetime.now(timezone.utc) > expires_at:
+                        # Send expired message
+                        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+                        bot_token = settings.get("telegram_bot_token") if settings else None
+                        
+                        if bot_token:
+                            async with httpx.AsyncClient() as client:
+                                await client.post(
+                                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                                    json={
+                                        "chat_id": chat_id,
+                                        "text": "❌ Activation code has expired. Please generate a new one from your account settings."
+                                    }
+                                )
+                        return {"ok": True}
+                    
+                    # Update user with chat_id
+                    await db.users.update_one(
+                        {"user_id": activation["user_id"]},
+                        {"$set": {"telegram_chat_id": chat_id}}
+                    )
+                    
+                    # Mark activation as used
+                    await db.telegram_activations.update_one(
+                        {"activation_code": activation_code.upper()},
+                        {"$set": {"used": True, "activated_at": datetime.now(timezone.utc).isoformat()}}
+                    )
+                    
+                    # Get user info
+                    user = await db.users.find_one({"user_id": activation["user_id"]}, {"_id": 0, "full_name": 1, "client_id": 1})
+                    
+                    # Send success message
+                    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+                    bot_token = settings.get("telegram_bot_token") if settings else None
+                    
+                    if bot_token:
+                        user_name = user.get("full_name", "User") if user else "User"
+                        client_id = user.get("client_id", "") if user else ""
+                        async with httpx.AsyncClient() as client:
+                            await client.post(
+                                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                                json={
+                                    "chat_id": chat_id,
+                                    "text": f"✅ <b>Telegram Notifications Activated!</b>\n\nHello {user_name}!\n\nYour Telegram notifications have been successfully activated. You will now receive notifications for:\n• Agent deposit approvals\n• Transaction updates\n\nYour Client ID: <code>{client_id}</code>\n\nThank you for using KAYICOM! 🎉",
+                                    "parse_mode": "HTML"
+                                }
+                            )
+                    
+                    await log_action(activation["user_id"], "telegram_activated", {"chat_id": chat_id})
+                else:
+                    # Invalid activation code
+                    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+                    bot_token = settings.get("telegram_bot_token") if settings else None
+                    
+                    if bot_token:
+                        async with httpx.AsyncClient() as client:
+                            await client.post(
+                                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                                json={
+                                    "chat_id": chat_id,
+                                    "text": "❌ Invalid activation code. Please check your code and try again, or generate a new one from your account settings."
+                                }
+                            )
+            else:
+                # /start without code - send instructions
+                settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+                bot_token = settings.get("telegram_bot_token") if settings else None
+                
+                if bot_token:
+                    async with httpx.AsyncClient() as client:
+                        await client.post(
+                            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                            json={
+                                "chat_id": chat_id,
+                                "text": "👋 Welcome to KAYICOM Telegram Notifications!\n\nTo activate notifications:\n1. Go to your account settings\n2. Click 'Activate Telegram'\n3. Send /start YOUR_CODE to this bot\n\nExample: /start ABC12345"
+                            }
+                        )
+        
+        return {"ok": True}
+    except Exception as e:
+        logger.error(f"Telegram webhook error: {e}")
+        return {"ok": False, "error": str(e)}
+
+@api_router.get("/telegram/activation-status")
+async def get_telegram_activation_status(current_user: dict = Depends(get_current_user)):
+    """Get current Telegram activation status and any pending activation codes"""
+    # Check if user has active activation code
+    active_activation = await db.telegram_activations.find_one(
+        {
+            "user_id": current_user["user_id"],
+            "used": False
+        },
+        {"_id": 0}
+    )
+    
+    # Check expiration
+    if active_activation:
+        expires_at = datetime.fromisoformat(active_activation["expires_at"])
+        if datetime.now(timezone.utc) > expires_at:
+            active_activation = None
+    
+    return {
+        "activated": bool(current_user.get("telegram_chat_id")),
+        "chat_id": current_user.get("telegram_chat_id"),
+        "activation_code": active_activation["activation_code"] if active_activation else None,
+        "expires_at": active_activation["expires_at"] if active_activation else None
+    }
 
 # ==================== WALLET ROUTES ====================
 
@@ -1346,13 +1541,17 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
     if current_user["kyc_status"] != "approved":
         raise HTTPException(status_code=403, detail="KYC verification required")
     
-    if current_user.get("wallet_htg", 0) < CARD_FEE_HTG:
-        raise HTTPException(status_code=400, detail=f"Insufficient balance. Card fee is {CARD_FEE_HTG} HTG")
+    # Get card fee from settings
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    card_fee_htg = settings.get("card_order_fee_htg", CARD_FEE_HTG) if settings else CARD_FEE_HTG
+    
+    if current_user.get("wallet_htg", 0) < card_fee_htg:
+        raise HTTPException(status_code=400, detail=f"Insufficient balance. Card fee is {card_fee_htg} HTG")
     
     # Deduct fee
     await db.users.update_one(
         {"user_id": current_user["user_id"]},
-        {"$inc": {"wallet_htg": -CARD_FEE_HTG}}
+        {"$inc": {"wallet_htg": -card_fee_htg}}
     )
     
     # Create card order (manual process - admin will approve/reject)
@@ -1361,7 +1560,7 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
         "user_id": current_user["user_id"],
         "client_id": current_user["client_id"],
         "card_email": request.card_email.lower(),
-        "fee": CARD_FEE_HTG,
+        "fee": card_fee_htg,
         "status": "pending",  # pending, approved, rejected
         "admin_notes": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -1376,7 +1575,7 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
         "transaction_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
         "type": "card_order",
-        "amount": -CARD_FEE_HTG,
+        "amount": -card_fee_htg,
         "currency": "HTG",
         "status": "completed",
         "description": "Virtual card order fee",
@@ -1552,6 +1751,21 @@ async def admin_create_card_manually(
     # NOTE: Manual cards do NOT get $5 bonus and do NOT count for affiliate rewards
     # Only cards ordered by users themselves get the bonus
     
+    # Send email notification to user
+    if user.get("email"):
+        subject = "KAYICOM - Virtual Card Created"
+        content = f"""
+        <h2>Virtual Card Created</h2>
+        <p>Hello {user.get('full_name', 'User')},</p>
+        <p>Your virtual card has been created successfully by our admin team.</p>
+        <p><strong>Card Email:</strong> {payload.card_email}</p>
+        <p><strong>Card Type:</strong> {payload.card_type or 'N/A'}</p>
+        <p>Order ID: <code>{order['order_id']}</code></p>
+        <p>You can now use this card for your transactions.</p>
+        <p>Thank you for using KAYICOM!</p>
+        """
+        await send_email(user["email"], subject, content)
+    
     await log_action(admin["user_id"], "card_manual_create", {"order_id": order["order_id"], "user_id": payload.user_id})
     
     if "_id" in order:
@@ -1662,18 +1876,34 @@ async def admin_process_card_order(
         user = await db.users.find_one({"user_id": order["user_id"]}, {"_id": 0})
         if user and user.get("referred_by"):
             await process_card_affiliate_reward(user["referred_by"])
+        
+        # Send email notification to user
+        if user and user.get("email"):
+            subject = "KAYICOM - Virtual Card Approved"
+            content = f"""
+            <h2>Virtual Card Approved</h2>
+            <p>Hello {user.get('full_name', 'User')},</p>
+            <p>Great news! Your virtual card order has been approved.</p>
+            <p><strong>Card Email:</strong> {order.get('card_email', 'N/A')}</p>
+            <p><strong>Bonus Added:</strong> ${CARD_BONUS_USD} USD</p>
+            <p>Order ID: <code>{order_id}</code></p>
+            <p>You can now use your virtual card for transactions. The card details have been sent to your registered email.</p>
+            <p>Thank you for using KAYICOM!</p>
+            """
+            await send_email(user["email"], subject, content)
     else:
-        # Refund the fee if rejected
+        # Refund the fee if rejected (use the fee stored in the order)
+        refund_amount = order.get("fee", CARD_FEE_HTG)
         await db.users.update_one(
             {"user_id": order["user_id"]},
-            {"$inc": {"wallet_htg": CARD_FEE_HTG}}
+            {"$inc": {"wallet_htg": refund_amount}}
         )
         
         await db.transactions.insert_one({
             "transaction_id": str(uuid.uuid4()),
             "user_id": order["user_id"],
             "type": "card_order_refund",
-            "amount": CARD_FEE_HTG,
+            "amount": refund_amount,
             "currency": "HTG",
             "status": "completed",
             "description": "Virtual card order refund (rejected)",
@@ -3133,6 +3363,320 @@ async def admin_update_withdrawal_limit(limit: WithdrawalLimitUpdate, admin: dic
     
     return {"message": "Withdrawal limit updated"}
 
+# Payment Methods Admin
+@api_router.get("/admin/payment-methods")
+async def admin_get_payment_methods(
+    flow: Optional[str] = None,
+    admin: dict = Depends(get_admin_user)
+):
+    """Get all payment methods, optionally filtered by flow"""
+    query = {}
+    if flow and flow != "all":
+        query["flow"] = flow
+    
+    methods = await db.payment_methods.find(query, {"_id": 0}).sort("sort_order", 1).to_list(100)
+    return {"methods": methods}
+
+@api_router.put("/admin/payment-methods")
+async def admin_create_or_update_payment_method(
+    method: PaymentMethodUpdate,
+    admin: dict = Depends(get_admin_user)
+):
+    """Create or update a payment method"""
+    if method.flow not in ["deposit", "withdrawal"]:
+        raise HTTPException(status_code=400, detail="Flow must be 'deposit' or 'withdrawal'")
+    
+    if not method.currencies or not all(c in ["HTG", "USD"] for c in method.currencies):
+        raise HTTPException(status_code=400, detail="Currencies must be HTG and/or USD")
+    
+    method_doc = {
+        "method_id": method.method_id,
+        "flow": method.flow,
+        "currencies": method.currencies,
+        "display_name": method.display_name,
+        "enabled": method.enabled,
+        "sort_order": method.sort_order,
+        "public": method.public,
+        "private": method.private,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": admin["user_id"]
+    }
+    
+    # Check if method exists
+    existing = await db.payment_methods.find_one({
+        "method_id": method.method_id,
+        "flow": method.flow
+    })
+    
+    if existing:
+        await db.payment_methods.update_one(
+            {"method_id": method.method_id, "flow": method.flow},
+            {"$set": method_doc}
+        )
+        action = "payment_method_update"
+    else:
+        method_doc["created_at"] = datetime.now(timezone.utc).isoformat()
+        await db.payment_methods.insert_one(method_doc)
+        action = "payment_method_create"
+    
+    await log_action(admin["user_id"], action, {"method_id": method.method_id, "flow": method.flow})
+    
+    if "_id" in method_doc:
+        del method_doc["_id"]
+    return {"method": method_doc, "message": "Payment method saved successfully"}
+
+@api_router.delete("/admin/payment-methods/{flow}/{method_id}")
+async def admin_delete_payment_method(
+    flow: str,
+    method_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """Delete a payment method"""
+    result = await db.payment_methods.delete_one({
+        "method_id": method_id,
+        "flow": flow
+    })
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+    
+    await log_action(admin["user_id"], "payment_method_delete", {"method_id": method_id, "flow": flow})
+    
+    return {"message": "Payment method deleted successfully"}
+
+@api_router.post("/admin/payment-methods/seed")
+async def admin_seed_payment_methods(admin: dict = Depends(get_admin_user)):
+    """Seed default payment methods"""
+    default_methods = [
+        {
+            "method_id": "moncash",
+            "flow": "deposit",
+            "currencies": ["HTG"],
+            "display_name": "MonCash",
+            "enabled": True,
+            "sort_order": 1,
+            "public": {
+                "placeholder": "Nimewo telefòn MonCash",
+                "instructions": "Voye montan an nan nimewo MonCash ki endike"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "natcash",
+            "flow": "deposit",
+            "currencies": ["HTG"],
+            "display_name": "NatCash",
+            "enabled": True,
+            "sort_order": 2,
+            "public": {
+                "placeholder": "Nimewo telefòn NatCash",
+                "instructions": "Voye montan an nan nimewo NatCash ki endike"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "zelle",
+            "flow": "deposit",
+            "currencies": ["USD"],
+            "display_name": "Zelle",
+            "enabled": True,
+            "sort_order": 1,
+            "public": {
+                "placeholder": "Email ou telefòn Zelle",
+                "instructions": "Voye nan email Zelle ki endike"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "paypal",
+            "flow": "deposit",
+            "currencies": ["USD"],
+            "display_name": "PayPal",
+            "enabled": True,
+            "sort_order": 2,
+            "public": {
+                "placeholder": "Email PayPal",
+                "instructions": "Voye nan email PayPal ki endike"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "usdt",
+            "flow": "deposit",
+            "currencies": ["USD"],
+            "display_name": "USDT (Plisio)",
+            "enabled": False,
+            "sort_order": 3,
+            "public": {
+                "placeholder": "Select network",
+                "instructions": "Select the network and we will create an automatic payment link"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "moncash",
+            "flow": "withdrawal",
+            "currencies": ["HTG"],
+            "display_name": "MonCash",
+            "enabled": True,
+            "sort_order": 1,
+            "public": {
+                "placeholder": "Nimewo telefòn MonCash"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "natcash",
+            "flow": "withdrawal",
+            "currencies": ["HTG"],
+            "display_name": "NatCash",
+            "enabled": True,
+            "sort_order": 2,
+            "public": {
+                "placeholder": "Nimewo telefòn NatCash"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "zelle",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "Zelle",
+            "enabled": True,
+            "sort_order": 1,
+            "public": {
+                "placeholder": "Email ou telefòn Zelle"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "paypal",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "PayPal",
+            "enabled": True,
+            "sort_order": 2,
+            "public": {
+                "placeholder": "Email PayPal"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "usdt",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "USDT (TRC-20)",
+            "enabled": True,
+            "sort_order": 3,
+            "public": {
+                "placeholder": "Adrès USDT TRC-20"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "bank_usa",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "Bank USA 🇺🇸",
+            "enabled": True,
+            "sort_order": 4,
+            "public": {
+                "placeholder": "Routing + Account Number"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "bank_mexico",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "Bank Mexico 🇲🇽",
+            "enabled": True,
+            "sort_order": 5,
+            "public": {
+                "placeholder": "CLABE (18 chif)"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "bank_brazil",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "Bank Brazil 🇧🇷",
+            "enabled": True,
+            "sort_order": 6,
+            "public": {
+                "placeholder": "CPF/CNPJ + Chave PIX"
+            },
+            "private": {}
+        },
+        {
+            "method_id": "bank_chile",
+            "flow": "withdrawal",
+            "currencies": ["USD"],
+            "display_name": "Bank Chile 🇨🇱",
+            "enabled": True,
+            "sort_order": 7,
+            "public": {
+                "placeholder": "RUT + Nimewo kont"
+            },
+            "private": {}
+        }
+    ]
+    
+    created_count = 0
+    updated_count = 0
+    
+    for method in default_methods:
+        method["updated_at"] = datetime.now(timezone.utc).isoformat()
+        method["updated_by"] = admin["user_id"]
+        
+        existing = await db.payment_methods.find_one({
+            "method_id": method["method_id"],
+            "flow": method["flow"]
+        })
+        
+        if existing:
+            await db.payment_methods.update_one(
+                {"method_id": method["method_id"], "flow": method["flow"]},
+                {"$set": method}
+            )
+            updated_count += 1
+        else:
+            method["created_at"] = datetime.now(timezone.utc).isoformat()
+            await db.payment_methods.insert_one(method)
+            created_count += 1
+    
+    await log_action(admin["user_id"], "payment_methods_seed", {
+        "created": created_count,
+        "updated": updated_count
+    })
+    
+    return {
+        "message": f"Seeded {len(default_methods)} payment methods",
+        "created": created_count,
+        "updated": updated_count
+    }
+
+# Public endpoint for payment methods (no auth required)
+@api_router.get("/public/payment-methods")
+async def get_public_payment_methods(
+    flow: Optional[str] = None,
+    currency: Optional[str] = None
+):
+    """Get enabled payment methods for public display"""
+    query = {"enabled": True}
+    
+    if flow:
+        query["flow"] = flow
+    
+    methods = await db.payment_methods.find(query, {"_id": 0, "private": 0}).sort("sort_order", 1).to_list(100)
+    
+    # Filter by currency if specified
+    if currency:
+        methods = [m for m in methods if currency.upper() in m.get("currencies", [])]
+    
+    return methods
+
 # Settings Admin
 @api_router.get("/admin/settings")
 async def admin_get_settings(admin: dict = Depends(get_admin_user)):
@@ -3255,6 +3799,37 @@ async def admin_send_bulk_email(request: BulkEmailRequest, admin: dict = Depends
     })
     
     return {"message": f"Emails sent: {success_count} success, {fail_count} failed"}
+
+# Test Resend Email
+@api_router.post("/admin/test-email")
+async def admin_test_email(
+    request: dict,
+    admin: dict = Depends(get_admin_user)
+):
+    """Test Resend email configuration"""
+    test_email = request.get("email", admin.get("email"))
+    
+    if not test_email:
+        raise HTTPException(status_code=400, detail="Email address required")
+    
+    subject = "KAYICOM - Test Email"
+    html_content = f"""
+    <h2>Test Email from KAYICOM</h2>
+    <p>Hello,</p>
+    <p>This is a test email to verify that Resend email notifications are working correctly.</p>
+    <p>If you received this email, your Resend configuration is successful!</p>
+    <p>Sent at: {datetime.now(timezone.utc).isoformat()}</p>
+    <p>Thank you for using KAYICOM!</p>
+    """
+    
+    result = await send_email(test_email, subject, html_content)
+    
+    if result:
+        await log_action(admin["user_id"], "test_email", {"email": test_email, "status": "success"})
+        return {"message": f"Test email sent successfully to {test_email}"}
+    else:
+        await log_action(admin["user_id"], "test_email", {"email": test_email, "status": "failed"})
+        raise HTTPException(status_code=500, detail="Failed to send test email. Check server logs for details.")
 
 # Admin: Update card details (after approval)
 @api_router.patch("/admin/virtual-card-orders/{order_id}/details")
@@ -3544,6 +4119,54 @@ async def admin_test_telegram(
         return {"success": True, "message": "Mesaj Telegram voye avèk siksè! ✅"}
     else:
         return {"success": False, "message": "Echèk voye mesaj Telegram. Verifye Bot Token ak Chat ID."}
+
+@api_router.post("/admin/telegram/setup-webhook")
+async def admin_setup_telegram_webhook(admin: dict = Depends(get_admin_user)):
+    """Set up Telegram webhook URL for bot activation"""
+    import httpx
+    
+    try:
+        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+        if not settings or not settings.get("telegram_enabled"):
+            raise HTTPException(status_code=400, detail="Telegram not enabled in settings")
+        
+        bot_token = settings.get("telegram_bot_token")
+        if not bot_token:
+            raise HTTPException(status_code=400, detail="Telegram bot token not configured")
+        
+        # Get webhook URL from environment or construct it
+        backend_url = os.environ.get("BACKEND_URL", "").rstrip("/")
+        if not backend_url:
+            raise HTTPException(status_code=400, detail="BACKEND_URL environment variable not set")
+        
+        webhook_url = f"{backend_url}/api/telegram/webhook"
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://api.telegram.org/bot{bot_token}/setWebhook",
+                json={"url": webhook_url},
+                timeout=30.0
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("ok"):
+                    await log_action(admin["user_id"], "telegram_webhook_setup", {"webhook_url": webhook_url})
+                    return {
+                        "success": True,
+                        "message": "Webhook configured successfully",
+                        "webhook_url": webhook_url,
+                        "telegram_response": result
+                    }
+                else:
+                    raise HTTPException(status_code=400, detail=f"Telegram API error: {result.get('description', 'Unknown error')}")
+            else:
+                raise HTTPException(status_code=400, detail=f"Failed to set webhook: {response.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error setting up Telegram webhook: {e}")
+        raise HTTPException(status_code=500, detail=f"Error setting up webhook: {str(e)}")
 
 # ==================== MAIN ROUTES ====================
 

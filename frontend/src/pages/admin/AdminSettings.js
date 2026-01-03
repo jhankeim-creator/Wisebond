@@ -247,6 +247,29 @@ export default function AdminSettings() {
                 className="mt-1"
               />
             </div>
+            <div className="pt-2">
+              <Button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const testEmail = prompt(getText('Antre imèl pou teste', 'Entrez l\'email pour tester', 'Enter email to test') + ':', settings.sender_email || '');
+                    if (!testEmail) return;
+                    
+                    const response = await axios.post(`${API}/admin/test-email`, { email: testEmail });
+                    toast.success(getText('Imèl tès voye avèk siksè!', 'Email de test envoyé avec succès!', 'Test email sent successfully!'));
+                  } catch (error) {
+                    const msg = error.response?.data?.detail || error.message || getText('Erè', 'Erreur', 'Error');
+                    toast.error(msg);
+                  }
+                }}
+                variant="outline"
+                size="sm"
+                className="w-full"
+              >
+                <Mail size={14} className="mr-2" />
+                {getText('Tès Imèl', 'Tester Email', 'Test Email')}
+              </Button>
+            </div>
           </CardContent>
         )}
       </Card>

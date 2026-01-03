@@ -114,19 +114,37 @@ export default function AgentDeposit() {
     setShowQRScanner(false);
     
     // Extract client ID from scanned data
-    // Assuming QR code contains client ID in format: KC12345 or similar
     let clientId = scannedData.trim();
     
-    // If it's a URL, try to extract client ID from it
-    if (clientId.includes('/')) {
-      const parts = clientId.split('/');
-      clientId = parts[parts.length - 1];
+    // If it's a URL with transfer?to= parameter, extract it
+    if (clientId.includes('transfer?to=')) {
+      try {
+        const url = new URL(clientId);
+        clientId = url.searchParams.get('to') || clientId;
+      } catch (e) {
+        // If URL parsing fails, try manual extraction
+        const match = clientId.match(/transfer\?to=([A-Z0-9]+)/i);
+        if (match) {
+          clientId = match[1];
+        }
+      }
+    } else if (clientId.includes('/')) {
+      // If it's a URL path, try to extract from path
+      const match = clientId.match(/transfer\?to=([A-Z0-9]+)/i);
+      if (match) {
+        clientId = match[1];
+      } else {
+        // Fallback: get last part of URL
+        const parts = clientId.split('/');
+        clientId = parts[parts.length - 1];
+      }
     }
     
-    // Clean up the client ID
-    clientId = clientId.replace(/[^a-zA-Z0-9]/g, '');
+    // Clean up the client ID - keep only alphanumeric characters
+    clientId = clientId.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     
-    if (clientId) {
+    // Validate client ID format (should start with KC and have numbers)
+    if (clientId && clientId.length >= 8 && clientId.startsWith('KC')) {
       setClientIdentifier(clientId);
       toast.success(getText('QR Code skane! Rechèch kliyan...', 'QR Code scanné! Recherche client...', 'QR Code scanned! Searching client...'));
     } else {

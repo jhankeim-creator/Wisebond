@@ -15,7 +15,8 @@ import {
   AlertCircle,
   DollarSign,
   Smartphone,
-  Wallet
+  Wallet,
+  Building
 } from 'lucide-react';
 
 import { API_BASE } from '@/lib/utils';
@@ -36,6 +37,8 @@ export default function Deposit() {
   const [usdtNetwork, setUsdtNetwork] = useState('');
   const [usdtLoading, setUsdtLoading] = useState(false);
   const [usdtEnabled, setUsdtEnabled] = useState(false);
+  const [availableMethods, setAvailableMethods] = useState({ HTG: [], USD: [] });
+  const [methodMeta, setMethodMeta] = useState({});
   const [manualConfig, setManualConfig] = useState({
     moncash_enabled: false,
     moncash_number: null,
@@ -133,20 +136,52 @@ export default function Deposit() {
     }
   }, [method]);
 
-  // Metòd depo: HTG = MonCash/NatCash (configurable), USD = Zelle/PayPal/USDT
+  // Helper to get icon for method
+  const getMethodIcon = (methodId) => {
+    if (methodId.includes('cash') || methodId === 'moncash' || methodId === 'natcash') return Smartphone;
+    if (methodId === 'usdt') return Wallet;
+    if (methodId.includes('bank')) return Building;
+    return DollarSign;
+  };
+
+  // Fetch payment methods from API
+  const fetchPaymentMethods = useCallback(async (cur) => {
+    try {
+      const res = await axios.get(`${API}/public/payment-methods?flow=deposit&currency=${cur}`);
+      const list = Array.isArray(res.data) ? res.data : [];
+      
+      const metaById = {};
+      const mapped = list
+        .slice()
+        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+        .map((m) => {
+          metaById[m.method_id] = m;
+          return {
+            id: m.method_id,
+            name: m.display_name,
+            icon: getMethodIcon(m.method_id)
+          };
+        });
+
+      setMethodMeta((prev) => ({ ...prev, ...metaById }));
+      setAvailableMethods((prev) => ({ ...prev, [cur]: mapped }));
+    } catch (e) {
+      // Fallback to empty array
+      setAvailableMethods((prev) => ({ ...prev, [cur]: [] }));
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPaymentMethods(currency);
+  }, [currency, fetchPaymentMethods]);
+
+  // Metòd depo: Now fetched from API dynamically
   const depositMethods = useMemo(() => {
-    const htg = [];
-    if (manualConfig.moncash_enabled) htg.push({ id: 'moncash', name: 'MonCash', icon: Smartphone });
-    if (manualConfig.natcash_enabled) htg.push({ id: 'natcash', name: 'NatCash', icon: Smartphone });
     return {
-      HTG: htg,
-      USD: [
-        { id: 'zelle', name: 'Zelle', icon: DollarSign },
-        { id: 'paypal', name: 'PayPal', icon: DollarSign },
-        { id: 'usdt', name: 'USDT (Plisio)', icon: Wallet }
-      ]
+      HTG: availableMethods.HTG || [],
+      USD: availableMethods.USD || []
     };
-  }, [manualConfig.moncash_enabled, manualConfig.natcash_enabled]);
+  }, [availableMethods]);
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -362,9 +397,30 @@ export default function Deposit() {
                         'Method not configured. Contact admin.'
                       )
                 )
-                : method === 'zelle' 
-                  ? getText('Voye nan: payments@kayicom.com', 'Envoyez à: payments@kayicom.com', 'Send to: payments@kayicom.com')
-                  : getText('Voye nan: payments@kayicom.com', 'Envoyez à: payments@kayicom.com', 'Send to: payments@kayicom.com')
+                : (() => {
+                    const methodData = methodMeta[method];
+                    const instructions = methodData?.public?.instructions;
+                    if (instructions) return instructions;
+                    if (method === 'zelle') {
+                      return getText(
+                        `Voye nan: ${manualConfig.zelle_email || 'payments@kayicom.com'}`,
+                        `Envoyez à: ${manualConfig.zelle_email || 'payments@kayicom.com'}`,
+                        `Send to: ${manualConfig.zelle_email || 'payments@kayicom.com'}`
+                      );
+                    }
+                    if (method === 'paypal') {
+                      return getText(
+                        `Voye nan: ${manualConfig.paypal_email || 'payments@kayicom.com'}`,
+                        `Envoyez à: ${manualConfig.paypal_email || 'payments@kayicom.com'}`,
+                        `Send to: ${manualConfig.paypal_email || 'payments@kayicom.com'}`
+                      );
+                    }
+                    return getText(
+                      'Suivez les instructions pour cette méthode',
+                      'Suivez les instructions pour cette méthode',
+                      'Follow instructions for this method'
+                    );
+                  })()
               }
             </p>
           </div>
