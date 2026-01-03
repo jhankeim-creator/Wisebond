@@ -15,6 +15,7 @@ import bcrypt
 from jose import jwt, JWTError
 import secrets
 import base64
+import httpx
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -952,8 +953,76 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
         "wallet_address": request.wallet_address,
         "network": request.network,
         "status": "pending",
+        "provider": None,
+        "plisio_invoice_id": None,
+        "plisio_invoice_url": None,
+        "provider_status": None,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+    
+    # If USDT deposit, create Plisio invoice
+    if request.method.lower() == "usdt" and request.network:
+        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+        plisio_enabled = settings.get("plisio_enabled", False) if settings else False
+        plisio_api_key = settings.get("plisio_api_key", "") if settings else ""
+        plisio_secret_key = settings.get("plisio_secret_key", "") if settings else ""
+        
+        if plisio_enabled and plisio_api_key and plisio_secret_key:
+            try:
+                import httpx
+                
+                # Map network codes to Plisio currency codes
+                network_map = {
+                    "usdt_trc20": "USDTTRC20",
+                    "usdt_erc20": "USDTERC20",
+                    "usdt_bep20": "USDTBEP20",
+                    "usdt_polygon": "USDTPOLYGON",
+                    "usdt_arbitrum": "USDTARBITRUM",
+                    "USDTTRC20": "USDTTRC20",
+                    "USDTERC20": "USDTERC20",
+                    "USDTBEP20": "USDTBEP20",
+                    "USDTPOLYGON": "USDTPOLYGON",
+                    "USDTARBITRUM": "USDTARBITRUM"
+                }
+                
+                plisio_currency = network_map.get(request.network.upper(), "USDTTRC20")
+                
+                # Create Plisio invoice
+                async with httpx.AsyncClient() as client:
+                    response = await client.post(
+                        "https://plisio.net/api/v1/invoices/new",
+                        data={
+                            "api_key": plisio_api_key,
+                            "api_secret": plisio_secret_key,
+                            "currency": plisio_currency,
+                            "source_currency": request.currency.upper(),
+                            "source_amount": request.amount,
+                            "order_name": f"Deposit {deposit_id}",
+                            "order_number": deposit_id,
+                            "callback_url": f"{os.environ.get('BACKEND_URL', 'https://wisebond.onrender.com')}/api/deposits/plisio-webhook",
+                            "email": current_user.get("email", ""),
+                            "success_url": f"{os.environ.get('FRONTEND_URL', 'https://wallet.kayicom.com')}/deposit?status=success",
+                            "fail_url": f"{os.environ.get('FRONTEND_URL', 'https://wallet.kayicom.com')}/deposit?status=failed"
+                        },
+                        timeout=30.0
+                    )
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        if result.get("status") == "success" and result.get("data"):
+                            invoice_data = result["data"]
+                            deposit["provider"] = "plisio"
+                            deposit["plisio_invoice_id"] = invoice_data.get("txn_id")
+                            deposit["plisio_invoice_url"] = invoice_data.get("invoice_url")
+                            deposit["provider_status"] = invoice_data.get("status", "pending")
+                            logger.info(f"Plisio invoice created for deposit {deposit_id}: {invoice_data.get('txn_id')}")
+                        else:
+                            logger.error(f"Plisio API error: {result.get('message', 'Unknown error')}")
+                    else:
+                        logger.error(f"Plisio API request failed: {response.status_code} - {response.text}")
+            except Exception as e:
+                logger.error(f"Failed to create Plisio invoice: {e}")
+                # Continue with manual deposit if Plisio fails
     
     await db.deposits.insert_one(deposit)
     await log_action(current_user["user_id"], "deposit_request", {"amount": request.amount, "method": request.method})
@@ -984,11 +1053,11 @@ async def get_usdt_options(current_user: dict = Depends(get_current_user)):
     
     # Available USDT networks supported by Plisio
     networks = [
-        {"code": "USDTTRC20", "label": "USDT (TRC-20) - Tron"},
-        {"code": "USDTERC20", "label": "USDT (ERC-20) - Ethereum"},
-        {"code": "USDTBEP20", "label": "USDT (BEP-20) - Binance Smart Chain"},
-        {"code": "USDTPOLYGON", "label": "USDT (Polygon)"},
-        {"code": "USDTARBITRUM", "label": "USDT (Arbitrum)"}
+        {"code": "usdt_trc20", "label": "USDT (TRC-20) - Tron"},
+        {"code": "usdt_erc20", "label": "USDT (ERC-20) - Ethereum"},
+        {"code": "usdt_bep20", "label": "USDT (BEP-20) - Binance Smart Chain"},
+        {"code": "usdt_polygon", "label": "USDT (Polygon)"},
+        {"code": "usdt_arbitrum", "label": "USDT (Arbitrum)"}
     ]
     
     # Only return networks if Plisio is enabled and API key is configured
@@ -1002,6 +1071,162 @@ async def get_usdt_options(current_user: dict = Depends(get_current_user)):
             "enabled": False,
             "networks": []
         }
+
+@api_router.post("/deposits/{deposit_id}/sync")
+async def sync_deposit_status(deposit_id: str, current_user: dict = Depends(get_current_user)):
+    """Manually sync deposit status from Plisio"""
+    deposit = await db.deposits.find_one({"deposit_id": deposit_id, "user_id": current_user["user_id"]}, {"_id": 0})
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    
+    if deposit.get("provider") != "plisio" or not deposit.get("plisio_invoice_id"):
+        raise HTTPException(status_code=400, detail="This deposit is not a Plisio deposit")
+    
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    plisio_api_key = settings.get("plisio_api_key", "") if settings else ""
+    plisio_secret_key = settings.get("plisio_secret_key", "") if settings else ""
+    
+    if not plisio_api_key or not plisio_secret_key:
+        raise HTTPException(status_code=400, detail="Plisio not configured")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"https://plisio.net/api/v1/operations/{deposit['plisio_invoice_id']}",
+                params={
+                    "api_key": plisio_api_key,
+                    "api_secret": plisio_secret_key
+                },
+                timeout=30.0
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("status") == "success" and result.get("data"):
+                    invoice_data = result["data"]
+                    new_status = invoice_data.get("status", deposit.get("provider_status", "pending"))
+                    
+                    # Update deposit status
+                    update_data = {
+                        "provider_status": new_status
+                    }
+                    
+                    # If payment is confirmed, auto-approve deposit
+                    if new_status in ["completed", "mismatch"]:
+                        if deposit["status"] == "pending":
+                            update_data["status"] = "completed"
+                            # Credit user wallet
+                            currency_key = f"wallet_{deposit['currency'].lower()}"
+                            await db.users.update_one(
+                                {"user_id": deposit["user_id"]},
+                                {"$inc": {currency_key: deposit["amount"]}}
+                            )
+                            # Create transaction
+                            await db.transactions.insert_one({
+                                "transaction_id": str(uuid.uuid4()),
+                                "user_id": deposit["user_id"],
+                                "type": "deposit",
+                                "amount": deposit["amount"],
+                                "currency": deposit["currency"],
+                                "reference_id": deposit_id,
+                                "status": "completed",
+                                "description": f"Deposit via {deposit['method']} (Plisio)",
+                                "created_at": datetime.now(timezone.utc).isoformat()
+                            })
+                    
+                    await db.deposits.update_one(
+                        {"deposit_id": deposit_id},
+                        {"$set": update_data}
+                    )
+                    
+                    # Refresh deposit
+                    deposit = await db.deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+                    if "_id" in deposit:
+                        del deposit["_id"]
+                    
+                    return {"deposit": deposit}
+                else:
+                    raise HTTPException(status_code=400, detail=result.get("message", "Failed to sync"))
+            else:
+                raise HTTPException(status_code=400, detail="Failed to sync with Plisio")
+    except Exception as e:
+        logger.error(f"Error syncing Plisio deposit: {e}")
+        raise HTTPException(status_code=500, detail=f"Error syncing deposit: {str(e)}")
+
+@api_router.post("/deposits/plisio-webhook")
+async def plisio_webhook(request: dict):
+    """Webhook endpoint for Plisio to notify about payment status"""
+    try:
+        # Verify webhook (Plisio sends order_number as deposit_id)
+        order_number = request.get("order_number")
+        if not order_number:
+            logger.warning("Plisio webhook missing order_number")
+            return {"status": "error", "message": "Missing order_number"}
+        
+        deposit = await db.deposits.find_one({"deposit_id": order_number}, {"_id": 0})
+        if not deposit:
+            logger.warning(f"Plisio webhook: deposit {order_number} not found")
+            return {"status": "error", "message": "Deposit not found"}
+        
+        # Get Plisio status
+        plisio_status = request.get("status")
+        txn_id = request.get("txn_id")
+        
+        if not plisio_status:
+            logger.warning("Plisio webhook missing status")
+            return {"status": "error", "message": "Missing status"}
+        
+        # Update deposit status
+        update_data = {
+            "provider_status": plisio_status
+        }
+        
+        # If payment is confirmed, auto-approve deposit
+        if plisio_status in ["completed", "mismatch"] and deposit["status"] == "pending":
+            update_data["status"] = "completed"
+            # Credit user wallet
+            currency_key = f"wallet_{deposit['currency'].lower()}"
+            await db.users.update_one(
+                {"user_id": deposit["user_id"]},
+                {"$inc": {currency_key: deposit["amount"]}}
+            )
+            # Create transaction
+            await db.transactions.insert_one({
+                "transaction_id": str(uuid.uuid4()),
+                "user_id": deposit["user_id"],
+                "type": "deposit",
+                "amount": deposit["amount"],
+                "currency": deposit["currency"],
+                "reference_id": order_number,
+                "status": "completed",
+                "description": f"Deposit via {deposit['method']} (Plisio)",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+            
+            # Send email notification
+            user = await db.users.find_one({"user_id": deposit["user_id"]}, {"_id": 0, "email": 1, "full_name": 1})
+            if user and user.get("email"):
+                subject = "KAYICOM - Deposit Approved"
+                content = f"""
+                <h2>Deposit Approved</h2>
+                <p>Hello {user.get('full_name', 'User')},</p>
+                <p>Your deposit of <strong>{deposit['amount']} {deposit['currency']}</strong> has been automatically approved.</p>
+                <p>Transaction ID: <code>{order_number}</code></p>
+                <p>Thank you for using KAYICOM!</p>
+                """
+                await send_email(user["email"], subject, content)
+            
+            logger.info(f"Plisio deposit {order_number} auto-approved via webhook")
+        
+        await db.deposits.update_one(
+            {"deposit_id": order_number},
+            {"$set": update_data}
+        )
+        
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Plisio webhook error: {e}")
+        return {"status": "error", "message": str(e)}
 
 # ==================== WITHDRAWAL ROUTES ====================
 
@@ -1243,6 +1468,37 @@ async def swap_currency(request: SwapRequest, current_user: dict = Depends(get_c
     }
 
 # ==================== TRANSFER ROUTES ====================
+
+@api_router.post("/transfers/lookup-recipient")
+async def lookup_recipient(request: dict, current_user: dict = Depends(get_current_user)):
+    """Lookup recipient by client ID for transfers"""
+    client_id = (request.get("client_id") or request.get("identifier", "")).upper().strip()
+    
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID required")
+    
+    # Find user by client_id
+    user = await db.users.find_one(
+        {"client_id": client_id},
+        {"_id": 0, "user_id": 1, "client_id": 1, "full_name": 1, "email": 1, "is_active": 1, "kyc_status": 1}
+    )
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="Client not found")
+    
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=400, detail="Client account is inactive")
+    
+    if user.get("kyc_status") != "approved":
+        raise HTTPException(status_code=400, detail="Recipient KYC not approved")
+    
+    # Don't return sensitive info, just what's needed for display
+    return {
+        "client_id": user["client_id"],
+        "full_name": user.get("full_name", "User"),
+        "email": user.get("email", ""),
+        "kyc_status": user.get("kyc_status", "pending")
+    }
 
 @api_router.post("/transfers/send")
 async def send_transfer(request: TransferRequest, current_user: dict = Depends(get_current_user)):
@@ -3757,18 +4013,31 @@ async def get_public_app_config():
 
 @api_router.put("/admin/settings")
 async def admin_update_settings(settings: AdminSettingsUpdate, admin: dict = Depends(get_admin_user)):
-    update_doc = {k: v for k, v in settings.model_dump().items() if v is not None}
-    update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
-    await db.settings.update_one(
-        {"setting_id": "main"},
-        {"$set": update_doc},
-        upsert=True
-    )
-    
-    await log_action(admin["user_id"], "settings_update", {"fields_updated": list(update_doc.keys())})
-    
-    return {"message": "Settings updated"}
+    try:
+        # Convert empty strings to None for optional fields, but keep other values
+        update_doc = {}
+        for k, v in settings.model_dump().items():
+            if v is not None:
+                # Convert empty strings to None for string fields
+                if isinstance(v, str) and v.strip() == "":
+                    update_doc[k] = None
+                else:
+                    update_doc[k] = v
+        
+        update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+        
+        await db.settings.update_one(
+            {"setting_id": "main"},
+            {"$set": update_doc},
+            upsert=True
+        )
+        
+        await log_action(admin["user_id"], "settings_update", {"fields_updated": list(update_doc.keys())})
+        
+        return {"message": "Settings updated"}
+    except Exception as e:
+        logger.error(f"Error updating settings: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update settings: {str(e)}")
 
 # Bulk Email Admin
 @api_router.post("/admin/bulk-email")

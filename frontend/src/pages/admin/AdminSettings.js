@@ -133,10 +133,22 @@ export default function AdminSettings() {
         plisio_secret_key_last4,
         ...payload
       } = settings;
-      await axios.put(`${API}/admin/settings`, payload);
+      
+      // Clean up empty strings - convert to null for optional fields
+      const cleanedPayload = Object.fromEntries(
+        Object.entries(payload).map(([key, value]) => [
+          key,
+          value === '' ? null : value
+        ])
+      );
+      
+      await axios.put(`${API}/admin/settings`, cleanedPayload);
       toast.success(getText('Paramèt anrejistre!', 'Paramètres enregistrés!', 'Settings saved!'));
+      fetchSettings(); // Refresh to get updated values
     } catch (error) {
-      toast.error(getText('Erè nan anrejistreman', 'Erreur lors de la sauvegarde', 'Error saving'));
+      console.error('Save settings error:', error);
+      const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.message || getText('Erè nan anrejistreman', 'Erreur lors de la sauvegarde', 'Error saving');
+      toast.error(errorMsg);
     } finally {
       setSaving(false);
     }
