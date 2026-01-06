@@ -83,6 +83,7 @@ class UserCreate(BaseModel):
     full_name: str
     phone: str
     language: str = "fr"
+    referral_code: Optional[str] = None
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -246,6 +247,12 @@ class TopUpOrder(BaseModel):
     price: float
     phone_number: str
 
+class PaymentMethodFeeConfig(BaseModel):
+    fee_type: str = "fixed"  # "fixed" or "percentage"
+    fee_value: float = 0.0  # Fixed amount or percentage (e.g., 5 means 5%)
+    min_amount: Optional[float] = None  # Minimum amount for this fee tier
+    max_amount: Optional[float] = None  # Maximum amount for this fee tier
+
 class PaymentMethodUpdate(BaseModel):
     method_id: str
     flow: str  # 'deposit' or 'withdrawal'
@@ -255,6 +262,7 @@ class PaymentMethodUpdate(BaseModel):
     sort_order: int = 0
     public: dict = {}  # Public info shown to users (recipient, instructions, etc.)
     private: dict = {}  # Private info for admin only
+    fees: Optional[List[PaymentMethodFeeConfig]] = None  # Fee configuration per amount range
 
 # ==================== AGENT DEPOSIT MODELS ====================
 
@@ -619,6 +627,18 @@ async def register(user: UserCreate):
     user_id = str(uuid.uuid4())
     client_id = generate_client_id()
     
+    # Process referral code if provided
+    referred_by = None
+    if user.referral_code:
+        referrer = await db.users.find_one({"affiliate_code": user.referral_code}, {"_id": 0})
+        if referrer:
+            if referrer["user_id"] != user_id:  # Can't refer yourself (though user_id doesn't exist yet, this is a safety check)
+                referred_by = user.referral_code
+            else:
+                logger.warning(f"User tried to refer themselves with code {user.referral_code}")
+        else:
+            logger.warning(f"Invalid referral code provided: {user.referral_code}")
+    
     user_doc = {
         "user_id": user_id,
         "client_id": client_id,
@@ -632,7 +652,7 @@ async def register(user: UserCreate):
         "wallet_usd": 0.0,
         "affiliate_code": generate_affiliate_code(),
         "affiliate_earnings": 0.0,
-        "referred_by": None,
+        "referred_by": referred_by,
         "is_active": True,
         "is_admin": False,
         "two_factor_enabled": False,
@@ -640,7 +660,7 @@ async def register(user: UserCreate):
     }
     
     await db.users.insert_one(user_doc)
-    await log_action(user_id, "register", {"email": user.email})
+    await log_action(user_id, "register", {"email": user.email, "referred_by": referred_by})
     
     token = create_access_token({"sub": user_id})
     
@@ -683,7 +703,7 @@ async def forgot_password(request: PasswordReset):
         "used": False
     })
     
-    reset_link = f"{os.environ.get('FRONTEND_URL', 'http://localhost:3000')}/reset-password?token={reset_token}"
+    reset_link = f"{os.environ.get('FRONTEND_URL', 'https://wallet.kayicom.com')}/reset-password?token={reset_token}"
     
     await send_email(
         request.email,
@@ -940,6 +960,20 @@ async def get_transactions(
 async def create_deposit(request: DepositRequest, current_user: dict = Depends(get_current_user)):
     if current_user["kyc_status"] != "approved":
         raise HTTPException(status_code=403, detail="KYC verification required for deposits")
+    
+    # Validate payment method exists and is enabled
+    payment_method = await db.payment_methods.find_one({
+        "method_id": request.method.lower(),
+        "flow": "deposit",
+        "enabled": True
+    }, {"_id": 0})
+    
+    if not payment_method:
+        raise HTTPException(status_code=400, detail=f"Payment method '{request.method}' is not available for deposits")
+    
+    # Validate currency is supported
+    if request.currency.upper() not in payment_method.get("currencies", []):
+        raise HTTPException(status_code=400, detail=f"Currency '{request.currency}' is not supported for this payment method")
     
     deposit_id = str(uuid.uuid4())
     deposit = {
@@ -1235,6 +1269,20 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
     if current_user["kyc_status"] != "approved":
         raise HTTPException(status_code=403, detail="KYC verification required for withdrawals")
     
+    # Validate payment method exists and is enabled
+    payment_method = await db.payment_methods.find_one({
+        "method_id": request.method.lower(),
+        "flow": "withdrawal",
+        "enabled": True
+    }, {"_id": 0})
+    
+    if not payment_method:
+        raise HTTPException(status_code=400, detail=f"Payment method '{request.method}' is not available for withdrawals")
+    
+    # Validate currency is supported
+    if request.currency.upper() not in payment_method.get("currencies", []):
+        raise HTTPException(status_code=400, detail=f"Currency '{request.currency}' is not supported for this payment method")
+    
     # Determine source and target currencies
     target_currency = request.currency.upper()
     source_currency = (request.source_currency or request.currency).upper()
@@ -1266,19 +1314,32 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
         if request.amount > limits.get("max_amount", float('inf')):
             raise HTTPException(status_code=400, detail=f"Maximum withdrawal is {limits['max_amount']}")
     
-    # Calculate fees
+    # Calculate fees - first check payment method fees, then fallback to fees collection
     fee = 0
-    fee_config = await db.fees.find_one({
-        "method": request.method,
-        "min_amount": {"$lte": request.amount},
-        "max_amount": {"$gte": request.amount}
-    }, {"_id": 0})
-    
-    if fee_config:
-        if fee_config.get("fee_type") == "percentage":
-            fee = request.amount * (fee_config["fee_value"] / 100)
-        else:
-            fee = fee_config["fee_value"]
+    if payment_method.get("fees") and len(payment_method["fees"]) > 0:
+        # Use fees from payment method
+        for fee_config in payment_method["fees"]:
+            min_amount = fee_config.get("min_amount", 0)
+            max_amount = fee_config.get("max_amount", float('inf'))
+            if request.amount >= min_amount and request.amount <= max_amount:
+                if fee_config.get("fee_type") == "percentage":
+                    fee = request.amount * (fee_config["fee_value"] / 100)
+                else:
+                    fee = fee_config["fee_value"]
+                break
+    else:
+        # Fallback to fees collection (backward compatibility)
+        fee_config = await db.fees.find_one({
+            "method": request.method,
+            "min_amount": {"$lte": request.amount},
+            "max_amount": {"$gte": request.amount}
+        }, {"_id": 0})
+        
+        if fee_config:
+            if fee_config.get("fee_type") == "percentage":
+                fee = request.amount * (fee_config["fee_value"] / 100)
+            else:
+                fee = fee_config["fee_value"]
     
     withdrawal_id = str(uuid.uuid4())
     withdrawal = {
@@ -3654,6 +3715,7 @@ async def admin_create_or_update_payment_method(
         "sort_order": method.sort_order,
         "public": method.public,
         "private": method.private,
+        "fees": [f.model_dump() for f in (method.fees or [])] if method.fees else [],
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "updated_by": admin["user_id"]
     }

@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Plus, RefreshCw, Save, Trash2, Wand2, ArrowDownCircle, ArrowUpCircle, Edit2, AlertCircle } from 'lucide-react';
+import { Plus, RefreshCw, Save, Trash2, Wand2, ArrowDownCircle, ArrowUpCircle, Edit2, AlertCircle, X } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
@@ -67,8 +67,28 @@ export default function AdminPaymentMethods() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterFlow]);
 
+  const addFee = () => {
+    const fees = editing.fees || [];
+    setEditing({
+      ...editing,
+      fees: [...fees, { fee_type: 'fixed', fee_value: 0, min_amount: 0, max_amount: 10000 }]
+    });
+  };
+
+  const removeFee = (index) => {
+    const fees = editing.fees || [];
+    setEditing({ ...editing, fees: fees.filter((_, i) => i !== index) });
+  };
+
+  const updateFee = (index, field, value) => {
+    const fees = editing.fees || [];
+    const updated = [...fees];
+    updated[index] = { ...updated[index], [field]: value };
+    setEditing({ ...editing, fees: updated });
+  };
+
   const openCreate = () => {
-    setEditing({ ...emptyMethod });
+    setEditing({ ...emptyMethod, fees: [] });
     setPublicJson('{\n  "recipient": "",\n  "instructions": ""\n}');
     setPrivateJson('{}');
     setJsonError({ public: null, private: null });
@@ -76,7 +96,7 @@ export default function AdminPaymentMethods() {
   };
 
   const openEdit = (m) => {
-    setEditing({ ...m });
+    setEditing({ ...m, fees: m.fees || [] });
     setPublicJson(JSON.stringify(m.public || {}, null, 2));
     setPrivateJson(JSON.stringify(m.private || {}, null, 2));
     setJsonError({ public: null, private: null });
@@ -129,6 +149,7 @@ export default function AdminPaymentMethods() {
         display_name: editing.display_name.trim(),
         public: parsedPublic,
         private: parsedPrivate,
+        fees: editing.fees || [],
       };
 
       await axios.put(`${API}/admin/payment-methods`, payload);
@@ -499,6 +520,112 @@ export default function AdminPaymentMethods() {
                   <p className="text-xs text-stone-500">{getText('Itilizatè yo ap wè li', 'Les utilisateurs le verront', 'Users will see it')}</p>
                 </div>
                 <Switch checked={!!editing.enabled} onCheckedChange={(v) => setEditing({ ...editing, enabled: v })} />
+              </div>
+
+              {/* Fees Configuration */}
+              <div className="border rounded-lg p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-base font-semibold">{getText('Konfigirasyon Frè', 'Configuration des Frais', 'Fee Configuration')}</Label>
+                    <p className="text-xs text-stone-500 mt-1">
+                      {getText('Defini frè pou metòd sa a', 'Définir les frais pour cette méthode', 'Set fees for this method')}
+                    </p>
+                  </div>
+                  <Button type="button" size="sm" variant="outline" onClick={addFee}>
+                    <Plus size={14} className="mr-1" />
+                    {getText('Ajoute Frè', 'Ajouter Frais', 'Add Fee')}
+                  </Button>
+                </div>
+
+                {(editing.fees || []).length === 0 ? (
+                  <div className="text-center py-6 text-stone-500 text-sm border-2 border-dashed rounded-lg">
+                    {getText('Pa gen frè konfigire', 'Aucun frais configuré', 'No fees configured')}
+                    <br />
+                    {getText('Klike sou "Ajoute Frè" pou ajoute', 'Cliquez sur "Ajouter Frais" pour ajouter', 'Click "Add Fee" to add')}
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {(editing.fees || []).map((fee, index) => (
+                      <div key={index} className="border rounded-lg p-4 bg-stone-50 dark:bg-stone-800 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <Badge variant="outline">{getText('Frè', 'Frais', 'Fee')} {index + 1}</Badge>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => removeFee(index)}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <X size={14} />
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs">{getText('Tip Frè', 'Type de Frais', 'Fee Type')}</Label>
+                            <select
+                              value={fee.fee_type || 'fixed'}
+                              onChange={(e) => updateFee(index, 'fee_type', e.target.value)}
+                              className="w-full mt-1 px-3 py-2 border rounded-lg text-sm"
+                            >
+                              <option value="fixed">{getText('Montan Fiks', 'Montant Fixe', 'Fixed Amount')}</option>
+                              <option value="percentage">{getText('Pousantaj', 'Pourcentage', 'Percentage')}</option>
+                            </select>
+                          </div>
+                          <div>
+                            <Label className="text-xs">
+                              {fee.fee_type === 'percentage' 
+                                ? getText('Pousantaj (%)', 'Pourcentage (%)', 'Percentage (%)')
+                                : getText('Montan', 'Montant', 'Amount')}
+                            </Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={fee.fee_value || 0}
+                              onChange={(e) => updateFee(index, 'fee_value', parseFloat(e.target.value) || 0)}
+                              className="mt-1"
+                              placeholder={fee.fee_type === 'percentage' ? '5' : '10'}
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs">{getText('Montan Minimòm', 'Montant Minimum', 'Min Amount')}</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={fee.min_amount || 0}
+                              onChange={(e) => updateFee(index, 'min_amount', parseFloat(e.target.value) || 0)}
+                              className="mt-1"
+                              placeholder="0"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs">{getText('Montan Maksimòm', 'Montant Maximum', 'Max Amount')}</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={fee.max_amount || 10000}
+                              onChange={(e) => updateFee(index, 'max_amount', parseFloat(e.target.value) || 10000)}
+                              className="mt-1"
+                              placeholder="10000"
+                            />
+                          </div>
+                        </div>
+                        <div className="text-xs text-stone-500 bg-white dark:bg-stone-900 p-2 rounded">
+                          {fee.fee_type === 'percentage' ? (
+                            <>
+                              {getText('Frè a pral', 'Le frais sera', 'Fee will be')} <strong>{fee.fee_value || 0}%</strong> {getText('de montan an', 'du montant', 'of the amount')}
+                            </>
+                          ) : (
+                            <>
+                              {getText('Frè a pral', 'Le frais sera', 'Fee will be')} <strong>{fee.fee_value || 0}</strong> {getText('pou montan ant', 'pour montant entre', 'for amount between')} <strong>{fee.min_amount || 0}</strong> {getText('ak', 'et', 'and')} <strong>{fee.max_amount || 10000}</strong>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* JSON Fields */}

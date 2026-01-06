@@ -61,7 +61,8 @@ export default function Register() {
         password: formData.password,
         full_name: formData.full_name,
         phone: formData.phone,
-        language: formData.language
+        language: formData.language,
+        referral_code: refCode || null
       };
       
       await register(userData);
