@@ -17,9 +17,18 @@ export function UserQRCode({ clientId, userName, size = 200 }) {
 
   // QR code contains a URL format for better compatibility and direct navigation
   // Format: https://domain.com/transfer?to=CLIENT_ID
-  const qrValue = typeof window !== 'undefined' 
-    ? `${window.location.origin}/transfer?to=${clientId}`
-    : clientId;
+  // Use current origin (production-ready), fallback to production domain
+  const getOrigin = () => {
+    if (typeof window === 'undefined') return 'https://wallet.kayicom.com';
+    const origin = window.location.origin;
+    // If localhost, use production domain instead
+    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+      return 'https://wallet.kayicom.com';
+    }
+    return origin;
+  };
+  
+  const qrValue = `${getOrigin()}/transfer?to=${clientId}`;
 
   const copyClientId = () => {
     navigator.clipboard.writeText(clientId);
@@ -38,7 +47,9 @@ export function UserQRCode({ clientId, userName, size = 200 }) {
             `Envoyez-moi de l'argent sur KAYICOM! Mon ID: ${clientId}`,
             `Send me money on KAYICOM! My ID: ${clientId}`
           ),
-          url: window.location.origin + '/transfer?to=' + clientId
+          url: (window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1') 
+            ? 'https://wallet.kayicom.com' 
+            : window.location.origin) + '/transfer?to=' + clientId
         });
       } catch (err) {
         console.log('Share cancelled');

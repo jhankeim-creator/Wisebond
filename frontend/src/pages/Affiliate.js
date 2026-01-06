@@ -45,9 +45,18 @@ export default function Affiliate() {
       const response = await axios.get(`${API}/affiliate/info`);
       const data = response.data;
       
-      // Build affiliate link from current origin if backend doesn't provide it
-      if (!data.affiliate_link || data.affiliate_link.includes('localhost')) {
-        data.affiliate_link = `${window.location.origin}/register?ref=${data.affiliate_code}`;
+      // Build affiliate link from current origin if backend doesn't provide it or contains localhost
+      // In production, backend should always provide the correct URL
+      if (!data.affiliate_link || data.affiliate_link.includes('localhost') || data.affiliate_link.includes('127.0.0.1')) {
+        // Fallback: use current origin (works in production)
+        const origin = window.location.origin;
+        // Only use window.location.origin if it's not localhost
+        if (origin && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+          data.affiliate_link = `${origin}/register?ref=${data.affiliate_code}`;
+        } else {
+          // If we're in dev, use production URL
+          data.affiliate_link = `https://wallet.kayicom.com/register?ref=${data.affiliate_code}`;
+        }
       }
       
       setAffiliateData(data);

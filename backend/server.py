@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -1034,6 +1034,7 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
                             "order_name": f"Deposit {deposit_id}",
                             "order_number": deposit_id,
                             "callback_url": f"{os.environ.get('BACKEND_URL', 'https://wisebond.onrender.com')}/api/deposits/plisio-webhook",
+                            "psys_callback_url": f"{os.environ.get('BACKEND_URL', 'https://wisebond.onrender.com')}/api/deposits/plisio-webhook",
                             "email": current_user.get("email", ""),
                             "success_url": f"{os.environ.get('FRONTEND_URL', 'https://wallet.kayicom.com')}/deposit?status=success",
                             "fail_url": f"{os.environ.get('FRONTEND_URL', 'https://wallet.kayicom.com')}/deposit?status=failed"
@@ -1188,13 +1189,23 @@ async def sync_deposit_status(deposit_id: str, current_user: dict = Depends(get_
         raise HTTPException(status_code=500, detail=f"Error syncing deposit: {str(e)}")
 
 @api_router.post("/deposits/plisio-webhook")
-async def plisio_webhook(request: dict):
+async def plisio_webhook(request: Request):
     """Webhook endpoint for Plisio to notify about payment status"""
     try:
+        # Plisio sends data as form data or JSON, try both
+        try:
+            body = await request.json()
+        except:
+            # If JSON fails, try form data
+            form_data = await request.form()
+            body = dict(form_data)
+        
+        logger.info(f"Plisio webhook received: {body}")
+        
         # Verify webhook (Plisio sends order_number as deposit_id)
-        order_number = request.get("order_number")
+        order_number = body.get("order_number") or body.get("orderNumber")
         if not order_number:
-            logger.warning("Plisio webhook missing order_number")
+            logger.warning(f"Plisio webhook missing order_number. Received: {body}")
             return {"status": "error", "message": "Missing order_number"}
         
         deposit = await db.deposits.find_one({"deposit_id": order_number}, {"_id": 0})
@@ -1202,28 +1213,42 @@ async def plisio_webhook(request: dict):
             logger.warning(f"Plisio webhook: deposit {order_number} not found")
             return {"status": "error", "message": "Deposit not found"}
         
-        # Get Plisio status
-        plisio_status = request.get("status")
-        txn_id = request.get("txn_id")
+        # Only process if this is a Plisio deposit
+        if deposit.get("provider") != "plisio":
+            logger.warning(f"Plisio webhook: deposit {order_number} is not a Plisio deposit")
+            return {"status": "error", "message": "Not a Plisio deposit"}
+        
+        # Get Plisio status - check multiple possible field names
+        plisio_status = body.get("status") or body.get("Status") or body.get("invoice_status")
+        txn_id = body.get("txn_id") or body.get("txnId") or body.get("txn_id")
         
         if not plisio_status:
-            logger.warning("Plisio webhook missing status")
+            logger.warning(f"Plisio webhook missing status. Received: {body}")
             return {"status": "error", "message": "Missing status"}
+        
+        logger.info(f"Plisio webhook: deposit {order_number}, status: {plisio_status}, txn_id: {txn_id}")
         
         # Update deposit status
         update_data = {
-            "provider_status": plisio_status
+            "provider_status": plisio_status,
+            "plisio_txn_id": txn_id
         }
         
-        # If payment is confirmed, auto-approve deposit
-        if plisio_status in ["completed", "mismatch"] and deposit["status"] == "pending":
+        # Plisio status values: "new", "pending", "pending_internal", "mismatch", "expired", "cancelled", "completed", "confirmed"
+        # Auto-approve when payment is confirmed/completed
+        confirmed_statuses = ["completed", "confirmed", "mismatch", "paid"]
+        if plisio_status.lower() in [s.lower() for s in confirmed_statuses] and deposit["status"] == "pending":
             update_data["status"] = "completed"
+            update_data["processed_at"] = datetime.now(timezone.utc).isoformat()
+            update_data["processed_by"] = "plisio_webhook"
+            
             # Credit user wallet
             currency_key = f"wallet_{deposit['currency'].lower()}"
             await db.users.update_one(
                 {"user_id": deposit["user_id"]},
                 {"$inc": {currency_key: deposit["amount"]}}
             )
+            
             # Create transaction
             await db.transactions.insert_one({
                 "transaction_id": str(uuid.uuid4()),
@@ -1233,7 +1258,7 @@ async def plisio_webhook(request: dict):
                 "currency": deposit["currency"],
                 "reference_id": order_number,
                 "status": "completed",
-                "description": f"Deposit via {deposit['method']} (Plisio)",
+                "description": f"Deposit via {deposit['method']} (Plisio - Auto-approved)",
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
             
@@ -1246,11 +1271,19 @@ async def plisio_webhook(request: dict):
                 <p>Hello {user.get('full_name', 'User')},</p>
                 <p>Your deposit of <strong>{deposit['amount']} {deposit['currency']}</strong> has been automatically approved.</p>
                 <p>Transaction ID: <code>{order_number}</code></p>
+                <p>Plisio Transaction: <code>{txn_id or 'N/A'}</code></p>
                 <p>Thank you for using KAYICOM!</p>
                 """
                 await send_email(user["email"], subject, content)
             
-            logger.info(f"Plisio deposit {order_number} auto-approved via webhook")
+            logger.info(f"Plisio deposit {order_number} auto-approved via webhook (status: {plisio_status})")
+        elif plisio_status.lower() in ["expired", "cancelled", "failed"]:
+            # Mark as rejected if payment failed
+            if deposit["status"] == "pending":
+                update_data["status"] = "rejected"
+                update_data["processed_at"] = datetime.now(timezone.utc).isoformat()
+                update_data["processed_by"] = "plisio_webhook"
+                logger.info(f"Plisio deposit {order_number} rejected via webhook (status: {plisio_status})")
         
         await db.deposits.update_one(
             {"deposit_id": order_number},
@@ -1259,7 +1292,7 @@ async def plisio_webhook(request: dict):
         
         return {"status": "success"}
     except Exception as e:
-        logger.error(f"Plisio webhook error: {e}")
+        logger.error(f"Plisio webhook error: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
 # ==================== WITHDRAWAL ROUTES ====================
@@ -1757,12 +1790,12 @@ async def get_affiliate_info(current_user: dict = Depends(get_current_user)):
     affiliate_cards_required = settings.get("affiliate_cards_required", 5) if settings else 5
     affiliate_reward_htg = settings.get("affiliate_reward_htg", 2000) if settings else 2000
     
-    # Construct link - send just the code, frontend will build the full URL
-    frontend_url = os.environ.get('FRONTEND_URL', '')
+    # Construct link - always use production URL
+    frontend_url = os.environ.get('FRONTEND_URL', 'https://wallet.kayicom.com')
     
     return {
         "affiliate_code": current_user["affiliate_code"],
-        "affiliate_link": f"{frontend_url}/register?ref={current_user['affiliate_code']}" if frontend_url else None,
+        "affiliate_link": f"{frontend_url}/register?ref={current_user['affiliate_code']}",
         "earnings": current_user.get("affiliate_earnings", 0),
         "referrals": enriched_referrals,
         "referrals_with_cards": referrals_with_cards,
