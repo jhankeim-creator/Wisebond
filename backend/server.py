@@ -2227,6 +2227,23 @@ async def admin_get_card_orders(
     orders = await db.virtual_card_orders.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     return {"orders": orders}
 
+# Admin: Delete a single virtual card order (dangerous)
+@api_router.delete("/admin/virtual-card-orders/{order_id}")
+async def admin_delete_virtual_card_order(
+    order_id: str,
+    admin: dict = Depends(get_admin_user),
+):
+    order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    result = await db.virtual_card_orders.delete_one({"order_id": order_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    await log_action(admin["user_id"], "virtual_card_order_delete", {"order_id": order_id, "user_id": order.get("user_id"), "status": order.get("status")})
+    return {"message": "Order deleted", "order_id": order_id}
+
 # Pydantic model for manual card creation
 class ManualCardCreate(BaseModel):
     user_id: str

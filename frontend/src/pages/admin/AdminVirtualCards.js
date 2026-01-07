@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Check, X, Eye, RefreshCw, CreditCard, Upload, Wallet, Plus, Search } from 'lucide-react';
+import { Check, X, Eye, RefreshCw, CreditCard, Upload, Wallet, Plus, Search, Trash2, Save } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
@@ -65,6 +65,9 @@ export default function AdminVirtualCards() {
   });
 
   const [defaultCardBg, setDefaultCardBg] = useState('');
+  const [savingDefaultBg, setSavingDefaultBg] = useState(false);
+  const [purging, setPurging] = useState(false);
+  const [purgeDays, setPurgeDays] = useState(30);
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -122,6 +125,42 @@ export default function AdminVirtualCards() {
       }
     })();
   }, []);
+
+  const saveDefaultBg = async () => {
+    setSavingDefaultBg(true);
+    try {
+      await axios.put(`${API}/admin/settings`, { card_background_image: defaultCardBg || null });
+      toast.success(getText('Imaj pa defo sove!', 'Image par défaut enregistrée!', 'Default image saved!'));
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    } finally {
+      setSavingDefaultBg(false);
+    }
+  };
+
+  const purgeOldOrders = async () => {
+    const ok = window.confirm(getText(
+      `Ou prè pou efase kat ki pi ansyen pase ${purgeDays} jou? Sa PA ka retounen.`,
+      `Supprimer les cartes plus anciennes que ${purgeDays} jours ? Action irréversible.`,
+      `Delete cards older than ${purgeDays} days? This cannot be undone.`
+    ));
+    if (!ok) return;
+
+    setPurging(true);
+    try {
+      const res = await axios.post(`${API}/admin/virtual-card-orders/purge?days=${encodeURIComponent(purgeDays)}&status=approved`);
+      toast.success(getText(
+        `${res.data?.deleted || 0} kat efase.`,
+        `${res.data?.deleted || 0} cartes supprimées.`,
+        `Deleted ${res.data?.deleted || 0} cards.`
+      ));
+      fetchOrders();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    } finally {
+      setPurging(false);
+    }
+  };
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -303,12 +342,127 @@ export default function AdminVirtualCards() {
     setShowTopupModal(true);
   };
 
+  const updateApprovedOrderDetails = async () => {
+    if (!selectedOrder) return;
+    setProcessing(true);
+    try {
+      await axios.patch(`${API}/admin/virtual-card-orders/${selectedOrder.order_id}/details`, {
+        ...cardDetails,
+        admin_notes: adminNotes
+      });
+      toast.success(getText('Kat mete ajou', 'Carte mise à jour', 'Card updated'));
+      setShowOrderModal(false);
+      fetchOrders();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const deleteOrder = async () => {
+    if (!selectedOrder) return;
+    const ok = window.confirm(getText(
+      'Ou prè pou efase kat sa a? Sa PA ka retounen.',
+      'Supprimer cette carte ? Action irréversible.',
+      'Delete this card? This cannot be undone.'
+    ));
+    if (!ok) return;
+    setProcessing(true);
+    try {
+      await axios.delete(`${API}/admin/virtual-card-orders/${selectedOrder.order_id}`);
+      toast.success(getText('Kat efase', 'Carte supprimée', 'Card deleted'));
+      setShowOrderModal(false);
+      fetchOrders();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const pendingOrdersCount = orders.filter(o => o.status === 'pending').length;
   const pendingTopupsCount = topups.filter(t => t.status === 'pending').length;
 
   return (
     <AdminLayout title={getText('Jesyon Kat Vityèl', 'Gestion Cartes Virtuelles', 'Virtual Card Management')}>
       <div className="space-y-6" data-testid="admin-virtual-cards">
+        {/* Quick Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <CreditCard size={20} className="text-[#EA580C]" />
+                {getText('Paramèt Kat', 'Paramètres Carte', 'Card Settings')}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{getText('Imaj fon kat pa defo', 'Image de fond par défaut', 'Default card background')}</Label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const reader = new FileReader();
+                    reader.onloadend = () => setDefaultCardBg(reader.result);
+                    reader.readAsDataURL(f);
+                  }}
+                />
+                {defaultCardBg && (
+                  <div className="border rounded-xl p-3 bg-stone-50 dark:bg-stone-800">
+                    <img src={defaultCardBg} alt="Default" className="max-h-40 rounded-lg mx-auto" />
+                  </div>
+                )}
+                <div className="flex gap-2 flex-wrap">
+                  <Button onClick={saveDefaultBg} disabled={savingDefaultBg} className="bg-[#EA580C]">
+                    <Save size={16} className="mr-2" />
+                    {savingDefaultBg ? getText('Ap sove...', 'Sauvegarde...', 'Saving...') : getText('Sove', 'Enregistrer', 'Save')}
+                  </Button>
+                  <Button variant="outline" onClick={() => setDefaultCardBg('')}>
+                    {getText('Retire', 'Retirer', 'Remove')}
+                  </Button>
+                </div>
+                <p className="text-xs text-stone-500">
+                  {getText(
+                    'Sa se yon sèl imaj pa defo pou tout kat. Si ou pa mete imaj pou yon kat, li pran sa a.',
+                    'Image par défaut pour toutes les cartes. Si vous ne mettez pas d’image, elle sera utilisée.',
+                    'Default image for all cards. If you don’t set a card image, this one is used.'
+                  )}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{getText('Efase ansyen kat apwouve yo', 'Supprimer anciennes cartes approuvées', 'Delete old approved cards')}</Label>
+                <div className="flex gap-2 items-center">
+                  <Input
+                    type="number"
+                    value={purgeDays}
+                    onChange={(e) => setPurgeDays(parseInt(e.target.value || '30'))}
+                    className="w-32"
+                    min="1"
+                  />
+                  <span className="text-sm text-stone-500">{getText('jou', 'jours', 'days')}</span>
+                </div>
+                <p className="text-xs text-stone-500">
+                  {getText(
+                    'Sa ap efase kat ki pi ansyen pase kantite jou a (Approved). Ireversib.',
+                    'Supprime les cartes approuvées plus anciennes que ce nombre de jours. Irréversible.',
+                    'Deletes approved cards older than this many days. Irreversible.'
+                  )}
+                </p>
+                <Button variant="destructive" onClick={purgeOldOrders} disabled={purging}>
+                  <Trash2 size={16} className="mr-2" />
+                  {purging ? getText('Ap efase...', 'Suppression...', 'Deleting...') : getText('Efase ansyen kat yo', 'Supprimer', 'Delete old cards')}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="bg-amber-50 dark:bg-amber-900/30">
@@ -690,6 +844,84 @@ export default function AdminVirtualCards() {
                     <p className="text-sm text-stone-500 mb-1">{getText('Nòt Admin', 'Notes Admin', 'Admin Notes')}</p>
                     <p>{selectedOrder.admin_notes}</p>
                   </div>
+                )}
+
+                {selectedOrder.status !== 'pending' && (
+                  <>
+                    {/* Edit / Update */}
+                    <div className="border rounded-xl p-4 space-y-4">
+                      <h4 className="font-semibold flex items-center gap-2">
+                        <CreditCard size={18} />
+                        {getText('Modifye kat la', 'Modifier la carte', 'Edit card')}
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>{getText('Mak Kat', 'Marque', 'Brand')}</Label>
+                          <Input value={cardDetails.card_brand} onChange={(e) => setCardDetails({ ...cardDetails, card_brand: e.target.value })} className="mt-1" />
+                        </div>
+                        <div>
+                          <Label>{getText('Tip Kat', 'Type', 'Type')}</Label>
+                          <Select value={cardDetails.card_type} onValueChange={(v) => setCardDetails({ ...cardDetails, card_type: v })}>
+                            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="visa">Visa</SelectItem>
+                              <SelectItem value="mastercard">Mastercard</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label>{getText('Non sou Kat', 'Nom sur Carte', 'Name on Card')}</Label>
+                        <Input value={cardDetails.card_holder_name} onChange={(e) => setCardDetails({ ...cardDetails, card_holder_name: e.target.value.toUpperCase() })} className="mt-1 uppercase" />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <Label>{getText('Nimewo Kat', 'Numéro Carte', 'Card Number')}</Label>
+                          <Input value={cardDetails.card_number} onChange={(e) => setCardDetails({ ...cardDetails, card_number: e.target.value })} className="mt-1 font-mono" maxLength={19} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
+                            <Input placeholder="MM/YY" value={cardDetails.card_expiry} onChange={(e) => setCardDetails({ ...cardDetails, card_expiry: e.target.value })} className="mt-1" maxLength={5} />
+                          </div>
+                          <div>
+                            <Label>CVV</Label>
+                            <Input value={cardDetails.card_cvv} onChange={(e) => setCardDetails({ ...cardDetails, card_cvv: e.target.value })} className="mt-1" maxLength={4} type="password" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label>{getText('Nòt Admin', 'Notes Admin', 'Admin Notes')}</Label>
+                        <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} rows={2} className="mt-1" />
+                      </div>
+
+                      <div className="border-t pt-4">
+                        <Label>{getText('Imaj Kat', 'Image Carte', 'Card Image')}</Label>
+                        <div className="mt-2 border-2 border-dashed rounded-xl p-4 text-center cursor-pointer" onClick={() => document.getElementById('card-image-upload-edit').click()}>
+                          {cardDetails.card_image ? (
+                            <img src={cardDetails.card_image} alt="Card" className="max-h-32 mx-auto rounded-lg" />
+                          ) : (
+                            <><Upload className="mx-auto text-stone-400 mb-2" size={32} /><p className="text-stone-500">{getText('Klike pou telechaje', 'Cliquez pour télécharger', 'Click to upload')}</p></>
+                          )}
+                        </div>
+                        <input id="card-image-upload-edit" type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 flex-wrap">
+                      <Button onClick={updateApprovedOrderDetails} disabled={processing} className="bg-[#EA580C]">
+                        <Save size={16} className="mr-2" />
+                        {getText('Sove chanjman', 'Enregistrer', 'Save changes')}
+                      </Button>
+                      <Button variant="destructive" onClick={deleteOrder} disabled={processing}>
+                        <Trash2 size={16} className="mr-2" />
+                        {getText('Efase kat la', 'Supprimer', 'Delete card')}
+                      </Button>
+                    </div>
+                  </>
                 )}
               </div>
             )}

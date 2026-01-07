@@ -228,6 +228,56 @@ export default function AdminSettings() {
   // Tab content components
   const NotificationsTab = () => (
     <div className="space-y-4">
+      {/* Floating announcement */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                <Bell size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <CardTitle className="text-base">{getText('Flote Anons', 'Annonce flottante', 'Floating Announcement')}</CardTitle>
+                <CardDescription className="text-sm">
+                  {getText('Montre yon anons anba ekran an', 'Afficher une annonce en bas', 'Show a banner at the bottom')}
+                </CardDescription>
+              </div>
+            </div>
+            <Switch
+              checked={settings.announcement_enabled}
+              onCheckedChange={(checked) => setSettings({ ...settings, announcement_enabled: checked })}
+            />
+          </div>
+        </CardHeader>
+        {settings.announcement_enabled && (
+          <CardContent className="space-y-3 border-t pt-4">
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
+              {getText(
+                'Apre ou sove, refresh paj la pou w wè anons lan. Si ou te fèmen li avan, chanje tèks la pou li parèt ankò.',
+                'Après sauvegarde, rafraîchissez la page. Si vous l’avez fermée avant, modifiez le texte pour la revoir.',
+                'After saving, refresh the page. If you dismissed it before, change the text to show it again.'
+              )}
+            </div>
+            <div>
+              <Label>Text (HT)</Label>
+              <Textarea value={settings.announcement_text_ht || ''} onChange={(e) => setSettings({ ...settings, announcement_text_ht: e.target.value })} rows={2} className="mt-1" />
+            </div>
+            <div>
+              <Label>Text (FR)</Label>
+              <Textarea value={settings.announcement_text_fr || ''} onChange={(e) => setSettings({ ...settings, announcement_text_fr: e.target.value })} rows={2} className="mt-1" />
+            </div>
+            <div>
+              <Label>Text (EN)</Label>
+              <Textarea value={settings.announcement_text_en || ''} onChange={(e) => setSettings({ ...settings, announcement_text_en: e.target.value })} rows={2} className="mt-1" />
+            </div>
+            <div>
+              <Label>{getText('Lyen (opsyonèl)', 'Lien (optionnel)', 'Link (optional)')}</Label>
+              <Input value={settings.announcement_link || ''} onChange={(e) => setSettings({ ...settings, announcement_link: e.target.value })} className="mt-1" placeholder="https://..." />
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
       {/* Email Settings (Resend) */}
       <Card>
         <CardHeader className="pb-3">
@@ -853,49 +903,6 @@ export default function AdminSettings() {
 
   const SystemTab = () => (
     <div className="space-y-4">
-      {/* Floating announcement */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                <Bell size={20} className="text-amber-600" />
-              </div>
-              <div>
-                <CardTitle className="text-base">{getText('Flote Anons', 'Annonce flottante', 'Floating Announcement')}</CardTitle>
-                <CardDescription className="text-sm">
-                  {getText('Montre yon anons anba ekran an', 'Afficher une annonce en bas', 'Show a banner at the bottom')}
-                </CardDescription>
-              </div>
-            </div>
-            <Switch
-              checked={settings.announcement_enabled}
-              onCheckedChange={(checked) => setSettings({ ...settings, announcement_enabled: checked })}
-            />
-          </div>
-        </CardHeader>
-        {settings.announcement_enabled && (
-          <CardContent className="space-y-3 border-t pt-4">
-            <div>
-              <Label>Text (HT)</Label>
-              <Textarea value={settings.announcement_text_ht || ''} onChange={(e) => setSettings({ ...settings, announcement_text_ht: e.target.value })} rows={2} className="mt-1" />
-            </div>
-            <div>
-              <Label>Text (FR)</Label>
-              <Textarea value={settings.announcement_text_fr || ''} onChange={(e) => setSettings({ ...settings, announcement_text_fr: e.target.value })} rows={2} className="mt-1" />
-            </div>
-            <div>
-              <Label>Text (EN)</Label>
-              <Textarea value={settings.announcement_text_en || ''} onChange={(e) => setSettings({ ...settings, announcement_text_en: e.target.value })} rows={2} className="mt-1" />
-            </div>
-            <div>
-              <Label>{getText('Lyen (opsyonèl)', 'Lien (optionnel)', 'Link (optional)')}</Label>
-              <Input value={settings.announcement_link || ''} onChange={(e) => setSettings({ ...settings, announcement_link: e.target.value })} className="mt-1" placeholder="https://..." />
-            </div>
-          </CardContent>
-        )}
-      </Card>
-
       {/* Diagnostics */}
       <Card>
         <CardHeader className="pb-3">

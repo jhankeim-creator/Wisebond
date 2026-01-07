@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Plus, RefreshCw, UserX, CheckCircle } from 'lucide-react';
@@ -25,6 +26,14 @@ export default function AdminTeam() {
     phone: '',
     role: 'admin',
   });
+
+  const roleOptions = [
+    { value: 'admin', label: getText('Admin', 'Admin', 'Admin') },
+    { value: 'support', label: getText('Sipò', 'Support', 'Support') },
+    { value: 'finance', label: getText('Finans', 'Finance', 'Finance') },
+    { value: 'manager', label: getText('Manadjè', 'Manager', 'Manager') },
+    { value: 'superadmin', label: getText('Super Admin', 'Super Admin', 'Super Admin') },
+  ];
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -162,7 +171,23 @@ export default function AdminTeam() {
               </div>
               <div>
                 <Label>{getText('Wòl', 'Rôle', 'Role')}</Label>
-                <Input value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })} className="mt-1" placeholder="admin" />
+                <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="admin" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roleOptions.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-stone-500 mt-1">
+                  {getText(
+                    'Chwazi wòl manm ekip la.',
+                    'Choisissez le rôle du membre.',
+                    'Choose the member role.'
+                  )}
+                </p>
               </div>
 
               <Button onClick={createMember} disabled={creating} className="w-full btn-primary">
