@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -26,7 +26,10 @@ import {
   CheckCircle,
   Loader2,
   QrCode,
-  Camera
+  Camera,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  RefreshCw
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -74,6 +77,7 @@ export default function AgentDeposit() {
   const [submittingPayout, setSubmittingPayout] = useState(false);
   const [commissionWithdrawals, setCommissionWithdrawals] = useState([]);
   const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -204,14 +208,40 @@ export default function AgentDeposit() {
 
   const exportHistory = async () => {
     try {
-      const response = await axios.get(`${API}/agent/export-history`);
-      const data = response.data;
-      
       // Create CSV content
-      let csv = 'Date,Client,Client ID,USD,HTG Received,Commission,Status\n';
-      data.history.forEach(d => {
-        csv += `"${d.date}","${d.client_name}","${d.client_id}",${d.amount_usd},${d.amount_htg_received},${d.commission_usd},${d.status}\n`;
+      const rows = [];
+      const safe = (v) => String(v ?? '').replaceAll('"', '""');
+      const combined = [...(deposits || []).map((d) => ({
+        type: 'deposit',
+        created_at: d.created_at,
+        id: d.deposit_id,
+        client_name: d.client_name,
+        client_id: d.client_id,
+        amount_usd: d.amount_usd,
+        amount_htg_received: d.amount_htg_received,
+        commission_usd: d.commission_usd,
+        method: d.payment_method_name || '',
+        status: d.status,
+      })), ...(commissionWithdrawals || []).map((w) => ({
+        type: 'withdrawal',
+        created_at: w.created_at,
+        id: w.withdrawal_id,
+        client_name: '',
+        client_id: user?.client_id || '',
+        amount_usd: w.amount,
+        amount_htg_received: '',
+        commission_usd: '',
+        method: w.payment_method_name || w.payment_method_id || '',
+        status: w.status,
+      }))].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      rows.push('Date,Type,Client,Client ID,USD,HTG Received,Commission,Method,Status,ID');
+      combined.forEach((r) => {
+        rows.push(
+          `"${safe(new Date(r.created_at).toLocaleString())}","${safe(r.type)}","${safe(r.client_name)}","${safe(r.client_id)}","${safe(r.amount_usd)}","${safe(r.amount_htg_received)}","${safe(r.commission_usd)}","${safe(r.method)}","${safe(r.status)}","${safe(r.id)}"`
+        );
       });
+      const csv = rows.join('\n') + '\n';
       
       // Download file
       const blob = new Blob([csv], { type: 'text/csv' });
@@ -224,11 +254,7 @@ export default function AgentDeposit() {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
       
-      toast.success(getText(
-        `Ekspòte ${data.total_deposits} depo`,
-        `${data.total_deposits} dépôts exportés`,
-        `Exported ${data.total_deposits} deposits`
-      ));
+      toast.success(getText('Istorik ekspòte!', 'Historique exporté!', 'History exported!'));
     } catch (error) {
       toast.error(getText('Erè pandan ekspòtasyon', 'Erreur export', 'Export error'));
     }
@@ -268,6 +294,22 @@ export default function AgentDeposit() {
       setDeposits(response.data.deposits || []);
     } catch (error) {
       console.error('Error fetching deposits:', error);
+    }
+  };
+
+  const refreshAll = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        fetchDashboard(),
+        fetchDeposits(),
+        fetchReports(),
+        fetchCommissionWithdrawals(),
+        fetchPayoutProfile(),
+        fetchWithdrawalMethods(),
+      ]);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -448,6 +490,37 @@ export default function AgentDeposit() {
     }
   };
 
+  const combinedHistory = useMemo(() => {
+    const items = [];
+    (deposits || []).forEach((d) => {
+      items.push({
+        kind: 'deposit',
+        id: d.deposit_id,
+        created_at: d.created_at,
+        title: d.client_name,
+        subtitle: d.client_id,
+        amountLabel: `$${Number(d.amount_usd || 0)}`,
+        status: d.status,
+        method: d.payment_method_name || '',
+        extra: d.amount_htg_received ? `HTG: G ${Number(d.amount_htg_received).toLocaleString()}` : '',
+      });
+    });
+    (commissionWithdrawals || []).forEach((w) => {
+      items.push({
+        kind: 'withdrawal',
+        id: w.withdrawal_id,
+        created_at: w.created_at,
+        title: w.payment_method_name || getText('Retrè komisyon', 'Retrait commission', 'Commission withdrawal'),
+        subtitle: user?.client_id || '',
+        amountLabel: `$${Number(w.amount || 0).toFixed(2)} USD`,
+        status: w.status,
+        method: w.payment_method_name || w.payment_method_id || '',
+        extra: '',
+      });
+    });
+    return items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [commissionWithdrawals, deposits, getText, user?.client_id]);
+
   // If user is not an agent and has not requested
   if (!isAgent && !agentRequest) {
     return (
@@ -593,17 +666,41 @@ export default function AgentDeposit() {
   return (
     <DashboardLayout title={getText('Espas Ajan', 'Espace Agent', 'Agent Space')}>
       <div className="max-w-4xl mx-auto space-y-6 w-full px-0" data-testid="agent-deposit-page">
-        {/* Professional header */}
-        <div className="bg-gradient-to-r from-stone-900 to-stone-800 rounded-2xl p-6 text-white">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-stone-300 text-sm">{getText('Espas Ajan', 'Espace Agent', 'Agent Space')}</p>
-              <h2 className="text-2xl font-bold mt-1">{user?.full_name}</h2>
-              <p className="text-stone-300 text-sm font-mono mt-1">{user?.client_id}</p>
-            </div>
-            <div className="hidden sm:flex items-center gap-2">
-              <Wallet className="text-amber-400" size={24} />
-              <span className="text-stone-200 text-sm">{getText('Komisyon & Depo', 'Commission & Dépôts', 'Commission & Deposits')}</span>
+        {/* Header (agent info) */}
+        <div className="rounded-2xl overflow-hidden border border-black/10 dark:border-white/10 bg-gradient-to-br from-stone-950 via-stone-900 to-[#7C2D12] text-white">
+          <div className="p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-4 min-w-0">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-white/10 border border-white/10 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xl font-bold">
+                    {(user?.full_name || 'A')?.charAt(0)?.toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-white/70 text-sm">{getText('Espas Ajan', 'Espace Agent', 'Agent Space')}</p>
+                  <h2 className="text-xl sm:text-2xl font-bold mt-1 truncate">{user?.full_name}</h2>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-2 rounded-full bg-white/10 border border-white/10 px-3 py-1 text-xs font-mono">
+                      {user?.client_id}
+                    </span>
+                    <span className="inline-flex items-center gap-2 rounded-full bg-amber-500/20 border border-amber-400/20 px-3 py-1 text-xs">
+                      <Wallet size={14} className="text-amber-300" />
+                      {getText('Ajan aktif', 'Agent actif', 'Active agent')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refreshAll}
+                disabled={refreshing}
+                className="bg-white/10 text-white border-white/20 hover:bg-white/15"
+              >
+                <RefreshCw size={16} className={refreshing ? 'mr-2 animate-spin' : 'mr-2'} />
+                {getText('Rafrechi', 'Rafraîchir', 'Refresh')}
+              </Button>
             </div>
           </div>
         </div>
@@ -653,134 +750,9 @@ export default function AgentDeposit() {
                 </div>
                 <p className="text-xl sm:text-2xl font-bold text-purple-600">${dashboard.agent_wallet_usd?.toFixed(2)}</p>
                 <p className="text-xs sm:text-sm text-purple-700 dark:text-purple-400">{getText('Komisyon', 'Commission', 'Commission')}</p>
-                {dashboard.agent_wallet_usd > 0 && (
-                  <Button 
-                    size="sm" 
-                    className="mt-2 bg-purple-600 hover:bg-purple-700 text-white text-xs"
-                    onClick={() => setShowPayoutModal(true)}
-                    disabled={loading || submittingPayout}
-                  >
-                    {getText('Retire', 'Retirer', 'Withdraw')}
-                  </Button>
-                )}
               </CardContent>
             </Card>
           </div>
-        )}
-
-        {/* Commission payout settings + history */}
-        {isAgent && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Wallet className="text-purple-600" size={20} />
-                {getText('Retrè Komisyon (Ajan)', 'Retrait Commission (Agent)', 'Commission Withdrawal (Agent)')}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
-                <p className="text-sm text-stone-500">{getText('Non konplè', 'Nom complet', 'Full name')}</p>
-                <p className="font-semibold text-stone-900 dark:text-white">{user?.full_name}</p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>{getText('Chwazi metòd pou resevwa komisyon', 'Choisir la méthode', 'Choose payout method')}</Label>
-                <Select value={payoutMethodId} onValueChange={(v) => { setPayoutMethodId(v); setPayoutFieldValues({}); }}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder={getText('Chwazi...', 'Choisir...', 'Choose...')} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {withdrawalMethods.map((m) => (
-                      <SelectItem key={m.payment_method_id} value={m.payment_method_id}>
-                        {m.payment_method_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {selectedWithdrawalMethod && (
-                <div className="space-y-3 border rounded-xl p-4">
-                  <p className="text-sm font-semibold">{getText('Enfòmasyon retrè', 'Infos de retrait', 'Payout details')}</p>
-                  {(selectedWithdrawalMethod.custom_fields || []).map((f) => (
-                    <div key={f.field_id} className="space-y-1">
-                      <Label>
-                        {f.label} {f.required ? '*' : ''}
-                      </Label>
-                      {f.type === 'textarea' ? (
-                        <Textarea
-                          value={payoutFieldValues?.[f.key] || ''}
-                          onChange={(e) => setPayoutFieldValues(prev => ({ ...(prev || {}), [f.key]: e.target.value }))}
-                          rows={2}
-                        />
-                      ) : f.type === 'select' ? (
-                        <Select
-                          value={payoutFieldValues?.[f.key] || ''}
-                          onValueChange={(v) => setPayoutFieldValues(prev => ({ ...(prev || {}), [f.key]: v }))}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder={getText('Chwazi...', 'Choisir...', 'Choose...')} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {(f.options || []).map((opt) => (
-                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Input
-                          type={f.type === 'number' ? 'number' : f.type === 'email' ? 'email' : 'text'}
-                          value={payoutFieldValues?.[f.key] || ''}
-                          onChange={(e) => setPayoutFieldValues(prev => ({ ...(prev || {}), [f.key]: e.target.value }))}
-                          placeholder={f.placeholder || ''}
-                        />
-                      )}
-                      {f.help_text && <p className="text-xs text-stone-500">{f.help_text}</p>}
-                    </div>
-                  ))}
-                  <div className="flex gap-2 flex-wrap">
-                    <Button onClick={savePayoutProfile} disabled={savingPayoutProfile} className="bg-[#EA580C]">
-                      {savingPayoutProfile ? getText('Ap sove...', 'Sauvegarde...', 'Saving...') : getText('Sove enfòmasyon retrè', 'Enregistrer', 'Save payout info')}
-                    </Button>
-                    <Button variant="outline" onClick={() => setShowPayoutModal(true)}>
-                      {getText('Fè demann retrè', 'Demander retrait', 'Request withdrawal')}
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              {/* History */}
-              <div>
-                <p className="font-semibold mb-2">{getText('Istorik retrè', 'Historique retraits', 'Withdrawal history')}</p>
-                {commissionWithdrawals.length === 0 ? (
-                  <p className="text-sm text-stone-500">{getText('Pa gen retrè ankò', 'Aucun retrait', 'No withdrawals yet')}</p>
-                ) : (
-                  <div className="space-y-2">
-                    {commissionWithdrawals.slice(0, 10).map((w) => (
-                      <div key={w.withdrawal_id} className="border rounded-xl p-3 bg-white dark:bg-stone-800">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="font-semibold">${Number(w.amount || 0).toFixed(2)} USD</p>
-                            <p className="text-xs text-stone-500 break-all">{w.payment_method_name}</p>
-                            <p className="text-xs text-stone-400">{new Date(w.created_at).toLocaleString()}</p>
-                          </div>
-                          <Badge className={
-                            w.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                            w.status === 'pending' ? 'bg-amber-100 text-amber-700' :
-                            'bg-red-100 text-red-700'
-                          }>
-                            {w.status === 'approved' ? getText('Apwouve', 'Approuvé', 'Approved') :
-                             w.status === 'pending' ? getText('An atant', 'En attente', 'Pending') :
-                             getText('Rejte', 'Rejeté', 'Rejected')}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
         )}
 
         {/* Payout request modal */}
@@ -1062,37 +1034,58 @@ export default function AgentDeposit() {
           </CardContent>
         </Card>
 
-        {/* Recent Deposits */}
+        {/* One history (deposits + commission withdrawals) */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
               <Clock size={20} className="text-stone-500" />
-              {getText('Depo Resan', 'Dépôts Récents', 'Recent Deposits')}
+              {getText('Istorik (Depo & Retrè)', 'Historique (Dépôts & Retraits)', 'History (Deposits & Withdrawals)')}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {deposits.length === 0 ? (
+            {combinedHistory.length === 0 ? (
               <p className="text-center text-stone-500 py-8">
-                {getText('Pa gen depo ankò', 'Pas encore de dépôts', 'No deposits yet')}
+                {getText('Pa gen tranzaksyon ankò', 'Aucune transaction', 'No transactions yet')}
               </p>
             ) : (
               <div className="space-y-3">
-                {deposits.slice(0, 10).map((deposit) => (
-                  <div key={deposit.deposit_id} className="flex items-center justify-between p-3 sm:p-4 bg-stone-50 dark:bg-stone-800 rounded-xl">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-stone-900 dark:text-white truncate">{deposit.client_name}</p>
-                      <p className="text-xs sm:text-sm text-stone-500">{deposit.client_id}</p>
-                      <p className="text-xs text-stone-400">{new Date(deposit.created_at).toLocaleString()}</p>
+                {combinedHistory.slice(0, 15).map((item) => (
+                  <div key={`${item.kind}-${item.id}`} className="flex items-center justify-between gap-3 p-3 sm:p-4 bg-stone-50 dark:bg-stone-800 rounded-xl">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                        item.kind === 'deposit' ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-purple-100 dark:bg-purple-900/30'
+                      }`}>
+                        {item.kind === 'deposit' ? (
+                          <ArrowDownCircle size={20} className="text-emerald-600 dark:text-emerald-400" />
+                        ) : (
+                          <ArrowUpCircle size={20} className="text-purple-600 dark:text-purple-400" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-stone-900 dark:text-white truncate">
+                          {item.title || (item.kind === 'deposit' ? getText('Depo', 'Dépôt', 'Deposit') : getText('Retrè', 'Retrait', 'Withdrawal'))}
+                        </p>
+                        <p className="text-xs sm:text-sm text-stone-500 truncate">
+                          {item.kind === 'deposit'
+                            ? `${item.subtitle || ''}${item.method ? ` • ${item.method}` : ''}`
+                            : (item.method || item.subtitle || '')}
+                        </p>
+                        {item.extra && <p className="text-xs text-stone-400 truncate">{item.extra}</p>}
+                        <p className="text-xs text-stone-400">{new Date(item.created_at).toLocaleString()}</p>
+                      </div>
                     </div>
-                    <div className="text-right flex-shrink-0 ml-2">
-                      <p className="font-bold text-emerald-600">${deposit.amount_usd}</p>
+
+                    <div className="text-right flex-shrink-0">
+                      <p className={`font-bold ${item.kind === 'deposit' ? 'text-emerald-600' : 'text-purple-600'}`}>
+                        {item.amountLabel}
+                      </p>
                       <Badge className={
-                        deposit.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                        deposit.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                        item.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                        item.status === 'pending' ? 'bg-amber-100 text-amber-700' :
                         'bg-red-100 text-red-700'
                       }>
-                        {deposit.status === 'approved' ? getText('Apwouve', 'Approuvé', 'Approved') :
-                         deposit.status === 'pending' ? getText('An Atant', 'En Attente', 'Pending') :
+                        {item.status === 'approved' ? getText('Apwouve', 'Approuvé', 'Approved') :
+                         item.status === 'pending' ? getText('An Atant', 'En Attente', 'Pending') :
                          getText('Rejte', 'Rejeté', 'Rejected')}
                       </Badge>
                     </div>
@@ -1103,9 +1096,111 @@ export default function AgentDeposit() {
           </CardContent>
         </Card>
 
+        {/* Commission withdrawal (moved lower) */}
+        {isAgent && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="text-purple-600" size={20} />
+                {getText('Retrè Komisyon (Ajan)', 'Retrait Commission (Agent)', 'Commission Withdrawal (Agent)')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
+                  <p className="text-sm text-stone-500">{getText('Non konplè', 'Nom complet', 'Full name')}</p>
+                  <p className="font-semibold text-stone-900 dark:text-white">{user?.full_name}</p>
+                </div>
+                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-4">
+                  <p className="text-sm text-stone-500">{getText('Balans komisyon', 'Solde commission', 'Commission balance')}</p>
+                  <p className="text-xl font-bold text-purple-600">${Number(dashboard?.agent_wallet_usd || 0).toFixed(2)}</p>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{getText('Chwazi metòd pou resevwa komisyon', 'Choisir la méthode', 'Choose payout method')}</Label>
+                <Select value={payoutMethodId} onValueChange={(v) => { setPayoutMethodId(v); setPayoutFieldValues({}); }}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder={getText('Chwazi...', 'Choisir...', 'Choose...')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {withdrawalMethods.map((m) => (
+                      <SelectItem key={m.payment_method_id} value={m.payment_method_id}>
+                        {m.payment_method_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedWithdrawalMethod && (
+                <div className="space-y-3 border rounded-xl p-4">
+                  <p className="text-sm font-semibold">{getText('Enfòmasyon retrè', 'Infos de retrait', 'Payout details')}</p>
+                  {(selectedWithdrawalMethod.custom_fields || []).map((f) => (
+                    <div key={f.field_id} className="space-y-1">
+                      <Label>
+                        {f.label} {f.required ? '*' : ''}
+                      </Label>
+                      {f.type === 'textarea' ? (
+                        <Textarea
+                          value={payoutFieldValues?.[f.key] || ''}
+                          onChange={(e) => setPayoutFieldValues(prev => ({ ...(prev || {}), [f.key]: e.target.value }))}
+                          rows={2}
+                        />
+                      ) : f.type === 'select' ? (
+                        <Select
+                          value={payoutFieldValues?.[f.key] || ''}
+                          onValueChange={(v) => setPayoutFieldValues(prev => ({ ...(prev || {}), [f.key]: v }))}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder={getText('Chwazi...', 'Choisir...', 'Choose...')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(f.options || []).map((opt) => (
+                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          type={f.type === 'number' ? 'number' : f.type === 'email' ? 'email' : 'text'}
+                          value={payoutFieldValues?.[f.key] || ''}
+                          onChange={(e) => setPayoutFieldValues(prev => ({ ...(prev || {}), [f.key]: e.target.value }))}
+                          placeholder={f.placeholder || ''}
+                        />
+                      )}
+                      {f.help_text && <p className="text-xs text-stone-500">{f.help_text}</p>}
+                    </div>
+                  ))}
+                  <div className="flex gap-2 flex-wrap">
+                    <Button onClick={savePayoutProfile} disabled={savingPayoutProfile} className="bg-[#EA580C]">
+                      {savingPayoutProfile ? getText('Ap sove...', 'Sauvegarde...', 'Saving...') : getText('Sove enfòmasyon retrè', 'Enregistrer', 'Save payout info')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowPayoutModal(true)}
+                      disabled={(dashboard?.agent_wallet_usd || 0) <= 0}
+                    >
+                      {getText('Fè demann retrè', 'Demander retrait', 'Request withdrawal')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="text-sm text-stone-500">
+                {getText(
+                  'Nòt: retrè komisyon yo bezwen apwobasyon admin.',
+                  'Note: les retraits de commission nécessitent une approbation admin.',
+                  'Note: commission withdrawals require admin approval.'
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Confirmation Modal */}
         <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="w-[95vw] sm:max-w-md max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{getText('Konfime Depo', 'Confirmer le Dépôt', 'Confirm Deposit')}</DialogTitle>
             </DialogHeader>
