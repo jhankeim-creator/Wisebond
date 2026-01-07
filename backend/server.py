@@ -4223,6 +4223,7 @@ async def get_public_app_config():
             "announcement_text_fr": None,
             "announcement_text_en": None,
             "announcement_link": None,
+            "updated_at": None,
         }
     
     return {
@@ -4234,6 +4235,7 @@ async def get_public_app_config():
         "announcement_text_fr": settings.get("announcement_text_fr"),
         "announcement_text_en": settings.get("announcement_text_en"),
         "announcement_link": settings.get("announcement_link"),
+        "updated_at": settings.get("updated_at"),
     }
 
 @api_router.put("/admin/settings")

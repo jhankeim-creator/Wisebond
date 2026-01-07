@@ -6,7 +6,6 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { Logo } from '@/components/Logo';
 import { Menu, Bell } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import FloatingAnnouncement from '@/components/FloatingAnnouncement';
 
 export const DashboardLayout = ({ children, title }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -15,7 +14,6 @@ export const DashboardLayout = ({ children, title }) => {
   return (
     <div className="min-h-screen bg-background dark:bg-background">
       <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <FloatingAnnouncement />
       
       {/* Mobile menu button */}
       <button 

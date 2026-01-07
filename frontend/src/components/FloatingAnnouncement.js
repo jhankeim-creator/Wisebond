@@ -16,16 +16,18 @@ export default function FloatingAnnouncement() {
     return cfg.announcement_text_en || '';
   }, [cfg, language]);
 
+  const fallbackText = useMemo(() => {
+    if (!cfg) return '';
+    return (cfg.announcement_text_ht || cfg.announcement_text_fr || cfg.announcement_text_en || '').trim();
+  }, [cfg]);
+
+  const effectiveText = (text || '').trim() || fallbackText;
+
   const key = useMemo(() => {
     if (!cfg) return null;
-    const payload = [
-      cfg.announcement_enabled ? '1' : '0',
-      cfg.announcement_text_ht || '',
-      cfg.announcement_text_fr || '',
-      cfg.announcement_text_en || '',
-      cfg.announcement_link || '',
-    ].join('|');
-    return `kayicom_announcement_dismissed_${btoa(unescape(encodeURIComponent(payload))).slice(0, 32)}`;
+    // Reset dismissal when settings.updated_at changes (admin saved new settings)
+    const version = (cfg.updated_at || '').toString() || 'v1';
+    return `kayicom_announcement_dismissed_${version}`;
   }, [cfg]);
 
   useEffect(() => {
@@ -51,7 +53,7 @@ export default function FloatingAnnouncement() {
   }, [key]);
 
   if (!cfg?.announcement_enabled) return null;
-  if (!text?.trim()) return null;
+  if (!effectiveText) return null;
   if (dismissed) return null;
 
   return (
@@ -62,7 +64,7 @@ export default function FloatingAnnouncement() {
             <Megaphone size={18} className="text-amber-700" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm leading-relaxed break-words">{text}</p>
+            <p className="text-sm leading-relaxed break-words">{effectiveText}</p>
             {cfg.announcement_link && (
               <a
                 href={cfg.announcement_link}
