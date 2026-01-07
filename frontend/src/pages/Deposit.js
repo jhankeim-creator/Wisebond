@@ -403,14 +403,24 @@ export default function Deposit() {
               'Click the link to complete payment. Deposit will auto-validate after confirmation.'
             )}
           </p>
-          <a
-            href={createdDeposit.plisio_invoice_url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[#EA580C] font-medium hover:underline break-all"
-          >
-            {createdDeposit.plisio_invoice_url}
-          </a>
+          <div className="flex flex-wrap gap-3">
+            <a
+              href={createdDeposit.plisio_invoice_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-[#EA580C] hover:bg-[#C2410C] text-white font-semibold"
+            >
+              {getText('Klike la pou finalize depo a', 'Cliquez pour finaliser le dépôt', 'Click to finalize deposit')}
+            </a>
+            <a
+              href={createdDeposit.plisio_invoice_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-amber-300 text-amber-900 hover:bg-amber-100 font-medium"
+            >
+              {getText('Gade lyen an', 'Voir le lien', 'View link')}
+            </a>
+          </div>
           <div className="mt-4 flex gap-3 flex-wrap">
             <Button
               variant="outline"

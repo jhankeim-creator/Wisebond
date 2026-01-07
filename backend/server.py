@@ -1225,6 +1225,97 @@ async def get_deposits(
     deposits = await db.deposits.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
     return {"deposits": deposits}
 
+async def _plisio_sync_deposit_by_id(deposit_id: str, processed_by: str) -> Optional[dict]:
+    """
+    Sync a Plisio deposit by deposit_id. If confirmed and still pending, auto-completes and credits wallet.
+    Returns the updated deposit document (without _id) or None if not found.
+    """
+    deposit = await db.deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+    if not deposit:
+        return None
+    if deposit.get("provider") != "plisio" or not deposit.get("plisio_invoice_id"):
+        return deposit
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    plisio_key = (settings.get("plisio_api_key") or "").strip() if settings else ""
+    plisio_secret = (settings.get("plisio_secret_key") or "").strip() if settings else ""
+    if not plisio_key and plisio_secret:
+        plisio_key = plisio_secret
+        plisio_secret = ""
+    if not settings or not settings.get("plisio_enabled") or not plisio_key:
+        return deposit
+
+    params = {"api_key": plisio_key}
+    try:
+        async with httpx.AsyncClient() as client_http:
+            resp = await client_http.get(
+                f"https://plisio.net/api/v1/operations/{deposit['plisio_invoice_id']}",
+                params=params,
+                headers={"Accept": "application/json"},
+                timeout=30.0,
+            )
+        if resp.status_code != 200 and plisio_secret and plisio_secret != plisio_key:
+            async with httpx.AsyncClient() as client_http:
+                resp = await client_http.get(
+                    f"https://plisio.net/api/v1/operations/{deposit['plisio_invoice_id']}",
+                    params={**params, "api_secret": plisio_secret},
+                    headers={"Accept": "application/json"},
+                    timeout=30.0,
+                )
+        if resp.status_code != 200:
+            return deposit
+
+        result = resp.json()
+        if result.get("status") != "success" or not result.get("data"):
+            return deposit
+
+        invoice_data = result["data"]
+        new_status = invoice_data.get("status", deposit.get("provider_status", "pending"))
+
+        update_data: Dict[str, Any] = {"provider_status": new_status}
+        confirmed_statuses = {"completed", "confirmed", "mismatch", "paid"}
+        if str(new_status).lower() in confirmed_statuses and deposit.get("status") == "pending":
+            update_data["status"] = "completed"
+            update_data["processed_at"] = datetime.now(timezone.utc).isoformat()
+            update_data["processed_by"] = processed_by
+
+            credit_amount = float(deposit.get("net_amount", deposit.get("amount", 0)) or 0)
+            currency_key = f"wallet_{deposit['currency'].lower()}"
+            await db.users.update_one({"user_id": deposit["user_id"]}, {"$inc": {currency_key: credit_amount}})
+
+            await db.transactions.insert_one({
+                "transaction_id": str(uuid.uuid4()),
+                "user_id": deposit["user_id"],
+                "type": "deposit",
+                "amount": credit_amount,
+                "currency": deposit["currency"],
+                "reference_id": deposit_id,
+                "status": "completed",
+                "description": f"Deposit via {deposit.get('payment_method_name') or 'Plisio'} (auto-approved)",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+
+            # Notify user by email
+            user = await db.users.find_one({"user_id": deposit["user_id"]}, {"_id": 0, "email": 1, "full_name": 1})
+            if user and user.get("email"):
+                subject = "KAYICOM - Deposit Approved"
+                content = f"""
+                <h2>Deposit Approved</h2>
+                <p>Hello {user.get('full_name', 'User')},</p>
+                <p>Your deposit of <strong>{deposit.get('amount')} {deposit.get('currency')}</strong> has been approved.</p>
+                <p>Fee: <strong>{deposit.get('fee', 0)} {deposit.get('currency')}</strong> | Net credited: <strong>{deposit.get('net_amount', deposit.get('amount'))} {deposit.get('currency')}</strong></p>
+                <p>Transaction ID: <code>{deposit_id}</code></p>
+                <p>Thank you for using KAYICOM!</p>
+                """
+                await send_email(user["email"], subject, content)
+
+        await db.deposits.update_one({"deposit_id": deposit_id}, {"$set": update_data})
+        deposit = await db.deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+        return deposit
+    except Exception as e:
+        logger.error(f"Plisio sync error for deposit {deposit_id}: {e}", exc_info=True)
+        return deposit
+
 
 @api_router.get("/plisio/return")
 async def plisio_return(deposit_id: Optional[str] = None, status: str = "success"):
@@ -1232,6 +1323,9 @@ async def plisio_return(deposit_id: Optional[str] = None, status: str = "success
     User-facing return URL for Plisio.
     Plisio may require the return URL domain to be verified; we keep it on BACKEND_URL and redirect to FRONTEND_URL.
     """
+    if deposit_id:
+        # Attempt an automatic sync/credit on return (no auth required)
+        await _plisio_sync_deposit_by_id(deposit_id, processed_by="plisio_return")
     frontend_url = os.environ.get("FRONTEND_URL", "https://wallet.kayicom.com").rstrip("/")
     qs = f"?status={status}"
     if deposit_id:
@@ -1252,81 +1346,16 @@ async def plisio_fail(deposit_id: Optional[str] = None):
 @api_router.post("/deposits/{deposit_id}/sync")
 async def sync_deposit_status(deposit_id: str, current_user: dict = Depends(get_current_user)):
     """Manually sync Plisio deposit status and auto-credit on confirmation."""
-    deposit = await db.deposits.find_one({"deposit_id": deposit_id, "user_id": current_user["user_id"]}, {"_id": 0})
-    if not deposit:
+    existing = await db.deposits.find_one({"deposit_id": deposit_id, "user_id": current_user["user_id"]}, {"_id": 0})
+    if not existing:
         raise HTTPException(status_code=404, detail="Deposit not found")
-
-    if deposit.get("provider") != "plisio" or not deposit.get("plisio_invoice_id"):
+    if existing.get("provider") != "plisio":
         raise HTTPException(status_code=400, detail="This deposit is not a Plisio deposit")
 
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    plisio_key = (settings.get("plisio_api_key") or "").strip() if settings else ""
-    plisio_secret = (settings.get("plisio_secret_key") or "").strip() if settings else ""
-    if not plisio_key and plisio_secret:
-        plisio_key = plisio_secret
-        plisio_secret = ""
-    if not settings or not settings.get("plisio_enabled") or not plisio_key:
-        raise HTTPException(status_code=400, detail="Plisio not configured")
-
-    params = {"api_key": plisio_key}
-
-    try:
-        async with httpx.AsyncClient() as client_http:
-            resp = await client_http.get(
-                f"https://plisio.net/api/v1/operations/{deposit['plisio_invoice_id']}",
-                params=params,
-                timeout=30.0,
-            )
-        # retry for legacy setups that require api_secret
-        if resp.status_code != 200 and plisio_secret and plisio_secret != plisio_key:
-            async with httpx.AsyncClient() as client_http:
-                resp = await client_http.get(
-                    f"https://plisio.net/api/v1/operations/{deposit['plisio_invoice_id']}",
-                    params={**params, "api_secret": plisio_secret},
-                    timeout=30.0,
-                )
-        if resp.status_code != 200:
-            raise HTTPException(status_code=400, detail="Failed to sync with Plisio")
-
-        result = resp.json()
-        if result.get("status") != "success" or not result.get("data"):
-            raise HTTPException(status_code=400, detail=result.get("message", "Failed to sync"))
-
-        invoice_data = result["data"]
-        new_status = invoice_data.get("status", deposit.get("provider_status", "pending"))
-
-        update_data: Dict[str, Any] = {"provider_status": new_status}
-
-        confirmed_statuses = {"completed", "confirmed", "mismatch", "paid"}
-        if str(new_status).lower() in confirmed_statuses and deposit.get("status") == "pending":
-            update_data["status"] = "completed"
-            update_data["processed_at"] = datetime.now(timezone.utc).isoformat()
-            update_data["processed_by"] = "plisio_sync"
-
-            credit_amount = float(deposit.get("net_amount", deposit.get("amount", 0)) or 0)
-            currency_key = f"wallet_{deposit['currency'].lower()}"
-            await db.users.update_one({"user_id": deposit["user_id"]}, {"$inc": {currency_key: credit_amount}})
-
-            await db.transactions.insert_one({
-                "transaction_id": str(uuid.uuid4()),
-                "user_id": deposit["user_id"],
-                "type": "deposit",
-                "amount": credit_amount,
-                "currency": deposit["currency"],
-                "reference_id": deposit_id,
-                "status": "completed",
-                "description": f"Deposit via {deposit.get('payment_method_name') or 'Plisio'} (auto-approved)",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            })
-
-        await db.deposits.update_one({"deposit_id": deposit_id}, {"$set": update_data})
-        deposit = await db.deposits.find_one({"deposit_id": deposit_id, "user_id": current_user["user_id"]}, {"_id": 0})
-        return {"deposit": deposit}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error syncing Plisio deposit: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Error syncing deposit")
+    updated = await _plisio_sync_deposit_by_id(deposit_id, processed_by="plisio_sync")
+    if not updated:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    return {"deposit": updated}
 
 
 @api_router.post("/deposits/plisio-webhook")
