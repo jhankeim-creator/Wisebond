@@ -312,65 +312,118 @@ export default function AdminPaymentGateway() {
                 </Button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>{getText('Non', 'Nom', 'Name')}</th>
-                      <th>{getText('Deviz', 'Devises', 'Currencies')}</th>
-                      <th>{getText('Min/Max', 'Min/Max', 'Min/Max')}</th>
-                      <th>{getText('Frè', 'Frais', 'Fee')}</th>
-                      <th>{getText('Statis', 'Statut', 'Status')}</th>
-                      <th>{getText('Aksyon', 'Actions', 'Actions')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleMethods.map((m) => (
-                      <tr key={m.payment_method_id}>
-                        <td className="font-medium">{m.payment_method_name}</td>
-                        <td>
-                          <div className="flex gap-1">
+              <>
+                {/* Desktop table */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>{getText('Non', 'Nom', 'Name')}</th>
+                        <th>{getText('Deviz', 'Devises', 'Currencies')}</th>
+                        <th>{getText('Min/Max', 'Min/Max', 'Min/Max')}</th>
+                        <th>{getText('Frè', 'Frais', 'Fee')}</th>
+                        <th>{getText('Statis', 'Statut', 'Status')}</th>
+                        <th>{getText('Aksyon', 'Actions', 'Actions')}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleMethods.map((m) => (
+                        <tr key={m.payment_method_id}>
+                          <td className="font-medium">{m.payment_method_name}</td>
+                          <td>
+                            <div className="flex gap-1">
+                              {(m.supported_currencies || []).map((c) => (
+                                <Badge key={c} variant="outline" className="text-xs">{c}</Badge>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="text-sm">
+                            {Number(m.minimum_amount || 0)} – {Number(m.maximum_amount || 0) || '∞'}
+                          </td>
+                          <td className="text-sm">
+                            {m.fee_type === 'percentage' ? `${Number(m.fee_value || 0)}%` : Number(m.fee_value || 0)}
+                          </td>
+                          <td>
+                            <div className="flex items-center gap-2">
+                              <Switch checked={m.status === 'active'} onCheckedChange={() => toggleStatus(m)} />
+                              <Badge className={m.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-200 text-stone-700'}>
+                                {m.status}
+                              </Badge>
+                            </div>
+                          </td>
+                          <td>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline" onClick={() => openEdit(m)}>
+                                <Edit2 size={14} className="mr-1" />
+                                {getText('Modifye', 'Modifier', 'Edit')}
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={() => deleteMethod(m)}>
+                                <Trash2 size={14} />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile cards */}
+                <div className="md:hidden space-y-3">
+                  {visibleMethods.map((m) => (
+                    <div key={m.payment_method_id} className="border rounded-xl p-4 space-y-3 bg-white dark:bg-stone-900">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate">{m.payment_method_name}</p>
+                          <div className="flex flex-wrap gap-1 mt-2">
                             {(m.supported_currencies || []).map((c) => (
                               <Badge key={c} variant="outline" className="text-xs">{c}</Badge>
                             ))}
                           </div>
-                        </td>
-                        <td className="text-sm">
-                          {Number(m.minimum_amount || 0)} – {Number(m.maximum_amount || 0) || '∞'}
-                        </td>
-                        <td className="text-sm">
-                          {m.fee_type === 'percentage' ? `${Number(m.fee_value || 0)}%` : Number(m.fee_value || 0)}
-                        </td>
-                        <td>
-                          <div className="flex items-center gap-2">
-                            <Switch checked={m.status === 'active'} onCheckedChange={() => toggleStatus(m)} />
-                            <Badge className={m.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-200 text-stone-700'}>
-                              {m.status}
-                            </Badge>
-                          </div>
-                        </td>
-                        <td>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => openEdit(m)}>
-                              <Edit2 size={14} className="mr-1" />
-                              {getText('Modifye', 'Modifier', 'Edit')}
-                            </Button>
-                            <Button size="sm" variant="destructive" onClick={() => deleteMethod(m)}>
-                              <Trash2 size={14} />
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Switch checked={m.status === 'active'} onCheckedChange={() => toggleStatus(m)} />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <p className="text-stone-500">{getText('Min/Max', 'Min/Max', 'Min/Max')}</p>
+                          <p className="font-medium">
+                            {Number(m.minimum_amount || 0)} – {Number(m.maximum_amount || 0) || '∞'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-stone-500">{getText('Frè', 'Frais', 'Fee')}</p>
+                          <p className="font-medium">
+                            {m.fee_type === 'percentage' ? `${Number(m.fee_value || 0)}%` : Number(m.fee_value || 0)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <Badge className={m.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-stone-200 text-stone-700'}>
+                          {m.status}
+                        </Badge>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => openEdit(m)}>
+                            <Edit2 size={14} />
+                          </Button>
+                          <Button size="sm" variant="destructive" onClick={() => deleteMethod(m)}>
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
 
         <Dialog open={showModal} onOpenChange={setShowModal}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="w-[95vw] sm:w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
                 {editing.payment_method_id
