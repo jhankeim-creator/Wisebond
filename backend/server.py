@@ -1088,19 +1088,22 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
         network_field_key = integration.get("network_field_key") or "network"
         selected_network = str((submitted or {}).get(network_field_key) or "").strip()
 
+        # Plisio currency codes vary by account and can change.
+        # The most compatible value for USDT is usually "USDT" (network selection is handled internally by Plisio).
         network_map = {
-            "usdt_trc20": "USDTTRC20",
-            "usdt_erc20": "USDTERC20",
-            "usdt_bep20": "USDTBEP20",
-            "usdt_polygon": "USDTPOLYGON",
-            "usdt_arbitrum": "USDTARBITRUM",
-            "USDTTRC20": "USDTTRC20",
-            "USDTERC20": "USDTERC20",
-            "USDTBEP20": "USDTBEP20",
-            "USDTPOLYGON": "USDTPOLYGON",
-            "USDTARBITRUM": "USDTARBITRUM",
+            "usdt_trc20": "USDT",
+            "usdt_erc20": "USDT",
+            "usdt_bep20": "USDT",
+            "usdt_polygon": "USDT",
+            "usdt_arbitrum": "USDT",
+            "USDTTRC20": "USDT",
+            "USDTERC20": "USDT",
+            "USDTBEP20": "USDT",
+            "USDTPOLYGON": "USDT",
+            "USDTARBITRUM": "USDT",
+            "USDT": "USDT",
         }
-        plisio_currency = network_map.get(selected_network, "USDTTRC20")
+        plisio_currency = network_map.get(selected_network, "USDT")
 
         backend_url = os.environ.get("BACKEND_URL", "https://wisebond.onrender.com").rstrip("/")
         # NOTE: Plisio may only allow verifying one domain. We keep Plisio return URLs on BACKEND_URL
@@ -1143,6 +1146,22 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
                 resp = await _create_invoice({"api_secret": plisio_secret})
 
             if resp.status_code != 200:
+                # If Plisio returns JSON with an unsupported currency error, retry once with generic USDT.
+                try:
+                    j = resp.json()
+                    if (
+                        isinstance(j, dict)
+                        and j.get("status") == "error"
+                        and isinstance(j.get("data"), dict)
+                        and j["data"].get("code") == 105
+                        and plisio_currency != "USDT"
+                    ):
+                        plisio_currency = "USDT"
+                        payload["currency"] = "USDT"
+                        resp = await _create_invoice({"api_secret": plisio_secret} if (plisio_secret and plisio_secret != plisio_key) else None)
+                except Exception:
+                    pass
+
                 body_snippet = _safe_err(resp.text)
                 content_type = resp.headers.get("content-type", "")
                 try:
