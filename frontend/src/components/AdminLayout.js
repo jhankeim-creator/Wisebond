@@ -54,6 +54,7 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/deposits', icon: ArrowDownCircle, label: getText('Depo', 'Dépôts', 'Deposits') },
     { path: '/admin/withdrawals', icon: ArrowUpCircle, label: getText('Retrè', 'Retraits', 'Withdrawals') },
     { path: '/admin/agent-deposits', icon: UserPlus, label: getText('Depo Ajan', 'Dépôts Agent', 'Agent Deposits') },
+    { path: '/admin/agent-commission-withdrawals', icon: Wallet, label: getText('Retrè Komisyon Ajan', 'Retraits Commission', 'Agent Payouts') },
     { path: '/admin/agent-settings', icon: UserPlus, label: getText('Paramèt Ajan', 'Paramètres Agent', 'Agent Settings') },
     { path: '/admin/virtual-cards', icon: CreditCard, label: getText('Komand Kat', 'Commandes Cartes', 'Card Orders') },
     { path: '/admin/topup', icon: Phone, label: getText('Komand Minit', 'Commandes Minutes', 'Minute Orders') },

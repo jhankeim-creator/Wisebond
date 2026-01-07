@@ -593,6 +593,20 @@ export default function AgentDeposit() {
   return (
     <DashboardLayout title={getText('Espas Ajan', 'Espace Agent', 'Agent Space')}>
       <div className="max-w-4xl mx-auto space-y-6 w-full px-0" data-testid="agent-deposit-page">
+        {/* Professional header */}
+        <div className="bg-gradient-to-r from-stone-900 to-stone-800 rounded-2xl p-6 text-white">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-stone-300 text-sm">{getText('Espas Ajan', 'Espace Agent', 'Agent Space')}</p>
+              <h2 className="text-2xl font-bold mt-1">{user?.full_name}</h2>
+              <p className="text-stone-300 text-sm font-mono mt-1">{user?.client_id}</p>
+            </div>
+            <div className="hidden sm:flex items-center gap-2">
+              <Wallet className="text-amber-400" size={24} />
+              <span className="text-stone-200 text-sm">{getText('Komisyon & Depo', 'Commission & Dépôts', 'Commission & Deposits')}</span>
+            </div>
+          </div>
+        </div>
         
         {/* QR Scanner Modal */}
         {showQRScanner && (

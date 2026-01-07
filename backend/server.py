@@ -551,6 +551,30 @@ async def send_telegram_notification(message: str, chat_id: Optional[str] = None
         logger.error(f"Failed to send Telegram notification: {e}")
         return False
 
+
+async def notify_admin(subject: str, html: str, telegram_message: Optional[str] = None):
+    """
+    Notify all active admins by email (Resend) and Telegram (settings.telegram_chat_id).
+    """
+    # Email admins
+    try:
+        admins = await db.users.find(
+            {"is_admin": True, "is_active": True},
+            {"_id": 0, "email": 1},
+        ).to_list(50)
+        for a in admins:
+            if a.get("email"):
+                await send_email(a["email"], subject, html)
+    except Exception as e:
+        logger.error(f"Admin email notify error: {e}")
+
+    # Telegram admin channel/group
+    if telegram_message:
+        try:
+            await send_telegram_notification(telegram_message)
+        except Exception as e:
+            logger.error(f"Admin telegram notify error: {e}")
+
 async def send_whatsapp_notification(phone_number: str, message: str):
     """Send WhatsApp notification using CallMeBot (free)"""
     import httpx
@@ -1264,6 +1288,29 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
             raise HTTPException(status_code=500, detail="Failed to create Plisio invoice")
 
     await db.deposits.insert_one(deposit)
+
+    # Notify admins (email + telegram)
+    try:
+        await notify_admin(
+            subject="KAYICOM - New Deposit Request",
+            html=f"""
+            <h2>New Deposit Request</h2>
+            <p><strong>Client:</strong> {current_user.get('full_name', '')} ({current_user.get('client_id', '')})</p>
+            <p><strong>Amount:</strong> {deposit['amount']} {deposit['currency']}</p>
+            <p><strong>Method:</strong> {deposit.get('payment_method_name') or deposit.get('payment_method_id')}</p>
+            <p><strong>Status:</strong> pending</p>
+            <p>Deposit ID: <code>{deposit['deposit_id']}</code></p>
+            """,
+            telegram_message=(
+                f"💰 <b>New Deposit Request</b>\n"
+                f"Client: <b>{current_user.get('full_name','')}</b> ({current_user.get('client_id','')})\n"
+                f"Amount: <b>{deposit['amount']} {deposit['currency']}</b>\n"
+                f"Method: <b>{deposit.get('payment_method_name') or deposit.get('payment_method_id')}</b>\n"
+                f"ID: <code>{deposit['deposit_id']}</code>"
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Failed to notify admins for deposit: {e}")
     await log_action(
         current_user["user_id"],
         "deposit_request",
@@ -1590,6 +1637,30 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
         {"$inc": {source_key: -amount_to_deduct}},
     )
     await db.withdrawals.insert_one(withdrawal)
+
+    # Notify admins (email + telegram)
+    try:
+        await notify_admin(
+            subject="KAYICOM - New Withdrawal Request",
+            html=f"""
+            <h2>New Withdrawal Request</h2>
+            <p><strong>Client:</strong> {current_user.get('full_name', '')} ({current_user.get('client_id', '')})</p>
+            <p><strong>Amount:</strong> {withdrawal['amount']} {withdrawal['currency']}</p>
+            <p><strong>Fee:</strong> {withdrawal.get('fee', 0)} {withdrawal['currency']}</p>
+            <p><strong>Method:</strong> {withdrawal.get('payment_method_name') or withdrawal.get('payment_method_id')}</p>
+            <p><strong>Status:</strong> pending</p>
+            <p>Withdrawal ID: <code>{withdrawal['withdrawal_id']}</code></p>
+            """,
+            telegram_message=(
+                f"🏧 <b>New Withdrawal Request</b>\n"
+                f"Client: <b>{current_user.get('full_name','')}</b> ({current_user.get('client_id','')})\n"
+                f"Amount: <b>{withdrawal['amount']} {withdrawal['currency']}</b>\n"
+                f"Method: <b>{withdrawal.get('payment_method_name') or withdrawal.get('payment_method_id')}</b>\n"
+                f"ID: <code>{withdrawal['withdrawal_id']}</code>"
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Failed to notify admins for withdrawal: {e}")
 
     description = f"Withdrawal via {method.get('payment_method_name') or 'method'}"
     if source_currency != target_currency:
@@ -2845,6 +2916,31 @@ async def create_agent_deposit(request: AgentDepositRequest, current_user: dict 
         "client_id": client["client_id"],
         "amount_usd": request.amount_usd
     })
+
+    # Notify admins (email + telegram)
+    try:
+        await notify_admin(
+            subject="KAYICOM - New Agent Deposit Request",
+            html=f"""
+            <h2>New Agent Deposit Request</h2>
+            <p><strong>Agent:</strong> {current_user.get('full_name','')} ({current_user.get('client_id','')})</p>
+            <p><strong>Client:</strong> {client.get('full_name','')} ({client.get('client_id','')})</p>
+            <p><strong>Amount USD:</strong> {request.amount_usd}</p>
+            <p><strong>HTG Received:</strong> {request.amount_htg_received}</p>
+            <p><strong>Commission:</strong> ${agent_deposit.get('commission_usd',0):.2f}</p>
+            <p>Deposit ID: <code>{agent_deposit['deposit_id']}</code></p>
+            """,
+            telegram_message=(
+                f"🧾 <b>New Agent Deposit</b>\n"
+                f"Agent: <b>{current_user.get('full_name','')}</b> ({current_user.get('client_id','')})\n"
+                f"Client: <b>{client.get('full_name','')}</b> ({client.get('client_id','')})\n"
+                f"USD: <b>${request.amount_usd}</b> | HTG: <b>G {request.amount_htg_received}</b>\n"
+                f"Commission: <b>${agent_deposit.get('commission_usd',0):.2f}</b>\n"
+                f"ID: <code>{agent_deposit['deposit_id']}</code>"
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Failed to notify admins for agent deposit: {e}")
     
     if "_id" in agent_deposit:
         del agent_deposit["_id"]
@@ -3530,6 +3626,30 @@ async def agent_create_commission_withdrawal(payload: AgentCommissionWithdrawalC
     })
 
     await log_action(current_user["user_id"], "agent_commission_payout_request", {"withdrawal_id": withdrawal_id, "amount": amount})
+
+    # Notify admins (email + telegram)
+    try:
+        await notify_admin(
+            subject="KAYICOM - New Agent Commission Withdrawal",
+            html=f"""
+            <h2>New Agent Commission Withdrawal</h2>
+            <p><strong>Agent:</strong> {current_user.get('full_name','')} ({current_user.get('client_id','')})</p>
+            <p><strong>Amount:</strong> ${amount:.2f} USD</p>
+            <p><strong>Fee:</strong> ${fee:.2f} USD</p>
+            <p><strong>Net:</strong> ${net_amount:.2f} USD</p>
+            <p><strong>Method:</strong> {method.get('payment_method_name')}</p>
+            <p>Withdrawal ID: <code>{withdrawal_id}</code></p>
+            """,
+            telegram_message=(
+                f"💸 <b>Agent Commission Withdrawal</b>\n"
+                f"Agent: <b>{current_user.get('full_name','')}</b> ({current_user.get('client_id','')})\n"
+                f"Amount: <b>${amount:.2f}</b> | Fee: <b>${fee:.2f}</b> | Net: <b>${net_amount:.2f}</b>\n"
+                f"Method: <b>{method.get('payment_method_name')}</b>\n"
+                f"ID: <code>{withdrawal_id}</code>"
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Failed to notify admins for agent commission withdrawal: {e}")
     return {"withdrawal": doc}
 
 

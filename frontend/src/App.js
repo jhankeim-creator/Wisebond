@@ -47,6 +47,7 @@ import AdminLogs from "@/pages/admin/AdminLogs";
 import AdminTeam from "@/pages/admin/AdminTeam";
 import AdminAgentSettings from "@/pages/admin/AdminAgentSettings";
 import AdminAgentDeposits from "@/pages/admin/AdminAgentDeposits";
+import AdminAgentCommissionWithdrawals from "@/pages/admin/AdminAgentCommissionWithdrawals";
 import AdminPaymentGateway from "@/pages/admin/AdminPaymentGateway";
 
 // Protected Route Component
@@ -133,6 +134,7 @@ function AppRoutes() {
       <Route path="/admin/team" element={<ProtectedRoute adminOnly><AdminTeam /></ProtectedRoute>} />
       <Route path="/admin/agent-settings" element={<ProtectedRoute adminOnly><AdminAgentSettings /></ProtectedRoute>} />
       <Route path="/admin/agent-deposits" element={<ProtectedRoute adminOnly><AdminAgentDeposits /></ProtectedRoute>} />
+      <Route path="/admin/agent-commission-withdrawals" element={<ProtectedRoute adminOnly><AdminAgentCommissionWithdrawals /></ProtectedRoute>} />
       <Route path="/admin/payment-gateway" element={<ProtectedRoute adminOnly><AdminPaymentGateway /></ProtectedRoute>} />
       
       {/* Fallback */}
