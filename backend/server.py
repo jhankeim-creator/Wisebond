@@ -1117,7 +1117,7 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
         def _safe_err(text: str) -> str:
             # Avoid returning very large bodies to the client
             t = (text or "").strip()
-            return t[:500] + ("..." if len(t) > 500 else "")
+            return t[:800] + ("..." if len(t) > 800 else "")
 
         async def _create_invoice(extra: Optional[Dict[str, Any]] = None):
             data = dict(payload)
@@ -1137,8 +1137,13 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
                 resp = await _create_invoice({"api_secret": plisio_secret})
 
             if resp.status_code != 200:
-                logger.error(f"Plisio invoice create failed: {resp.status_code} {_safe_err(resp.text)}")
-                raise HTTPException(status_code=400, detail=f"Failed to create Plisio invoice: {resp.status_code}")
+                body_snippet = _safe_err(resp.text)
+                logger.error(f"Plisio invoice create failed: {resp.status_code} {body_snippet}")
+                # Return a helpful (but truncated) message to admin/user to troubleshoot.
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to create Plisio invoice: {resp.status_code} - {body_snippet or 'No response body'}",
+                )
 
             result = resp.json()
             if result.get("status") != "success" or not result.get("data"):
