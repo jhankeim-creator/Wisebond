@@ -1124,15 +1124,14 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
             return t[:800] + ("..." if len(t) > 800 else "")
 
         async def _create_invoice(extra_params: Optional[Dict[str, Any]] = None):
-            # Plisio expects api_key/api_secret as query params (not form fields).
-            params = {"api_key": plisio_key}
+            # Plisio expects invoice creation via query params (GET) and returns JSON on 422/200.
+            params: Dict[str, Any] = {"api_key": plisio_key, **payload}
             if extra_params:
                 params.update(extra_params)
             async with httpx.AsyncClient() as client_http:
-                return await client_http.post(
+                return await client_http.get(
                     "https://plisio.net/api/v1/invoices/new",
                     params=params,
-                    data=payload,
                     headers={"Accept": "application/json"},
                     timeout=30.0,
                 )
