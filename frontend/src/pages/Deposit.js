@@ -6,17 +6,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { 
   Upload, 
   Check, 
   AlertCircle,
-  DollarSign,
-  Smartphone,
-  Wallet,
-  Building
+  ArrowDownCircle
 } from 'lucide-react';
 
 import { API_BASE } from '@/lib/utils';
@@ -28,37 +24,12 @@ export default function Deposit() {
   
   const [step, setStep] = useState(1);
   const [currency, setCurrency] = useState('HTG');
-  const [method, setMethod] = useState('');
+  const [paymentMethodId, setPaymentMethodId] = useState('');
   const [amount, setAmount] = useState('');
-  const [proofImage, setProofImage] = useState('');
   const [loading, setLoading] = useState(false);
   const [createdDeposit, setCreatedDeposit] = useState(null);
-  const [usdtNetworks, setUsdtNetworks] = useState([]);
-  const [usdtNetwork, setUsdtNetwork] = useState('');
-  const [usdtLoading, setUsdtLoading] = useState(false);
-  const [usdtEnabled, setUsdtEnabled] = useState(false);
-  const [availableMethods, setAvailableMethods] = useState({ HTG: [], USD: [] });
-  const [methodMeta, setMethodMeta] = useState({});
-  const [manualConfig, setManualConfig] = useState({
-    moncash_enabled: false,
-    moncash_number: null,
-    moncash_name: null,
-    moncash_qr: null,
-    natcash_enabled: false,
-    natcash_number: null,
-    natcash_name: null,
-    natcash_qr: null,
-    zelle_email: null,
-    zelle_name: null,
-    paypal_email: null,
-    paypal_name: null
-  });
-  
-  // Sender info for deposit proof
-  const [senderInfo, setSenderInfo] = useState({
-    sender_name: '',
-    sender_phone: ''
-  });
+  const [methods, setMethods] = useState([]);
+  const [fieldValues, setFieldValues] = useState({});
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -66,132 +37,43 @@ export default function Deposit() {
     return en;
   }, [language]);
 
-  const fetchManualConfig = useCallback(async () => {
+  const fetchPaymentGatewayMethods = useCallback(async (cur) => {
     try {
-      const resp = await axios.get(`${API}/public/app-config`);
-      setManualConfig({
-        moncash_enabled: !!resp.data?.moncash_enabled,
-        moncash_number: resp.data?.moncash_number || null,
-        moncash_name: resp.data?.moncash_name || null,
-        moncash_qr: resp.data?.moncash_qr || null,
-        natcash_enabled: !!resp.data?.natcash_enabled,
-        natcash_number: resp.data?.natcash_number || null,
-        natcash_name: resp.data?.natcash_name || null,
-        natcash_qr: resp.data?.natcash_qr || null,
-        zelle_email: resp.data?.zelle_email || 'payments@kayicom.com',
-        zelle_name: resp.data?.zelle_name || 'KAYICOM',
-        paypal_email: resp.data?.paypal_email || 'payments@kayicom.com',
-        paypal_name: resp.data?.paypal_name || 'KAYICOM'
-      });
+      const res = await axios.get(`${API}/public/payment-gateway/methods?payment_type=deposit&currency=${cur}`);
+      setMethods(res.data?.methods || []);
     } catch (e) {
-      setManualConfig({
-        moncash_enabled: false,
-        moncash_number: null,
-        moncash_name: null,
-        moncash_qr: null,
-        natcash_enabled: false,
-        natcash_number: null,
-        natcash_name: null,
-        natcash_qr: null,
-        zelle_email: 'payments@kayicom.com',
-        zelle_name: 'KAYICOM',
-        paypal_email: 'payments@kayicom.com',
-        paypal_name: 'KAYICOM'
-      });
+      setMethods([]);
     }
   }, []);
 
   useEffect(() => {
-    fetchManualConfig();
-  }, [fetchManualConfig]);
+    fetchPaymentGatewayMethods(currency);
+  }, [currency, fetchPaymentGatewayMethods]);
 
-  const loadNetworks = useCallback(async () => {
-    if (currency !== 'USD' || method !== 'usdt') return;
-    setUsdtLoading(true);
-    try {
-      const resp = await axios.get(`${API}/deposits/usdt-options`);
-      const nets = resp.data?.networks || [];
-      setUsdtEnabled(!!resp.data?.enabled);
-      setUsdtNetworks(nets);
-      // auto-select first if none selected
-      setUsdtNetwork((prev) => prev || (nets.length > 0 ? nets[0].code : ''));
-    } catch (e) {
-      setUsdtNetworks([]);
-      setUsdtEnabled(false);
-    } finally {
-      setUsdtLoading(false);
-    }
-  }, [currency, method]);
+  const selectedMethod = useMemo(
+    () => methods.find((m) => m.payment_method_id === paymentMethodId) || null,
+    [methods, paymentMethodId]
+  );
 
-  useEffect(() => {
-    loadNetworks();
-  }, [loadNetworks]);
+  const calcFee = useMemo(() => {
+    const amt = parseFloat(amount || '0');
+    if (!selectedMethod || !amt || amt <= 0) return 0;
+    if (selectedMethod.fee_type === 'percentage') return amt * (Number(selectedMethod.fee_value || 0) / 100);
+    return Number(selectedMethod.fee_value || 0);
+  }, [amount, selectedMethod]);
 
-  // Reset USDT fields when method changes
-  useEffect(() => {
-    if (method !== 'usdt') {
-      setUsdtNetwork('');
-      setUsdtNetworks([]);
-      setUsdtEnabled(false);
-    }
-  }, [method]);
+  const netAmount = useMemo(() => {
+    const amt = parseFloat(amount || '0');
+    return Math.max(0, amt - (calcFee || 0));
+  }, [amount, calcFee]);
 
-  // Helper to get icon for method
-  const getMethodIcon = (methodId) => {
-    if (methodId.includes('cash') || methodId === 'moncash' || methodId === 'natcash') return Smartphone;
-    if (methodId === 'usdt') return Wallet;
-    if (methodId.includes('bank')) return Building;
-    return DollarSign;
-  };
-
-  // Fetch payment methods from API
-  const fetchPaymentMethods = useCallback(async (cur) => {
-    try {
-      const res = await axios.get(`${API}/public/payment-methods?flow=deposit&currency=${cur}`);
-      const list = Array.isArray(res.data) ? res.data : [];
-      
-      const metaById = {};
-      const mapped = list
-        .slice()
-        .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-        .map((m) => {
-          metaById[m.method_id] = m;
-          return {
-            id: m.method_id,
-            name: m.display_name,
-            icon: getMethodIcon(m.method_id)
-          };
-        });
-
-      setMethodMeta((prev) => ({ ...prev, ...metaById }));
-      setAvailableMethods((prev) => ({ ...prev, [cur]: mapped }));
-    } catch (e) {
-      // Fallback to empty array
-      setAvailableMethods((prev) => ({ ...prev, [cur]: [] }));
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchPaymentMethods(currency);
-  }, [currency, fetchPaymentMethods]);
-
-  // Metòd depo: Now fetched from API dynamically
-  const depositMethods = useMemo(() => {
-    return {
-      HTG: availableMethods.HTG || [],
-      USD: availableMethods.USD || []
+  const onFileUpload = (fieldKey, file, accept) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setFieldValues((prev) => ({ ...prev, [fieldKey]: String(reader.result || '') }));
     };
-  }, [availableMethods]);
-
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProofImage(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
+    reader.readAsDataURL(file);
   };
 
   const handleSubmit = async () => {
@@ -199,21 +81,41 @@ export default function Deposit() {
       toast.error(getText('Antre yon montan valid', 'Veuillez entrer un montant valide', 'Please enter a valid amount'));
       return;
     }
-
-    if (method === 'usdt') {
-      if (!usdtEnabled) {
-        toast.error(getText('Plisio pa aktive (admin dwe mete kle yo)', 'Plisio non activé (admin doit mettre les clés)', 'Plisio not enabled (admin must set keys)'));
-        return;
-      }
-      if (!usdtNetwork) {
-        toast.error(getText('Chwazi rezo USDT la', 'Choisissez le réseau USDT', 'Select USDT network'));
-        return;
-      }
+    if (!selectedMethod) {
+      toast.error(getText('Chwazi metòd la', 'Choisissez la méthode', 'Select a method'));
+      return;
     }
 
-    if (method !== 'usdt' && !proofImage) {
-      toast.error(getText('Telechaje prèv peman an', 'Veuillez télécharger la preuve de paiement', 'Please upload payment proof'));
+    const min = Number(selectedMethod.minimum_amount || 0);
+    const max = Number(selectedMethod.maximum_amount || 0);
+    const amt = parseFloat(amount);
+    if (min && amt < min) {
+      toast.error(`${getText('Minimòm', 'Minimum', 'Minimum')}: ${min}`);
       return;
+    }
+    if (max && amt > max) {
+      toast.error(`${getText('Maksimòm', 'Maximum', 'Maximum')}: ${max}`);
+      return;
+    }
+
+    const fields = Array.isArray(selectedMethod.custom_fields) ? selectedMethod.custom_fields : [];
+    for (const f of fields) {
+      const v = fieldValues?.[f.key];
+      if (!f.required) continue;
+      if (f.type === 'checkbox') {
+        if (v !== true) {
+          toast.error(getText(`Chan obligatwa: ${f.label}`, `Champ requis: ${f.label}`, `Required: ${f.label}`));
+          return;
+        }
+      } else if (f.type === 'file') {
+        if (!String(v || '').startsWith('data:')) {
+          toast.error(getText(`Fichye obligatwa: ${f.label}`, `Fichier requis: ${f.label}`, `File required: ${f.label}`));
+          return;
+        }
+      } else if (!String(v || '').trim()) {
+        toast.error(getText(`Chan obligatwa: ${f.label}`, `Champ requis: ${f.label}`, `Required: ${f.label}`));
+        return;
+      }
     }
 
     setLoading(true);
@@ -222,16 +124,14 @@ export default function Deposit() {
       const payload = {
         amount: parseFloat(amount),
         currency,
-        method,
-        proof_image: method === 'usdt' ? null : (proofImage || null),
-        wallet_address: method === 'usdt' ? null : null,
-        network: method === 'usdt' ? usdtNetwork : null
+        payment_method_id: selectedMethod.payment_method_id,
+        field_values: fieldValues || {},
       };
 
       const resp = await axios.post(`${API}/deposits/create`, payload);
       setCreatedDeposit(resp.data.deposit);
       toast.success(getText('Demann depo soumèt siksè!', 'Demande de dépôt soumise avec succès!', 'Deposit request submitted successfully!'));
-      setStep(4);
+      setStep(3);
     } catch (error) {
       toast.error(error.response?.data?.detail || getText('Erè nan soumisyon', 'Erreur lors de la soumission', 'Submission error'));
     } finally {
@@ -247,7 +147,7 @@ export default function Deposit() {
           {['HTG', 'USD'].map((cur) => (
             <button
               key={cur}
-              onClick={() => { setCurrency(cur); setMethod(''); }}
+              onClick={() => { setCurrency(cur); setPaymentMethodId(''); setFieldValues({}); }}
               className={`p-6 rounded-xl border-2 transition-all ${
                 currency === cur 
                   ? cur === 'HTG' ? 'border-[#EA580C] bg-orange-50' : 'border-amber-500 bg-amber-50'
@@ -266,31 +166,30 @@ export default function Deposit() {
       <div>
         <h3 className="font-semibold text-stone-900 mb-4">{getText('Chwazi metòd', 'Choisir la méthode', 'Choose method')}</h3>
         <div className="space-y-3">
-          {depositMethods[currency].length === 0 ? (
+          {methods.length === 0 ? (
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
               {getText(
                 'Pa gen metòd depo ki aktive pou HTG. Kontakte admin.',
                 'Aucune méthode de dépôt activée pour HTG. Contactez l’admin.',
-                'No HTG deposit methods are enabled. Contact admin.'
+                'No deposit methods are enabled for this currency. Contact admin.'
               )}
             </div>
-          ) : depositMethods[currency].map((m) => {
-            const Icon = m.icon;
+          ) : methods.map((m) => {
             return (
               <button
-                key={m.id}
-                onClick={() => setMethod(m.id)}
+                key={m.payment_method_id}
+                onClick={() => setPaymentMethodId(m.payment_method_id)}
                 className={`w-full p-4 rounded-xl border-2 flex items-center gap-4 transition-all ${
-                  method === m.id 
+                  paymentMethodId === m.payment_method_id 
                     ? 'border-[#EA580C] bg-orange-50' 
                     : 'border-stone-200 hover:border-stone-300'
                 }`}
               >
                 <div className="w-12 h-12 bg-stone-100 rounded-lg flex items-center justify-center">
-                  <Icon size={24} className="text-stone-600" />
+                  <ArrowDownCircle size={24} className="text-stone-600" />
                 </div>
-                <span className="font-medium text-stone-900">{m.name}</span>
-                {method === m.id && (
+                <span className="font-medium text-stone-900">{m.payment_method_name}</span>
+                {paymentMethodId === m.payment_method_id && (
                   <Check className="ml-auto text-[#EA580C]" size={20} />
                 )}
               </button>
@@ -301,7 +200,7 @@ export default function Deposit() {
 
       <Button 
         onClick={() => setStep(2)} 
-        disabled={!method}
+        disabled={!paymentMethodId}
         className="btn-primary w-full"
         data-testid="deposit-continue"
       >
@@ -327,132 +226,133 @@ export default function Deposit() {
             data-testid="deposit-amount"
           />
         </div>
+        {selectedMethod ? (
+          <p className="text-sm text-stone-500 mt-2">
+            {getText('Min', 'Min', 'Min')}: {Number(selectedMethod.minimum_amount || 0)} | {getText('Max', 'Max', 'Max')}: {Number(selectedMethod.maximum_amount || 0) || '∞'}
+          </p>
+        ) : null}
       </div>
 
-      {method === 'usdt' ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="text-amber-500 mt-0.5" size={20} />
-            <div>
-              <p className="font-medium text-amber-800">{getText('Enstriksyon USDT (Plisio)', 'Instructions USDT (Plisio)', 'USDT Instructions (Plisio)')}</p>
-              <p className="text-sm text-amber-700 mt-1">
-                {getText(
-                  'Chwazi rezo a, epi n ap kreye yon lyen peman otomatik. Depo a ap valide otomatikman apre peman an konfime.',
-                  'Choisissez le réseau, puis nous créerons un lien de paiement automatique. Le dépôt sera validé automatiquement après confirmation.',
-                  'Select the network and we will generate an automatic payment link. Deposit will auto-validate after confirmation.'
-                )}
-              </p>
-              <div className="mt-3">
-                <Label>{getText('Rezo USDT', 'Réseau USDT', 'USDT Network')}</Label>
-                {usdtLoading ? (
-                  <div className="text-sm text-stone-600 mt-2">{getText('Chajman rezo yo...', 'Chargement des réseaux...', 'Loading networks...')}</div>
-                ) : usdtNetworks.length > 0 ? (
-                  <Select value={usdtNetwork} onValueChange={setUsdtNetwork}>
-                    <SelectTrigger className="mt-2">
-                      <SelectValue placeholder={getText('Chwazi rezo a', 'Choisir le réseau', 'Select network')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {usdtNetworks.map((n) => (
-                        <SelectItem key={n.code} value={n.code}>{n.label}</SelectItem>
+      {selectedMethod ? (
+        <>
+          {(selectedMethod.display?.instructions || selectedMethod.display?.recipient_details || selectedMethod.display?.qr_image) ? (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-3">
+              {selectedMethod.display?.instructions ? (
+                <div>
+                  <p className="font-medium text-orange-800">{getText('Enstriksyon', 'Instructions', 'Instructions')}</p>
+                  <p className="text-sm text-orange-700 mt-1 whitespace-pre-wrap">{selectedMethod.display.instructions}</p>
+                </div>
+              ) : null}
+              {selectedMethod.display?.recipient_details ? (
+                <div>
+                  <p className="font-medium text-orange-800">{getText('Detay reseptè', 'Détails du bénéficiaire', 'Recipient details')}</p>
+                  <p className="text-sm text-orange-700 mt-1 whitespace-pre-wrap">{selectedMethod.display.recipient_details}</p>
+                </div>
+              ) : null}
+              {selectedMethod.display?.qr_image ? (
+                <div>
+                  <p className="font-medium text-orange-800">{getText('QR Code', 'QR Code', 'QR Code')}</p>
+                  <img src={selectedMethod.display.qr_image} alt="QR" className="mt-2 max-h-48 border rounded-lg" />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {(Array.isArray(selectedMethod.custom_fields) && selectedMethod.custom_fields.length > 0) ? (
+            <div className="space-y-4">
+              {selectedMethod.custom_fields.map((f) => (
+                <div key={f.key}>
+                  <Label>
+                    {f.label} {f.required ? <span className="text-red-500">*</span> : null}
+                  </Label>
+                  {f.type === 'textarea' ? (
+                    <textarea
+                      value={fieldValues?.[f.key] || ''}
+                      onChange={(e) => setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                      className="mt-2 w-full border rounded-lg px-3 py-2 min-h-[90px]"
+                      placeholder={f.placeholder || ''}
+                    />
+                  ) : f.type === 'select' ? (
+                    <select
+                      value={fieldValues?.[f.key] || ''}
+                      onChange={(e) => setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                      className="mt-2 w-full border rounded-lg px-3 py-2"
+                    >
+                      <option value="">{getText('Chwazi...', 'Choisir...', 'Select...')}</option>
+                      {(f.options || []).map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
                       ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <p className="text-sm text-amber-700 mt-2">
-                    {getText(
-                      'Plisio pa disponib kounye a. Kontakte admin pou aktive li.',
-                      'Plisio n\'est pas disponible pour le moment. Contactez l\'admin pour l\'activer.',
-                      'Plisio is currently unavailable. Contact admin to activate it.'
-                    )}
-                  </p>
-                )}
+                    </select>
+                  ) : f.type === 'checkbox' ? (
+                    <label className="mt-2 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={fieldValues?.[f.key] === true}
+                        onChange={(e) => setFieldValues((prev) => ({ ...prev, [f.key]: e.target.checked }))}
+                      />
+                      <span className="text-sm text-stone-700">{f.help_text || f.placeholder || ''}</span>
+                    </label>
+                  ) : f.type === 'file' ? (
+                    <div>
+                      <div
+                        className={`file-upload-zone mt-2 ${String(fieldValues?.[f.key] || '').startsWith('data:') ? 'border-emerald-500 bg-emerald-50' : ''}`}
+                        onClick={() => document.getElementById(`deposit-file-${f.key}`)?.click()}
+                      >
+                        {String(fieldValues?.[f.key] || '').startsWith('data:') ? (
+                          <div className="flex items-center justify-center gap-3">
+                            <Check className="text-emerald-500" size={24} />
+                            <span className="text-emerald-700">{getText('Fichye telechaje', 'Fichier téléversé', 'File uploaded')}</span>
+                          </div>
+                        ) : (
+                          <>
+                            <Upload className="mx-auto text-stone-400 mb-2" size={32} />
+                            <p className="text-stone-600">{getText('Klike pou telechaje', 'Cliquez pour téléverser', 'Click to upload')}</p>
+                          </>
+                        )}
+                      </div>
+                      <input
+                        id={`deposit-file-${f.key}`}
+                        type="file"
+                        accept={f.accept || '*/*'}
+                        className="hidden"
+                        onChange={(e) => onFileUpload(f.key, e.target.files?.[0], f.accept)}
+                      />
+                      {f.help_text ? <p className="text-xs text-stone-500 mt-1">{f.help_text}</p> : null}
+                    </div>
+                  ) : (
+                    <Input
+                      type={f.type === 'number' ? 'number' : (f.type === 'email' ? 'email' : 'text')}
+                      value={fieldValues?.[f.key] || ''}
+                      onChange={(e) => setFieldValues((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                      className="mt-2"
+                      placeholder={f.placeholder || ''}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {amount && parseFloat(amount) > 0 ? (
+            <div className="bg-stone-50 rounded-xl p-4 space-y-2">
+              <div className="flex justify-between text-stone-600">
+                <span>{getText('Montan', 'Montant', 'Amount')}</span>
+                <span>{currency === 'USD' ? '$' : 'G '}{parseFloat(amount).toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-stone-600">
+                <span>{getText('Frè', 'Frais', 'Fee')}</span>
+                <span className="text-red-500">-{currency === 'USD' ? '$' : 'G '}{Number(calcFee || 0).toFixed(2)}</span>
+              </div>
+              <div className="border-t border-stone-200 pt-2 flex justify-between font-semibold text-stone-900">
+                <span>{getText('Nèt kredite', 'Net crédité', 'Net credited')}</span>
+                <span className="text-emerald-600">{currency === 'USD' ? '$' : 'G '}{Number(netAmount || 0).toFixed(2)}</span>
               </div>
             </div>
-          </div>
-        </div>
+          ) : null}
+        </>
       ) : (
-        <div className="space-y-4">
-          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-            <p className="font-medium text-orange-800">
-              {getText('Enstriksyon', 'Instructions', 'Instructions')} {depositMethods[currency].find(m => m.id === method)?.name}
-            </p>
-            <p className="text-sm text-orange-700 mt-1">
-              {currency === 'HTG' 
-                ? (
-                  method === 'moncash' && manualConfig.moncash_number
-                    ? getText(
-                      `Voye montan an nan MonCash: ${manualConfig.moncash_number}`,
-                      `Envoyez le montant sur MonCash: ${manualConfig.moncash_number}`,
-                      `Send the amount to MonCash: ${manualConfig.moncash_number}`
-                    )
-                    : method === 'natcash' && manualConfig.natcash_number
-                      ? getText(
-                        `Voye montan an nan NatCash: ${manualConfig.natcash_number}`,
-                        `Envoyez le montant sur NatCash: ${manualConfig.natcash_number}`,
-                        `Send the amount to NatCash: ${manualConfig.natcash_number}`
-                      )
-                      : getText(
-                        'Metòd sa pa configure. Kontakte admin.',
-                        'Méthode non configurée. Contactez l’admin.',
-                        'Method not configured. Contact admin.'
-                      )
-                )
-                : (() => {
-                    const methodData = methodMeta[method];
-                    const instructions = methodData?.public?.instructions;
-                    if (instructions) return instructions;
-                    if (method === 'zelle') {
-                      return getText(
-                        `Voye nan: ${manualConfig.zelle_email || 'payments@kayicom.com'}`,
-                        `Envoyez à: ${manualConfig.zelle_email || 'payments@kayicom.com'}`,
-                        `Send to: ${manualConfig.zelle_email || 'payments@kayicom.com'}`
-                      );
-                    }
-                    if (method === 'paypal') {
-                      return getText(
-                        `Voye nan: ${manualConfig.paypal_email || 'payments@kayicom.com'}`,
-                        `Envoyez à: ${manualConfig.paypal_email || 'payments@kayicom.com'}`,
-                        `Send to: ${manualConfig.paypal_email || 'payments@kayicom.com'}`
-                      );
-                    }
-                    return getText(
-                      'Suivez les instructions pour cette méthode',
-                      'Suivez les instructions pour cette méthode',
-                      'Follow instructions for this method'
-                    );
-                  })()
-              }
-            </p>
-          </div>
-
-          <div>
-            <Label>{getText('Telechaje prèv peman', 'Télécharger preuve de paiement', 'Upload payment proof')}</Label>
-            <div 
-              className={`file-upload-zone mt-2 ${proofImage ? 'border-emerald-500 bg-emerald-50' : ''}`}
-              onClick={() => document.getElementById('proof-upload').click()}
-            >
-              {proofImage ? (
-                <div className="flex items-center justify-center gap-3">
-                  <Check className="text-emerald-500" size={24} />
-                  <span className="text-emerald-700">{getText('Imaj telechaje', 'Image téléchargée', 'Image uploaded')}</span>
-                </div>
-              ) : (
-                <>
-                  <Upload className="mx-auto text-stone-400 mb-2" size={32} />
-                  <p className="text-stone-600">{getText('Klike pou telechaje', 'Cliquez pour télécharger', 'Click to upload')}</p>
-                  <p className="text-sm text-stone-400 mt-1">PNG, JPG {getText('jiska', "jusqu'à", 'up to')} 5MB</p>
-                </>
-              )}
-            </div>
-            <input
-              id="proof-upload"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleImageUpload}
-              data-testid="deposit-proof-upload"
-            />
-          </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+          {getText('Chwazi metòd la anvan', 'Choisissez une méthode avant', 'Select a method first')}
         </div>
       )}
 
@@ -462,7 +362,7 @@ export default function Deposit() {
         </Button>
         <Button 
           onClick={handleSubmit}
-          disabled={loading || !amount}
+          disabled={loading || !amount || !selectedMethod}
           className="btn-primary flex-1"
           data-testid="deposit-submit"
         >
@@ -485,52 +385,13 @@ export default function Deposit() {
           `Your deposit request of ${currency === 'HTG' ? 'G' : '$'}${amount} ${currency} is pending validation.`
         )}
       </p>
+      {createdDeposit?.deposit_id ? (
+        <p className="text-sm text-stone-500 mb-6">
+          {getText('ID', 'ID', 'ID')}: <span className="font-mono">{createdDeposit.deposit_id}</span>
+        </p>
+      ) : null}
 
-      {createdDeposit?.provider === 'plisio' && createdDeposit?.plisio_invoice_url && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-left">
-          <p className="font-semibold text-amber-800 mb-2">
-            {getText('Peye ak Plisio (USDT)', 'Payer avec Plisio (USDT)', 'Pay with Plisio (USDT)')}
-          </p>
-          <p className="text-sm text-amber-700 mb-3">
-            {getText(
-              'Klike sou lyen an pou fini peman an. Depo a ap valide otomatikman apre peman an konfime.',
-              'Cliquez sur le lien pour finaliser le paiement. Le dépôt sera validé automatiquement après confirmation.',
-              'Click the link to complete payment. Deposit will auto-validate after confirmation.'
-            )}
-          </p>
-          <a
-            href={createdDeposit.plisio_invoice_url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[#EA580C] font-medium hover:underline break-all"
-          >
-            {createdDeposit.plisio_invoice_url}
-          </a>
-          <div className="mt-4 flex gap-3">
-            <Button
-              variant="outline"
-              onClick={async () => {
-                try {
-                  const resp = await axios.post(`${API}/deposits/${createdDeposit.deposit_id}/sync`);
-                  setCreatedDeposit(resp.data.deposit);
-                  toast.success(getText('Mizajou fèt', 'Mise à jour effectuée', 'Updated'));
-                } catch (e) {
-                  toast.error(getText('Erè pandan sync', 'Erreur sync', 'Sync error'));
-                }
-              }}
-            >
-              {getText('Verifye peman an', 'Vérifier le paiement', 'Check payment')}
-            </Button>
-          </div>
-          {createdDeposit.provider_status && (
-            <p className="text-sm text-stone-700 mt-3">
-              {getText('Estati', 'Statut', 'Status')}: <span className="font-semibold">{createdDeposit.provider_status}</span>
-            </p>
-          )}
-        </div>
-      )}
-
-      <Button onClick={() => { setStep(1); setAmount(''); setProofImage(''); setMethod(''); }} className="btn-primary">
+      <Button onClick={() => { setStep(1); setAmount(''); setFieldValues({}); setPaymentMethodId(''); }} className="btn-primary">
         {getText('Nouvo depo', 'Nouveau dépôt', 'New deposit')}
       </Button>
     </div>
@@ -554,12 +415,12 @@ export default function Deposit() {
       ) : (
         <Card className="max-w-xl mx-auto">
           <CardHeader>
-            <CardTitle>{step < 4 ? `${getText('Etap', 'Étape', 'Step')} ${step}/2` : getText('Siksè', 'Succès', 'Success')}</CardTitle>
+            <CardTitle>{step < 3 ? `${getText('Etap', 'Étape', 'Step')} ${step}/2` : getText('Siksè', 'Succès', 'Success')}</CardTitle>
           </CardHeader>
           <CardContent>
             {step === 1 && renderStep1()}
             {step === 2 && renderStep2()}
-            {step === 4 && renderSuccess()}
+            {step === 3 && renderSuccess()}
           </CardContent>
         </Card>
       )}

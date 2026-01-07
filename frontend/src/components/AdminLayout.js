@@ -59,7 +59,7 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/topup', icon: Phone, label: getText('Komand Minit', 'Commandes Minutes', 'Minute Orders') },
     { path: '/admin/rates', icon: RefreshCw, label: getText('To chanj', 'Taux de change', 'Exchange Rates') },
     { path: '/admin/fees', icon: DollarSign, label: getText('Frè', 'Frais', 'Fees') },
-    { path: '/admin/payment-methods', icon: Wallet, label: getText('Mwayen Peman', 'Moyens de paiement', 'Payment Methods') },
+    { path: '/admin/payment-gateway', icon: Wallet, label: getText('Payment Gateway', 'Payment Gateway', 'Payment Gateway') },
     { path: '/admin/bulk-email', icon: Mail, label: getText('Imèl', 'Emails', 'Emails') },
     { path: '/admin/team', icon: Shield, label: getText('Ekip', 'Équipe', 'Team') },
     { path: '/admin/logs', icon: MessageSquare, label: getText('Mesaj', 'Journaux', 'Logs') },
