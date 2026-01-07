@@ -25,8 +25,16 @@ export default function FloatingAnnouncement() {
 
   const key = useMemo(() => {
     if (!cfg) return null;
-    // Reset dismissal when settings.updated_at changes (admin saved new settings)
-    const version = (cfg.updated_at || '').toString() || 'v1';
+    // Reset dismissal when settings.updated_at changes OR when content changes (fallback)
+    const versionBase = [
+      (cfg.updated_at || '').toString(),
+      cfg.announcement_enabled ? '1' : '0',
+      cfg.announcement_text_ht || '',
+      cfg.announcement_text_fr || '',
+      cfg.announcement_text_en || '',
+      cfg.announcement_link || '',
+    ].join('|');
+    const version = btoa(unescape(encodeURIComponent(versionBase))).slice(0, 24) || 'v1';
     return `kayicom_announcement_dismissed_${version}`;
   }, [cfg]);
 
@@ -34,7 +42,10 @@ export default function FloatingAnnouncement() {
     let mounted = true;
     (async () => {
       try {
-        const res = await axios.get(`${API_BASE}/public/app-config`);
+        const res = await axios.get(`${API_BASE}/public/app-config`, {
+          headers: { 'Cache-Control': 'no-cache' },
+          params: { _ts: Date.now() },
+        });
         if (!mounted) return;
         setCfg(res.data || {});
       } catch (e) {

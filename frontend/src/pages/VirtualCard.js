@@ -681,7 +681,7 @@ export default function VirtualCard() {
 
         {/* Card Details Modal */}
         <Dialog open={showCardDetails} onOpenChange={setShowCardDetails}>
-          <DialogContent className="sm:max-w-lg">
+          <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <CreditCard className="text-[#EA580C]" size={24} />
@@ -692,7 +692,7 @@ export default function VirtualCard() {
             {selectedCard && (
               <div className="space-y-4 py-4">
                 {/* Card Visual */}
-                <div className={`relative rounded-2xl p-6 text-white overflow-hidden ${
+                <div className={`relative rounded-2xl p-4 sm:p-6 text-white overflow-hidden ${
                   selectedCard.card_type === 'mastercard' 
                     ? 'bg-gradient-to-br from-orange-500 via-red-500 to-pink-600' 
                     : 'bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800'
@@ -706,7 +706,7 @@ export default function VirtualCard() {
                   ) : null}
                   
                   <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-8">
+                    <div className="flex justify-between items-start mb-6">
                       <div>
                         {selectedCard.card_brand && (
                           <span className="text-white/90 font-bold text-lg">{selectedCard.card_brand}</span>
@@ -720,8 +720,8 @@ export default function VirtualCard() {
                     </div>
                     
                     <div className="mb-6">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xl tracking-wider">
+                      <div className="flex items-start gap-2">
+                        <span className="font-mono text-lg sm:text-xl tracking-wider break-all">
                           {formatCardNumber(selectedCard.card_number, showFullNumber)}
                         </span>
                         {selectedCard.card_number && (
