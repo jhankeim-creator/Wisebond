@@ -71,6 +71,10 @@ export default function AnnouncementBar() {
   if (!cfg?.announcement_enabled) return null;
   if (!effectiveText) return null;
 
+  const shouldScroll = effectiveText.length >= 60;
+  // Rough duration heuristic: longer text scrolls slower
+  const marqueeDurationSeconds = Math.min(40, Math.max(14, Math.round(effectiveText.length / 4)));
+
   return (
     <div ref={barRef} className="fixed top-0 inset-x-0 z-[60] w-full">
       <div className="w-full bg-gradient-to-r from-[#EA580C] to-amber-500 text-white shadow-lg">
@@ -80,9 +84,21 @@ export default function AnnouncementBar() {
               <Megaphone size={18} className="text-white/90" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm sm:text-base leading-relaxed break-words">
-                {effectiveText}
-              </p>
+              {shouldScroll ? (
+                <div
+                  className="announcement-marquee text-sm sm:text-base leading-relaxed"
+                  style={{ '--announcement-marquee-duration': `${marqueeDurationSeconds}s` }}
+                >
+                  <div className="announcement-marquee__inner">
+                    <span className="announcement-marquee__content">{effectiveText}</span>
+                    <span className="announcement-marquee__content" aria-hidden="true">{effectiveText}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm sm:text-base leading-relaxed break-words">
+                  {effectiveText}
+                </p>
+              )}
               {cfg.announcement_link && (
                 <a
                   href={cfg.announcement_link}

@@ -173,6 +173,39 @@
   }
 }
 
+/* Announcement marquee (scroll left) */
+@keyframes announcement-marquee-left {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.announcement-marquee {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.announcement-marquee__inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5rem;
+  width: max-content;
+  will-change: transform;
+  animation: announcement-marquee-left var(--announcement-marquee-duration, 18s) linear infinite;
+}
+
+.announcement-marquee__content {
+  display: inline-flex;
+  align-items: center;
+  gap: 2.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .announcement-marquee__inner {
+    animation: none;
+    transform: none;
+  }
+}
+
 /* Wallet Cards */
 .wallet-card-htg {
   background: linear-gradient(135deg, #EA580C 0%, #C2410C 100%);
