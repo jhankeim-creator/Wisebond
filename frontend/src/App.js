@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 import { LiveChat } from "@/components/LiveChat";
 import { ScrollToTop } from "@/components/ScrollToTop";
-import FloatingAnnouncement from "@/components/FloatingAnnouncement";
+import AnnouncementBanner from "@/components/AnnouncementBanner";
 // InstallPrompt moved to Landing page footer
 
 // Pages
@@ -149,7 +149,7 @@ function App() {
           <BrowserRouter>
             <ScrollToTop />
             <AppRoutes />
-            <FloatingAnnouncement />
+            <AnnouncementBanner />
             <LiveChat />
             <Toaster position="top-right" richColors />
           </BrowserRouter>
