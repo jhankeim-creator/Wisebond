@@ -292,26 +292,25 @@ export default function AdminSettings() {
             {/* Preview */}
             <div className="pt-2">
               <p className="text-xs text-stone-500 mb-2">{getText('Preview', 'Aperçu', 'Preview')}</p>
-              <div className="rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-stone-900 shadow-lg overflow-hidden">
-                <div className="flex items-start gap-3 p-4">
-                  <div className="mt-0.5 flex-shrink-0">
-                    <div className="w-9 h-9 rounded-xl bg-gradient-to-r from-[#EA580C] to-amber-500 flex items-center justify-center">
-                      <Bell size={18} className="text-white" />
+              <div className="rounded-xl overflow-hidden border border-black/10 dark:border-white/10">
+                <div className="bg-gradient-to-r from-[#EA580C] to-amber-500 text-white p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5">
+                      <Bell size={18} className="text-white/90" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm leading-relaxed break-words">
+                        {(settings.announcement_text_ht || settings.announcement_text_fr || settings.announcement_text_en || '').trim() ||
+                          getText('Mete tèks anons la...', 'Ajoutez le texte...', 'Add announcement text...')}
+                      </p>
+                      {settings.announcement_link && (
+                        <p className="mt-2 text-xs text-white/90 break-all">
+                          {settings.announcement_link}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-stone-900 dark:text-white leading-relaxed break-words">
-                      {(settings.announcement_text_ht || settings.announcement_text_fr || settings.announcement_text_en || '').trim() ||
-                        getText('Mete tèks anons la...', 'Ajoutez le texte...', 'Add announcement text...')}
-                    </p>
-                    {settings.announcement_link && (
-                      <p className="mt-2 text-xs text-stone-500 dark:text-stone-300 break-all">
-                        {settings.announcement_link}
-                      </p>
-                    )}
-                  </div>
                 </div>
-                <div className="h-1 bg-gradient-to-r from-[#EA580C] to-amber-500" />
               </div>
             </div>
           </CardContent>
