@@ -1070,9 +1070,14 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
         if not settings or not settings.get("plisio_enabled"):
             raise HTTPException(status_code=400, detail="Plisio is not enabled")
 
-        # Plisio sometimes exposes a single key; support both legacy fields.
-        plisio_key = (settings.get("plisio_secret_key") or settings.get("plisio_api_key") or "").strip()
-        plisio_secret = (settings.get("plisio_api_key") or "").strip()  # legacy dual-key support
+        # Plisio: by default we use a single key (settings.plisio_api_key).
+        # If a second key exists (settings.plisio_secret_key), we will retry with api_secret for legacy setups.
+        plisio_key = (settings.get("plisio_api_key") or "").strip()
+        plisio_secret = (settings.get("plisio_secret_key") or "").strip()
+        if not plisio_key:
+            # Backward compatibility: allow the key stored in plisio_secret_key
+            plisio_key = plisio_secret
+            plisio_secret = ""
         if not plisio_key:
             raise HTTPException(status_code=400, detail="Plisio key is not configured in settings")
 
@@ -1109,25 +1114,36 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
             "success_url": f"{frontend_url}/deposit?status=success",
             "fail_url": f"{frontend_url}/deposit?status=failed",
         }
-        # legacy: some accounts require api_secret too
-        if plisio_secret and plisio_secret != plisio_key:
-            payload["api_secret"] = plisio_secret
+        def _safe_err(text: str) -> str:
+            # Avoid returning very large bodies to the client
+            t = (text or "").strip()
+            return t[:500] + ("..." if len(t) > 500 else "")
 
-        try:
+        async def _create_invoice(extra: Optional[Dict[str, Any]] = None):
+            data = dict(payload)
+            if extra:
+                data.update(extra)
             async with httpx.AsyncClient() as client_http:
-                resp = await client_http.post(
+                return await client_http.post(
                     "https://plisio.net/api/v1/invoices/new",
-                    data=payload,
+                    data=data,
                     timeout=30.0,
                 )
+
+        try:
+            resp = await _create_invoice()
+            # If it fails and we have a secondary secret, retry once with api_secret for legacy setups.
+            if resp.status_code != 200 and plisio_secret and plisio_secret != plisio_key:
+                resp = await _create_invoice({"api_secret": plisio_secret})
+
             if resp.status_code != 200:
-                logger.error(f"Plisio invoice create failed: {resp.status_code} {resp.text}")
-                raise HTTPException(status_code=400, detail="Failed to create Plisio invoice")
+                logger.error(f"Plisio invoice create failed: {resp.status_code} {_safe_err(resp.text)}")
+                raise HTTPException(status_code=400, detail=f"Failed to create Plisio invoice: {resp.status_code}")
 
             result = resp.json()
             if result.get("status") != "success" or not result.get("data"):
                 logger.error(f"Plisio API error: {result}")
-                raise HTTPException(status_code=400, detail=result.get("message", "Plisio error"))
+                raise HTTPException(status_code=400, detail=f"Plisio error: {result.get('message', 'Unknown error')}")
 
             invoice_data = result["data"]
             deposit["provider"] = "plisio"
@@ -1176,14 +1192,15 @@ async def sync_deposit_status(deposit_id: str, current_user: dict = Depends(get_
         raise HTTPException(status_code=400, detail="This deposit is not a Plisio deposit")
 
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    plisio_key = (settings.get("plisio_secret_key") or settings.get("plisio_api_key") or "").strip() if settings else ""
-    plisio_secret = (settings.get("plisio_api_key") or "").strip() if settings else ""
+    plisio_key = (settings.get("plisio_api_key") or "").strip() if settings else ""
+    plisio_secret = (settings.get("plisio_secret_key") or "").strip() if settings else ""
+    if not plisio_key and plisio_secret:
+        plisio_key = plisio_secret
+        plisio_secret = ""
     if not settings or not settings.get("plisio_enabled") or not plisio_key:
         raise HTTPException(status_code=400, detail="Plisio not configured")
 
     params = {"api_key": plisio_key}
-    if plisio_secret and plisio_secret != plisio_key:
-        params["api_secret"] = plisio_secret
 
     try:
         async with httpx.AsyncClient() as client_http:
@@ -1192,6 +1209,14 @@ async def sync_deposit_status(deposit_id: str, current_user: dict = Depends(get_
                 params=params,
                 timeout=30.0,
             )
+        # retry for legacy setups that require api_secret
+        if resp.status_code != 200 and plisio_secret and plisio_secret != plisio_key:
+            async with httpx.AsyncClient() as client_http:
+                resp = await client_http.get(
+                    f"https://plisio.net/api/v1/operations/{deposit['plisio_invoice_id']}",
+                    params={**params, "api_secret": plisio_secret},
+                    timeout=30.0,
+                )
         if resp.status_code != 200:
             raise HTTPException(status_code=400, detail="Failed to sync with Plisio")
 
