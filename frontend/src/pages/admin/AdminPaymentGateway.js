@@ -69,11 +69,11 @@ export default function AdminPaymentGateway() {
   const [needsAdditionalInfo, setNeedsAdditionalInfo] = useState(false);
   const [needsFileUpload, setNeedsFileUpload] = useState(false);
 
-  const getText = (ht, fr, en) => {
+  const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
     if (language === 'fr') return fr;
     return en;
-  };
+  }, [language]);
 
   const fetchMethods = useCallback(async () => {
     setLoading(true);
@@ -85,7 +85,7 @@ export default function AdminPaymentGateway() {
     } finally {
       setLoading(false);
     }
-  }, [paymentType, language]);
+  }, [paymentType, getText]);
 
   useEffect(() => {
     fetchMethods();
