@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -23,6 +24,7 @@ import {
   Smartphone, 
   Send,
   Bell,
+  Megaphone,
   Settings2,
   Banknote,
   Users,
@@ -70,7 +72,7 @@ export default function AdminSettings() {
     // International minutes (TopUp) fee tiers
     topup_fee_tiers: [],
 
-    // Floating announcement
+    // Announcement bar (top banner)
     announcement_enabled: false,
     announcement_text_ht: '',
     announcement_text_fr: '',
@@ -242,18 +244,18 @@ export default function AdminSettings() {
   // Tab content components
   const NotificationsTab = () => (
     <div className="space-y-4">
-      {/* Floating announcement */}
+      {/* Announcement bar */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                <Bell size={20} className="text-amber-600" />
+                <Megaphone size={20} className="text-amber-600" />
               </div>
               <div>
-                <CardTitle className="text-base">{getText('Flote Anons', 'Annonce flottante', 'Floating Announcement')}</CardTitle>
+                <CardTitle className="text-base">{getText('Bann Anons', 'Bandeau d’annonce', 'Announcement Bar')}</CardTitle>
                 <CardDescription className="text-sm">
-                  {getText('Montre yon anons anba ekran an', 'Afficher une annonce en bas', 'Show a banner at the bottom')}
+                  {getText('Montre yon anons anwo ekran an', 'Afficher une annonce en haut', 'Show a banner at the top')}
                 </CardDescription>
               </div>
             </div>
@@ -267,9 +269,9 @@ export default function AdminSettings() {
           <CardContent className="space-y-3 border-t pt-4">
             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
               {getText(
-                'Apre ou sove, refresh paj la pou w wè anons lan. Si ou te fèmen li avan, chanje tèks la pou li parèt ankò.',
-                'Après sauvegarde, rafraîchissez la page. Si vous l’avez fermée avant, modifiez le texte pour la revoir.',
-                'After saving, refresh the page. If you dismissed it before, change the text to show it again.'
+                'Apre ou sove, refresh paj la pou w wè anons lan anwo ekran an.',
+                'Après sauvegarde, rafraîchissez la page pour voir l’annonce en haut.',
+                'After saving, refresh the page to see the banner at the top.'
               )}
             </div>
             <div>
@@ -296,7 +298,7 @@ export default function AdminSettings() {
                 <div className="bg-gradient-to-r from-[#EA580C] to-amber-500 text-white p-4">
                   <div className="flex items-start gap-3">
                     <div className="mt-0.5">
-                      <Bell size={18} className="text-white/90" />
+                      <Megaphone size={18} className="text-white/90" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm leading-relaxed break-words">
