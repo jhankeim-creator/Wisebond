@@ -143,6 +143,8 @@ export default function VirtualCard() {
 
   const submitTopUp = async () => {
     const amt = parseFloat(topUpAmount);
+    const fee = calculateTopUpFee();
+    const total = Math.max(0, (amt || 0) + (fee || 0));
     
     if (!topUpCardId) {
       toast.error(getText('Chwazi yon kat', 'Choisissez une carte', 'Choose a card'));
@@ -154,7 +156,7 @@ export default function VirtualCard() {
       return;
     }
     
-    if (amt > (user?.wallet_usd || 0)) {
+    if (total > (user?.wallet_usd || 0)) {
       toast.error(getText('Balans USD ensifizan', 'Solde USD insuffisant', 'Insufficient USD balance'));
       return;
     }
@@ -212,7 +214,7 @@ export default function VirtualCard() {
   };
 
   const topUpFee = calculateTopUpFee();
-  const netTopUpAmount = parseFloat(topUpAmount || 0) - topUpFee;
+  const totalTopUpAmount = Math.max(0, parseFloat(topUpAmount || 0) + (topUpFee || 0));
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -656,11 +658,18 @@ export default function VirtualCard() {
                   </div>
                   <div className="flex justify-between text-stone-600 dark:text-stone-400">
                     <span>{getText('Frè', 'Frais', 'Fee')}</span>
-                    <span className="text-red-500">-${topUpFee.toFixed(2)}</span>
+                    <span className="text-amber-700">${topUpFee.toFixed(2)}</span>
                   </div>
                   <div className="border-t border-stone-200 dark:border-stone-700 pt-2 flex justify-between font-semibold">
-                    <span>{getText('Montan sou kat', 'Montant sur carte', 'Amount on card')}</span>
-                    <span className="text-emerald-600">${netTopUpAmount.toFixed(2)}</span>
+                    <span>{getText('Total ap sòti nan bous ou', 'Total débité', 'Total deducted')}</span>
+                    <span className="text-[#EA580C]">${totalTopUpAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="text-xs text-stone-500 dark:text-stone-400">
+                    {getText(
+                      'Nòt: frè a ajoute sou montan an. Montan sou kat la se montan ou antre a.',
+                      'Note: les frais sont ajoutés au montant. Le montant sur la carte est celui saisi.',
+                      'Note: fee is added on top. The amount on the card is what you entered.'
+                    )}
                   </div>
                 </div>
               )}

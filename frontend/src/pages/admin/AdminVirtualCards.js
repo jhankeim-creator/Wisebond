@@ -485,7 +485,7 @@ export default function AdminVirtualCards() {
           </Card>
           <Card className="bg-purple-50 dark:bg-purple-900/30">
             <CardContent className="p-4 text-center">
-              <p className="text-purple-800 dark:text-purple-300 font-bold text-2xl">${topups.filter(t => t.status === 'approved').reduce((sum, t) => sum + (t.net_amount || 0), 0).toFixed(0)}</p>
+              <p className="text-purple-800 dark:text-purple-300 font-bold text-2xl">${topups.filter(t => t.status === 'approved').reduce((sum, t) => sum + (t.net_amount ?? t.amount ?? 0), 0).toFixed(0)}</p>
               <p className="text-purple-600 dark:text-purple-400 text-sm">{getText('Total Livere', 'Total Livré', 'Total Delivered')}</p>
             </CardContent>
           </Card>
@@ -648,7 +648,7 @@ export default function AdminVirtualCards() {
                         <th>{getText('Kat', 'Carte', 'Card')}</th>
                         <th>{getText('Montan', 'Montant', 'Amount')}</th>
                         <th>{getText('Frè', 'Frais', 'Fee')}</th>
-                        <th>{getText('Nèt', 'Net', 'Net')}</th>
+                        <th>{getText('Total debite', 'Total débité', 'Total deducted')}</th>
                         <th>Date</th>
                         <th>{getText('Statis', 'Statut', 'Status')}</th>
                         <th>{getText('Aksyon', 'Actions', 'Actions')}</th>
@@ -670,8 +670,8 @@ export default function AdminVirtualCards() {
                               </div>
                             </td>
                             <td className="font-semibold">${topup.amount?.toFixed(2)}</td>
-                            <td className="text-red-500">-${topup.fee?.toFixed(2)}</td>
-                            <td className="font-semibold text-emerald-600">${topup.net_amount?.toFixed(2)}</td>
+                            <td className="text-amber-700">${topup.fee?.toFixed(2)}</td>
+                            <td className="font-semibold text-[#EA580C]">${(topup.total_amount ?? ((topup.amount || 0) + (topup.fee || 0))).toFixed(2)}</td>
                             <td>{new Date(topup.created_at).toLocaleDateString()}</td>
                             <td>
                               <Badge className={
@@ -964,13 +964,13 @@ export default function AdminVirtualCards() {
                     <span>{getText('Montan', 'Montant', 'Amount')}</span>
                     <span className="font-semibold">${selectedTopup.amount?.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between text-red-600">
+                  <div className="flex justify-between text-amber-700">
                     <span>{getText('Frè', 'Frais', 'Fee')}</span>
-                    <span>-${selectedTopup.fee?.toFixed(2)}</span>
+                    <span>${selectedTopup.fee?.toFixed(2)}</span>
                   </div>
                   <div className="border-t pt-2 flex justify-between font-bold text-lg">
-                    <span>{getText('Pou mete sou kat', 'À mettre sur carte', 'To put on card')}</span>
-                    <span className="text-emerald-600">${selectedTopup.net_amount?.toFixed(2)}</span>
+                    <span>{getText('Total debite', 'Total débité', 'Total deducted')}</span>
+                    <span className="text-[#EA580C]">${(selectedTopup.total_amount ?? ((selectedTopup.amount || 0) + (selectedTopup.fee || 0))).toFixed(2)}</span>
                   </div>
                 </div>
 
@@ -979,9 +979,9 @@ export default function AdminVirtualCards() {
                     <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
                       <p className="text-sm text-amber-700 dark:text-amber-400">
                         {getText(
-                          `Mete $${selectedTopup.net_amount?.toFixed(2)} sou kat kliyan an, epi konfime livrezon an.`,
-                          `Mettez $${selectedTopup.net_amount?.toFixed(2)} sur la carte du client, puis confirmez la livraison.`,
-                          `Put $${selectedTopup.net_amount?.toFixed(2)} on client's card, then confirm delivery.`
+                          `Mete $${(selectedTopup.amount ?? selectedTopup.net_amount ?? 0).toFixed(2)} sou kat kliyan an, epi konfime livrezon an.`,
+                          `Mettez $${(selectedTopup.amount ?? selectedTopup.net_amount ?? 0).toFixed(2)} sur la carte du client, puis confirmez la livraison.`,
+                          `Put $${(selectedTopup.amount ?? selectedTopup.net_amount ?? 0).toFixed(2)} on client's card, then confirm delivery.`
                         )}
                       </p>
                     </div>

@@ -87,7 +87,7 @@ export const AdminLayout = ({ children, title }) => {
         fixed left-0 top-0 h-screen w-64 bg-stone-900 text-white flex flex-col z-50 transition-transform duration-300
         lg:translate-x-0
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
+      `} style={{ top: 'var(--announcement-bar-h, 0px)', height: 'calc(100vh - var(--announcement-bar-h, 0px))' }}>
         {/* Mobile Close Button */}
         <button 
           onClick={() => setSidebarOpen(false)}
