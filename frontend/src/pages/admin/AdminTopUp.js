@@ -86,7 +86,7 @@ export default function AdminTopUp() {
           </Card>
           <Card className="bg-blue-50">
             <CardContent className="p-4 text-center">
-              <p className="text-blue-800 font-bold text-2xl">${orders.reduce((sum, o) => sum + (o.price || 0), 0).toFixed(2)}</p>
+              <p className="text-blue-800 font-bold text-2xl">${orders.reduce((sum, o) => sum + (o.total || o.price || 0), 0).toFixed(2)}</p>
               <p className="text-blue-600 text-sm">Total Vant</p>
             </CardContent>
           </Card>
@@ -130,8 +130,9 @@ export default function AdminTopUp() {
                   <tr>
                     <th>Client ID</th>
                     <th>Peyi</th>
-                    <th>Minit</th>
-                    <th>Pri</th>
+                    <th>Montan</th>
+                    <th>Frè</th>
+                    <th>Total</th>
                     <th>Nimewo</th>
                     <th>Dat</th>
                     <th>Statis</th>
@@ -141,19 +142,20 @@ export default function AdminTopUp() {
                 <tbody>
                   {loading ? (
                     <tr>
-                      <td colSpan="8" className="text-center py-8">Chajman...</td>
+                      <td colSpan="10" className="text-center py-8">Chajman...</td>
                     </tr>
                   ) : orders.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="text-center py-8">Pa gen komand</td>
+                      <td colSpan="10" className="text-center py-8">Pa gen komand</td>
                     </tr>
                   ) : (
                     orders.map((order) => (
                       <tr key={order.order_id}>
                         <td className="font-mono text-sm">{order.client_id}</td>
                         <td>{order.country_name}</td>
-                        <td className="font-semibold">{order.minutes} min</td>
-                        <td className="font-semibold text-emerald-600">${order.price}</td>
+                        <td className="font-semibold text-stone-900">${Number(order.amount || order.price || 0).toFixed(2)}</td>
+                        <td className="text-red-600">${Number(order.fee || 0).toFixed(2)}</td>
+                        <td className="font-semibold text-emerald-600">${Number(order.total || order.price || 0).toFixed(2)}</td>
                         <td className="font-mono text-sm">{order.phone_number}</td>
                         <td>{new Date(order.created_at).toLocaleDateString()}</td>
                         <td>
@@ -201,16 +203,16 @@ export default function AdminTopUp() {
                     <p className="font-mono">{selectedOrder.client_id}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-stone-500">Pri</p>
-                    <p className="font-semibold text-emerald-600">${selectedOrder.price}</p>
+                    <p className="text-sm text-stone-500">Total</p>
+                    <p className="font-semibold text-emerald-600">${Number(selectedOrder.total || selectedOrder.price || 0).toFixed(2)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-stone-500">Peyi</p>
                     <p className="font-medium">{selectedOrder.country_name}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-stone-500">Minit</p>
-                    <p className="font-bold">{selectedOrder.minutes} minit</p>
+                    <p className="text-sm text-stone-500">Montan</p>
+                    <p className="font-bold">${Number(selectedOrder.amount || selectedOrder.price || 0).toFixed(2)}</p>
                   </div>
                   <div className="col-span-2">
                     <p className="text-sm text-stone-500">Nimewo telefòn pou rechaje</p>
@@ -236,7 +238,7 @@ export default function AdminTopUp() {
                   <>
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                       <p className="text-sm text-blue-700">
-                        <strong>Enstriksyon:</strong> Rechaje {selectedOrder.minutes} minit sou nimewo {selectedOrder.phone_number} pou {selectedOrder.country_name}. 
+                        <strong>Enstriksyon:</strong> Rechaje montan an sou nimewo {selectedOrder.phone_number} pou {selectedOrder.country_name}. 
                         Lè ou fin fè sa, klike "Konplete". Si ou pa ka fè li, klike "Anile" pou ranbouse kliyan an.
                       </p>
                     </div>

@@ -280,6 +280,13 @@ class AdminSettingsUpdate(BaseModel):
     card_background_image: Optional[str] = None
     topup_fee_tiers: Optional[List[TopUpFeeTier]] = None
 
+    # Floating announcement (optional)
+    announcement_enabled: Optional[bool] = None
+    announcement_text_ht: Optional[str] = None
+    announcement_text_fr: Optional[str] = None
+    announcement_text_en: Optional[str] = None
+    announcement_link: Optional[str] = None
+
 class TeamMemberCreate(BaseModel):
     email: str
     password: str
@@ -2249,6 +2256,10 @@ async def admin_create_card_manually(
     user = await db.users.find_one({"user_id": payload.user_id}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    default_card_bg = settings.get("card_background_image") if settings else None
+    card_image = payload.card_image or default_card_bg
     
     # Create card order directly as approved
     order = {
@@ -2267,7 +2278,7 @@ async def admin_create_card_manually(
         "billing_city": payload.billing_city,
         "billing_country": payload.billing_country,
         "billing_zip": payload.billing_zip,
-        "card_image": payload.card_image,
+        "card_image": card_image,
         "fee": 0,  # No fee for manual creation
         "status": "approved",  # Already approved
         "admin_notes": "Created manually by admin",
@@ -2330,6 +2341,9 @@ async def admin_process_card_order(
     order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    default_card_bg = settings.get("card_background_image") if settings else None
     
     action = payload.action
     if not action:
@@ -2378,6 +2392,8 @@ async def admin_process_card_order(
             update_doc["billing_zip"] = payload.billing_zip
         if payload.card_image:
             update_doc["card_image"] = payload.card_image
+        elif not order.get("card_image") and default_card_bg:
+            update_doc["card_image"] = default_card_bg
     
     await db.virtual_card_orders.update_one(
         {"order_id": order_id},
@@ -2577,6 +2593,26 @@ async def admin_get_topup_orders(
     
     orders = await db.topup_orders.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     return {"orders": orders}
+
+# Admin: Purge old virtual card orders (dangerous)
+@api_router.post("/admin/virtual-card-orders/purge")
+async def admin_purge_virtual_card_orders(
+    days: int = Query(default=30, ge=1, le=3650),
+    status: Optional[str] = None,
+    admin: dict = Depends(get_admin_user),
+):
+    """
+    Permanently deletes virtual card orders older than N days.
+    Use with caution.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    query: Dict[str, Any] = {"created_at": {"$lt": cutoff.isoformat()}}
+    if status:
+        query["status"] = status
+
+    result = await db.virtual_card_orders.delete_many(query)
+    await log_action(admin["user_id"], "virtual_card_orders_purge", {"days": days, "status": status, "deleted": result.deleted_count})
+    return {"deleted": result.deleted_count, "days": days, "status": status}
 
 # Admin: Process top-up order
 @api_router.patch("/admin/topup-orders/{order_id}")
@@ -4017,6 +4053,71 @@ async def admin_delete_payment_gateway_method(
     await log_action(admin["user_id"], "payment_gateway_method_delete", {"payment_method_id": payment_method_id})
     return {"message": "Payment gateway method deleted"}
 
+@api_router.get("/admin/team")
+async def admin_get_team(admin: dict = Depends(get_admin_user)):
+    """List admin/team users."""
+    team = await db.users.find(
+        {"is_admin": True},
+        {"_id": 0, "user_id": 1, "client_id": 1, "full_name": 1, "email": 1, "phone": 1, "is_active": 1, "created_at": 1, "admin_role": 1},
+    ).sort("created_at", -1).to_list(200)
+    return {"team": team}
+
+
+@api_router.post("/admin/team")
+async def admin_create_team_member(payload: TeamMemberCreate, admin: dict = Depends(get_admin_user)):
+    """Create an admin/team member user."""
+    existing = await db.users.find_one({"email": payload.email.lower()}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user_id = str(uuid.uuid4())
+    client_id = generate_client_id()
+
+    user_doc = {
+        "user_id": user_id,
+        "client_id": client_id,
+        "email": payload.email.lower(),
+        "password_hash": hash_password(payload.password),
+        "full_name": payload.full_name,
+        "phone": payload.phone,
+        "language": "fr",
+        "kyc_status": "approved",
+        "wallet_htg": 0.0,
+        "wallet_usd": 0.0,
+        "affiliate_code": generate_affiliate_code(),
+        "affiliate_earnings": 0.0,
+        "referred_by": None,
+        "is_active": True,
+        "is_admin": True,
+        "admin_role": (payload.role or "admin"),
+        "two_factor_enabled": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    await db.users.insert_one(user_doc)
+    await log_action(admin["user_id"], "team_create", {"user_id": user_id, "email": user_doc["email"], "role": user_doc["admin_role"]})
+
+    # Don't return password hash
+    user_doc.pop("password_hash", None)
+    if "_id" in user_doc:
+        del user_doc["_id"]
+    return {"member": user_doc}
+
+
+@api_router.patch("/admin/team/{user_id}")
+async def admin_update_team_member(user_id: str, payload: TeamMemberUpdate, admin: dict = Depends(get_admin_user)):
+    """Activate/deactivate a team member."""
+    target = await db.users.find_one({"user_id": user_id, "is_admin": True}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Team member not found")
+
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"is_active": payload.is_active}},
+    )
+    await log_action(admin["user_id"], "team_update", {"user_id": user_id, "is_active": payload.is_active})
+    return {"message": "Team member updated"}
+
 
 # Public endpoint for payment gateway methods (no auth required)
 @api_router.get("/public/payment-gateway/methods")
@@ -4053,7 +4154,20 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
             "whatsapp_number": "",
             "plisio_enabled": False,
             "plisio_api_key": "",
-            "plisio_secret_key": ""
+            "plisio_secret_key": "",
+            "telegram_enabled": False,
+            "telegram_bot_token": "",
+            "telegram_chat_id": "",
+            "card_order_fee_htg": 500,
+            "affiliate_reward_htg": 2000,
+            "affiliate_cards_required": 5,
+            "card_background_image": None,
+            "topup_fee_tiers": [],
+            "announcement_enabled": False,
+            "announcement_text_ht": None,
+            "announcement_text_fr": None,
+            "announcement_text_en": None,
+            "announcement_link": None,
         }
     return {"settings": settings}
 
@@ -4084,11 +4198,25 @@ async def get_public_app_config():
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     if not settings:
         return {
-            "card_order_fee_htg": 500
+            "card_order_fee_htg": 500,
+            "card_background_image": None,
+            "topup_fee_tiers": [],
+            "announcement_enabled": False,
+            "announcement_text_ht": None,
+            "announcement_text_fr": None,
+            "announcement_text_en": None,
+            "announcement_link": None,
         }
     
     return {
-        "card_order_fee_htg": settings.get("card_order_fee_htg", 500)
+        "card_order_fee_htg": settings.get("card_order_fee_htg", 500),
+        "card_background_image": settings.get("card_background_image"),
+        "topup_fee_tiers": settings.get("topup_fee_tiers", []),
+        "announcement_enabled": settings.get("announcement_enabled", False),
+        "announcement_text_ht": settings.get("announcement_text_ht"),
+        "announcement_text_fr": settings.get("announcement_text_fr"),
+        "announcement_text_en": settings.get("announcement_text_en"),
+        "announcement_link": settings.get("announcement_link"),
     }
 
 @api_router.put("/admin/settings")
@@ -4193,6 +4321,9 @@ async def admin_update_card_details(
     order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    default_card_bg = settings.get("card_background_image") if settings else None
     
     update_doc = {}
     if payload.card_brand:
@@ -4220,6 +4351,8 @@ async def admin_update_card_details(
         update_doc["billing_zip"] = payload.billing_zip
     if payload.card_image:
         update_doc["card_image"] = payload.card_image
+    elif not order.get("card_image") and default_card_bg:
+        update_doc["card_image"] = default_card_bg
     if payload.admin_notes is not None:
         update_doc["admin_notes"] = payload.admin_notes
     

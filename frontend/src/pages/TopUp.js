@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { 
@@ -20,13 +19,13 @@ import {
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 const countries = [
-  { code: 'US', name: 'USA', flag: '🇺🇸', rates: [{ minutes: 30, price: 5 }, { minutes: 60, price: 9 }, { minutes: 120, price: 15 }] },
-  { code: 'CA', name: 'Canada', flag: '🇨🇦', rates: [{ minutes: 30, price: 5 }, { minutes: 60, price: 9 }, { minutes: 120, price: 15 }] },
-  { code: 'FR', name: 'France', flag: '🇫🇷', rates: [{ minutes: 30, price: 7 }, { minutes: 60, price: 12 }, { minutes: 120, price: 20 }] },
-  { code: 'DO', name: 'République Dominicaine', flag: '🇩🇴', rates: [{ minutes: 30, price: 4 }, { minutes: 60, price: 7 }, { minutes: 120, price: 12 }] },
-  { code: 'MX', name: 'Mexique', flag: '🇲🇽', rates: [{ minutes: 30, price: 5 }, { minutes: 60, price: 9 }, { minutes: 120, price: 15 }] },
-  { code: 'BR', name: 'Brésil', flag: '🇧🇷', rates: [{ minutes: 30, price: 6 }, { minutes: 60, price: 10 }, { minutes: 120, price: 17 }] },
-  { code: 'OTHER', name: 'Lòt peyi / Autre pays', flag: '🌍', rates: [{ minutes: 30, price: 10 }, { minutes: 60, price: 18 }, { minutes: 120, price: 30 }] }
+  { code: 'US', name: 'USA', flag: '🇺🇸' },
+  { code: 'CA', name: 'Canada', flag: '🇨🇦' },
+  { code: 'FR', name: 'France', flag: '🇫🇷' },
+  { code: 'DO', name: 'République Dominicaine', flag: '🇩🇴' },
+  { code: 'MX', name: 'Mexique', flag: '🇲🇽' },
+  { code: 'BR', name: 'Brésil', flag: '🇧🇷' },
+  { code: 'OTHER', name: 'Lòt peyi / Autre pays', flag: '🌍' }
 ];
 
 export default function TopUp() {
@@ -35,10 +34,12 @@ export default function TopUp() {
   
   const [step, setStep] = useState(1);
   const [selectedCountry, setSelectedCountry] = useState(null);
-  const [selectedPackage, setSelectedPackage] = useState(null);
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [feeTiers, setFeeTiers] = useState([]);
+  const [lastOrder, setLastOrder] = useState(null);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -46,13 +47,43 @@ export default function TopUp() {
     return en;
   };
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await axios.get(`${API}/public/app-config`);
+        setFeeTiers(res.data?.topup_fee_tiers || []);
+      } catch (e) {
+        setFeeTiers([]);
+      }
+    })();
+  }, []);
+
+  const fee = useMemo(() => {
+    const a = parseFloat(amount);
+    if (!a || !Array.isArray(feeTiers) || feeTiers.length === 0) return 0;
+    const t = feeTiers.find(x => a >= x.min_amount && a <= x.max_amount);
+    if (!t) return 0;
+    if (t.is_percentage) return a * (t.fee_value / 100);
+    return Number(t.fee_value || 0);
+  }, [amount, feeTiers]);
+  const total = useMemo(() => {
+    const a = parseFloat(amount) || 0;
+    return a + (fee || 0);
+  }, [amount, fee]);
+
   const handleSubmit = async () => {
     if (!phoneNumber || phoneNumber.length < 8) {
       toast.error(getText('Antre yon nimewo telefòn valid', 'Entrez un numéro de téléphone valide', 'Enter a valid phone number'));
       return;
     }
 
-    if (user?.wallet_usd < selectedPackage.price) {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0) {
+      toast.error(getText('Antre montan an', 'Entrez le montant', 'Enter amount'));
+      return;
+    }
+
+    if (user?.wallet_usd < total) {
       toast.error(getText('Balans USD ensifizan', 'Solde USD insuffisant', 'Insufficient USD balance'));
       return;
     }
@@ -60,13 +91,13 @@ export default function TopUp() {
     setLoading(true);
 
     try {
-      await axios.post(`${API}/topup/order`, {
+      const res = await axios.post(`${API}/topup/order`, {
         country: selectedCountry.code,
         country_name: selectedCountry.name,
-        minutes: selectedPackage.minutes,
-        price: selectedPackage.price,
-        phone_number: phoneNumber
+        phone_number: phoneNumber,
+        amount: amt
       });
+      setLastOrder(res.data?.order || null);
       
       await refreshUser();
       setSuccess(true);
@@ -91,11 +122,18 @@ export default function TopUp() {
             </h3>
             <p className="text-stone-600 mb-4">
               {getText(
-                `Ou komande ${selectedPackage.minutes} minit pou ${selectedCountry.name}. Komand la ap trete manyèlman.`,
-                `Vous avez commandé ${selectedPackage.minutes} minutes pour ${selectedCountry.name}. La commande sera traitée manuellement.`,
-                `You ordered ${selectedPackage.minutes} minutes for ${selectedCountry.name}. The order will be processed manually.`
+                `Ou komande yon rechaj pou ${selectedCountry.name}. Komand la ap trete manyèlman.`,
+                `Vous avez soumis une recharge pour ${selectedCountry.name}. La commande sera traitée manuellement.`,
+                `You submitted a top-up for ${selectedCountry.name}. The order will be processed manually.`
               )}
             </p>
+            {lastOrder && (
+              <div className="bg-stone-50 border border-stone-200 rounded-lg p-3 mb-6 text-left">
+                <p className="text-sm text-stone-600"><strong>{getText('Montan', 'Montant', 'Amount')}:</strong> ${Number(lastOrder.amount || 0).toFixed(2)}</p>
+                <p className="text-sm text-stone-600"><strong>{getText('Frè', 'Frais', 'Fee')}:</strong> ${Number(lastOrder.fee || 0).toFixed(2)}</p>
+                <p className="text-sm text-stone-900 font-semibold"><strong>{getText('Total', 'Total', 'Total')}:</strong> ${Number(lastOrder.total || 0).toFixed(2)}</p>
+              </div>
+            )}
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
               <p className="text-sm text-amber-700">
                 {getText(
@@ -106,7 +144,7 @@ export default function TopUp() {
               </p>
             </div>
             <Button 
-              onClick={() => { setStep(1); setSelectedCountry(null); setSelectedPackage(null); setPhoneNumber(''); setSuccess(false); }}
+              onClick={() => { setStep(1); setSelectedCountry(null); setPhoneNumber(''); setAmount(''); setSuccess(false); setLastOrder(null); }}
               className="btn-primary"
             >
               {getText('Nouvo komand', 'Nouvelle commande', 'New order')}
@@ -179,8 +217,7 @@ export default function TopUp() {
                 <CardTitle className="flex items-center gap-2">
                   <Phone size={20} className="text-[#EA580C]" />
                   {step === 1 && getText('Etap 1: Chwazi peyi', 'Étape 1: Choisir le pays', 'Step 1: Choose country')}
-                  {step === 2 && getText('Etap 2: Chwazi forfè', 'Étape 2: Choisir le forfait', 'Step 2: Choose package')}
-                  {step === 3 && getText('Etap 3: Konfime', 'Étape 3: Confirmer', 'Step 3: Confirm')}
+                  {step === 2 && getText('Etap 2: Antre enfòmasyon', 'Étape 2: Entrer infos', 'Step 2: Enter details')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -200,60 +237,16 @@ export default function TopUp() {
                 )}
 
                 {step === 2 && selectedCountry && (
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     <div className="flex items-center gap-2 mb-4">
                       <span className="text-2xl">{selectedCountry.flag}</span>
                       <span className="font-bold text-stone-900">{selectedCountry.name}</span>
                       <button 
-                        onClick={() => { setStep(1); setSelectedCountry(null); }}
+                        onClick={() => { setStep(1); setSelectedCountry(null); setPhoneNumber(''); setAmount(''); }}
                         className="ml-auto text-sm text-[#EA580C] hover:underline"
                       >
                         {getText('Chanje', 'Changer', 'Change')}
                       </button>
-                    </div>
-
-                    <div className="grid gap-4">
-                      {selectedCountry.rates.map((pkg, i) => (
-                        <button
-                          key={i}
-                          onClick={() => { setSelectedPackage(pkg); setStep(3); }}
-                          className={`p-4 rounded-xl border-2 flex items-center justify-between transition-all ${
-                            selectedPackage === pkg 
-                              ? 'border-[#EA580C] bg-orange-50' 
-                              : 'border-stone-200 hover:border-stone-300'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-[#EA580C]/10 rounded-lg flex items-center justify-center">
-                              <Phone className="text-[#EA580C]" size={24} />
-                            </div>
-                            <div className="text-left">
-                              <p className="font-bold text-stone-900">{pkg.minutes} {getText('minit', 'minutes', 'minutes')}</p>
-                              <p className="text-sm text-stone-500">{getText('Apèl entènasyonal', 'Appels internationaux', 'International calls')}</p>
-                            </div>
-                          </div>
-                          <p className="text-xl font-bold text-[#EA580C]">${pkg.price}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {step === 3 && selectedCountry && selectedPackage && (
-                  <div className="space-y-6">
-                    <div className="bg-stone-50 rounded-xl p-4 space-y-3">
-                      <div className="flex justify-between">
-                        <span className="text-stone-500">{getText('Peyi', 'Pays', 'Country')}</span>
-                        <span className="font-medium">{selectedCountry.flag} {selectedCountry.name}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-stone-500">{getText('Forfè', 'Forfait', 'Package')}</span>
-                        <span className="font-medium">{selectedPackage.minutes} {getText('minit', 'minutes', 'minutes')}</span>
-                      </div>
-                      <div className="flex justify-between border-t border-stone-200 pt-3">
-                        <span className="font-semibold">{getText('Pri', 'Prix', 'Price')}</span>
-                        <span className="font-bold text-[#EA580C]">${selectedPackage.price}</span>
-                      </div>
                     </div>
 
                     <div>
@@ -275,17 +268,52 @@ export default function TopUp() {
                       </p>
                     </div>
 
+                    <div>
+                      <Label htmlFor="amount">
+                        <DollarSign size={16} className="inline mr-2" />
+                        {getText('Montan (USD)', 'Montant (USD)', 'Amount (USD)')}
+                      </Label>
+                      <Input
+                        id="amount"
+                        type="number"
+                        placeholder="0.00"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        className="mt-2"
+                        data-testid="topup-amount"
+                        min="0"
+                        step="0.01"
+                      />
+                    </div>
+
+                    {amount && parseFloat(amount) > 0 && (
+                      <div className="bg-stone-50 rounded-xl p-4 space-y-2">
+                        <div className="flex justify-between text-stone-600">
+                          <span>{getText('Montan', 'Montant', 'Amount')}</span>
+                          <span>${(parseFloat(amount) || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-stone-600">
+                          <span>{getText('Frè', 'Frais', 'Fee')}</span>
+                          <span className="text-red-600">+${(fee || 0).toFixed(2)}</span>
+                        </div>
+                        <div className="border-t pt-2 flex justify-between font-semibold">
+                          <span>{getText('Total pou peye', 'Total à payer', 'Total to pay')}</span>
+                          <span className="text-stone-900">${(total || 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex gap-4">
                       <Button 
                         variant="outline" 
-                        onClick={() => { setStep(2); setSelectedPackage(null); }}
+                        onClick={() => { setStep(1); setSelectedCountry(null); setPhoneNumber(''); setAmount(''); }}
                         className="flex-1"
                       >
                         {getText('Retounen', 'Retour', 'Back')}
                       </Button>
                       <Button 
                         onClick={handleSubmit}
-                        disabled={loading || !phoneNumber}
+                        disabled={loading || !phoneNumber || !amount}
                         className="btn-primary flex-1"
                         data-testid="topup-submit"
                       >

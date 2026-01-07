@@ -49,6 +49,7 @@ export default function VirtualCard() {
   const [ordering, setOrdering] = useState(false);
   const [cardEmail, setCardEmail] = useState('');
   const [cardFee, setCardFee] = useState(500);
+  const [defaultCardBg, setDefaultCardBg] = useState(null);
   const [showCVV, setShowCVV] = useState(false);
   const [showFullNumber, setShowFullNumber] = useState(false);
   
@@ -79,6 +80,9 @@ export default function VirtualCard() {
       ]);
       if (configResp.data?.card_order_fee_htg) {
         setCardFee(configResp.data.card_order_fee_htg);
+      }
+      if (configResp.data?.card_background_image) {
+        setDefaultCardBg(configResp.data.card_background_image);
       }
       if (feesResp.data?.card_fees) {
         setCardFees(feesResp.data.card_fees);
@@ -278,11 +282,6 @@ export default function VirtualCard() {
                       'Create a virtual card for online purchases (Netflix, Amazon, etc.). The card is managed by a third party.'
                     )}
                   </p>
-                  <div className="bg-white/10 rounded-lg p-3 mb-3">
-                    <p className="text-emerald-300 font-semibold flex items-center gap-2">
-                      🎁 {getText('Bonis: $5 USD sou premye kat ou!', 'Bonus: $5 USD sur votre première carte!', 'Bonus: $5 USD on your first card!')}
-                    </p>
-                  </div>
                   <div className="bg-red-500/20 border border-red-300/30 rounded-lg p-3">
                     <p className="text-red-100 text-xs font-medium flex items-center gap-2">
                       ⚠️ {getText(
@@ -698,9 +697,9 @@ export default function VirtualCard() {
                     ? 'bg-gradient-to-br from-orange-500 via-red-500 to-pink-600' 
                     : 'bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800'
                 }`}>
-                  {selectedCard.card_image ? (
+                  {(selectedCard.card_image || defaultCardBg) ? (
                     <img 
-                      src={selectedCard.card_image} 
+                      src={selectedCard.card_image || defaultCardBg} 
                       alt="Card" 
                       className="absolute inset-0 w-full h-full object-cover opacity-90"
                     />
