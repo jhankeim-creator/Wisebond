@@ -70,18 +70,18 @@ export default function FloatingAnnouncement() {
   return (
     <div className="fixed bottom-4 left-4 right-4 z-50">
       <div className="max-w-4xl mx-auto">
-        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 text-amber-900 shadow-lg p-4">
+        <div className="flex items-start gap-3 rounded-2xl border border-black/10 dark:border-white/10 bg-gradient-to-r from-[#EA580C] to-amber-500 text-white shadow-lg p-4">
           <div className="mt-0.5">
-            <Megaphone size={18} className="text-amber-700" />
+            <Megaphone size={18} className="text-white/90" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm leading-relaxed break-words">{effectiveText}</p>
+            <p className="text-sm leading-relaxed break-words text-white">{effectiveText}</p>
             {cfg.announcement_link && (
               <a
                 href={cfg.announcement_link}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[#EA580C] hover:underline"
+                className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-white hover:underline"
               >
                 Open
                 <ExternalLink size={14} />
@@ -94,7 +94,7 @@ export default function FloatingAnnouncement() {
               if (key) localStorage.setItem(key, '1');
               setDismissed(true);
             }}
-            className="p-1 rounded-lg hover:bg-amber-100"
+            className="p-1 rounded-lg hover:bg-white/15"
             aria-label="Dismiss announcement"
           >
             <X size={18} />
