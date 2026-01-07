@@ -26,7 +26,8 @@ import {
   Copy,
   MapPin,
   Plus,
-  ArrowRight
+  ArrowRight,
+  ArrowDown
 } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
@@ -41,9 +42,11 @@ export default function VirtualCard() {
   
   const [cardOrders, setCardOrders] = useState([]);
   const [cardDeposits, setCardDeposits] = useState([]);
+  const [cardWithdrawals, setCardWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showCardDetails, setShowCardDetails] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
   const [ordering, setOrdering] = useState(false);
@@ -58,6 +61,11 @@ export default function VirtualCard() {
   const [topUpCardId, setTopUpCardId] = useState('');
   const [cardFees, setCardFees] = useState([]);
   const [submittingTopUp, setSubmittingTopUp] = useState(false);
+
+  // Withdraw state
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawCardId, setWithdrawCardId] = useState('');
+  const [submittingWithdraw, setSubmittingWithdraw] = useState(false);
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -94,12 +102,14 @@ export default function VirtualCard() {
 
   const fetchData = async () => {
     try {
-      const [ordersRes, depositsRes] = await Promise.all([
+      const [ordersRes, depositsRes, withdrawalsRes] = await Promise.all([
         axios.get(`${API}/virtual-cards/orders`),
-        axios.get(`${API}/virtual-cards/deposits`)
+        axios.get(`${API}/virtual-cards/deposits`),
+        axios.get(`${API}/virtual-cards/withdrawals`)
       ]);
       setCardOrders(ordersRes.data.orders || []);
       setCardDeposits(depositsRes.data.deposits || []);
+      setCardWithdrawals(withdrawalsRes.data.withdrawals || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -191,6 +201,48 @@ export default function VirtualCard() {
       setTopUpCardId(approvedCards[0].order_id);
     }
     setShowTopUpModal(true);
+  };
+
+  const openWithdrawModal = () => {
+    // Auto-select card if only one
+    if (approvedCards.length === 1) {
+      setWithdrawCardId(approvedCards[0].order_id);
+    }
+    setShowWithdrawModal(true);
+  };
+
+  const submitWithdraw = async () => {
+    const amt = parseFloat(withdrawAmount);
+    if (!withdrawCardId) {
+      toast.error(getText('Chwazi yon kat', 'Choisissez une carte', 'Choose a card'));
+      return;
+    }
+    if (!amt || amt < 5) {
+      toast.error(getText('Montan minimòm: $5', 'Montant minimum: $5', 'Minimum amount: $5'));
+      return;
+    }
+
+    setSubmittingWithdraw(true);
+    try {
+      await axios.post(`${API}/virtual-cards/withdraw`, {
+        order_id: withdrawCardId,
+        amount: amt
+      });
+      toast.success(getText(
+        'Retrè soumèt! Si kat la sipòte li, li ap trete otomatik.',
+        'Retrait soumis! Si la carte le supporte, il sera traité automatiquement.',
+        'Withdrawal submitted! If supported, it will be processed automatically.'
+      ));
+      setShowWithdrawModal(false);
+      setWithdrawAmount('');
+      setWithdrawCardId('');
+      refreshUser();
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error');
+    } finally {
+      setSubmittingWithdraw(false);
+    }
   };
 
   const viewCardDetails = (order) => {
@@ -312,6 +364,12 @@ export default function VirtualCard() {
                   <Button onClick={openTopUpModal} className="bg-emerald-500 hover:bg-emerald-600 text-white">
                     <Plus className="mr-2" size={18} />
                     {getText('Ajoute kòb sou kat', 'Ajouter des fonds', 'Add funds to card')}
+                  </Button>
+                )}
+                {approvedCards.length > 0 && (
+                  <Button onClick={openWithdrawModal} variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50">
+                    <ArrowDown className="mr-2" size={18} />
+                    {getText('Retire sou bous', 'Retirer vers wallet', 'Withdraw to wallet')}
                   </Button>
                 )}
                 <Button onClick={() => setShowOrderModal(true)} className="btn-primary">
@@ -469,6 +527,52 @@ export default function VirtualCard() {
                           </div>
                         </div>
                         {getStatusBadge(deposit.status)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Withdrawals History */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <History size={20} className="text-stone-600" />
+                  {getText('Istorik Retrè Kat', 'Historique des Retraits', 'Card Withdrawal History')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="skeleton h-16 rounded-lg" />
+                    ))}
+                  </div>
+                ) : cardWithdrawals.length === 0 ? (
+                  <div className="text-center py-8 text-stone-500">
+                    <Wallet className="mx-auto mb-3 text-stone-400" size={48} />
+                    <p>{getText('Pa gen istorik retrè', 'Pas d\'historique de retrait', 'No withdrawal history')}</p>
+                    <p className="text-sm mt-1">{getText('Retrè yo ap parèt isit la', 'Vos retraits apparaîtront ici', 'Your withdrawals will appear here')}</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-stone-100 dark:divide-stone-700">
+                    {cardWithdrawals.map((w) => (
+                      <div key={w.withdrawal_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-stone-100 dark:bg-stone-800">
+                            <ArrowDown className="text-stone-600 dark:text-stone-300" size={20} />
+                          </div>
+                          <div>
+                            <p className="font-medium text-stone-900 dark:text-white">
+                              ${Number(w.amount || 0).toFixed(2)} USD
+                            </p>
+                            <p className="text-sm text-stone-500">
+                              {new Date(w.created_at).toLocaleDateString()} - {w.card_email}
+                            </p>
+                          </div>
+                        </div>
+                        {getStatusBadge(w.status)}
                       </div>
                     ))}
                   </div>
@@ -682,6 +786,91 @@ export default function VirtualCard() {
                 {submittingTopUp 
                   ? getText('Soumisyon...', 'Envoi...', 'Submitting...')
                   : getText('Konfime top-up', 'Confirmer la recharge', 'Confirm top-up')
+                }
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Withdraw Modal */}
+        <Dialog open={showWithdrawModal} onOpenChange={setShowWithdrawModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ArrowDown className="text-amber-600" size={24} />
+                {getText('Retire sou bous', 'Retirer vers wallet', 'Withdraw to wallet')}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-6 py-4">
+              <div className="bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl p-4">
+                <p className="text-sm text-stone-600 dark:text-stone-300">
+                  {getText(
+                    'Retrè sa a ap voye lajan soti nan kat la tounen nan bous USD ou (si kat la sipòte sa).',
+                    'Ce retrait renvoie les fonds de la carte vers votre wallet USD (si la carte le supporte).',
+                    'This withdraw sends funds from the card back to your USD wallet (if supported).'
+                  )}
+                </p>
+              </div>
+
+              {/* Card selection */}
+              {approvedCards.length > 1 ? (
+                <div>
+                  <Label>{getText('Chwazi kat la', 'Choisir la carte', 'Choose the card')}</Label>
+                  <Select value={withdrawCardId} onValueChange={setWithdrawCardId}>
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder={getText('Chwazi yon kat', 'Choisir une carte', 'Choose a card')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {approvedCards.map(card => (
+                        <SelectItem key={card.order_id} value={card.order_id}>
+                          <div className="flex items-center gap-2">
+                            <CreditCard size={16} />
+                            <span>{card.card_brand || 'Card'}</span>
+                            <span className="text-stone-500">•••• {card.card_last4 || '****'}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : approvedCards.length === 1 ? (
+                <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
+                  <p className="text-sm text-stone-500 mb-1">{getText('Kat chwazi', 'Carte sélectionnée', 'Selected card')}</p>
+                  <div className="flex items-center gap-2">
+                    <CreditCard size={20} className="text-amber-600" />
+                    <span className="font-medium">{approvedCards[0].card_brand || 'Card'}</span>
+                    <span className="text-stone-500 font-mono">•••• {approvedCards[0].card_last4 || '****'}</span>
+                  </div>
+                  <p className="text-xs text-stone-400 mt-1">{approvedCards[0].card_email}</p>
+                </div>
+              ) : null}
+
+              {/* Amount */}
+              <div>
+                <Label>{getText('Montan (USD)', 'Montant (USD)', 'Amount (USD)')}</Label>
+                <div className="relative mt-2">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl text-stone-400">$</span>
+                  <Input
+                    type="number"
+                    placeholder="0.00"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    className="pl-10 text-xl font-bold"
+                    min="5"
+                  />
+                </div>
+                <p className="text-xs text-stone-500 mt-1">{getText('Minimòm: $5', 'Minimum: $5', 'Minimum: $5')}</p>
+              </div>
+
+              <Button
+                onClick={submitWithdraw}
+                disabled={submittingWithdraw || !withdrawAmount || parseFloat(withdrawAmount) < 5 || !withdrawCardId}
+                className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                {submittingWithdraw
+                  ? getText('Soumisyon...', 'Envoi...', 'Submitting...')
+                  : getText('Konfime retrè', 'Confirmer retrait', 'Confirm withdrawal')
                 }
               </Button>
             </div>

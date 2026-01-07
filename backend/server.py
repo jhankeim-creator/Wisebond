@@ -78,6 +78,94 @@ security = HTTPBearer()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# ==================== STROWALLET (VIRTUAL CARDS) HELPERS ====================
+
+def _env_bool(key: str, default: bool = False) -> bool:
+    raw = (os.environ.get(key, "") or "").strip().lower()
+    if raw in {"1", "true", "yes", "y", "on"}:
+        return True
+    if raw in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
+def _strowallet_enabled(settings: Optional[dict]) -> bool:
+    if settings and isinstance(settings.get("strowallet_enabled"), bool):
+        return bool(settings["strowallet_enabled"])
+    return _env_bool("STROWALLET_ENABLED", False)
+
+def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
+    base_url = ((settings or {}).get("strowallet_base_url") or os.environ.get("STROWALLET_BASE_URL") or "").strip()
+    api_key = ((settings or {}).get("strowallet_api_key") or os.environ.get("STROWALLET_API_KEY") or "").strip()
+
+    # Endpoint paths can vary by Strowallet plan; allow overrides.
+    create_path = ((settings or {}).get("strowallet_create_card_path") or os.environ.get("STROWALLET_CREATE_CARD_PATH") or "/api/virtualcards/create-card").strip()
+    fund_path = ((settings or {}).get("strowallet_fund_card_path") or os.environ.get("STROWALLET_FUND_CARD_PATH") or "/api/virtualcards/fund-card").strip()
+    withdraw_path = ((settings or {}).get("strowallet_withdraw_card_path") or os.environ.get("STROWALLET_WITHDRAW_CARD_PATH") or "/api/virtualcards/withdraw-card").strip()
+
+    base_url = base_url.rstrip("/")
+    create_path = create_path if create_path.startswith("/") else f"/{create_path}"
+    fund_path = fund_path if fund_path.startswith("/") else f"/{fund_path}"
+    withdraw_path = withdraw_path if withdraw_path.startswith("/") else f"/{withdraw_path}"
+
+    return {
+        "base_url": base_url,
+        "api_key": api_key,
+        "create_path": create_path,
+        "fund_path": fund_path,
+        "withdraw_path": withdraw_path,
+    }
+
+def _extract_first(d: Any, *paths: str) -> Optional[Any]:
+    """
+    Best-effort extractor for varying API responses.
+    paths are dot-separated keys (e.g. 'data.card.id').
+    """
+    for path in paths:
+        cur: Any = d
+        ok = True
+        for key in path.split("."):
+            if isinstance(cur, dict) and key in cur:
+                cur = cur[key]
+            else:
+                ok = False
+                break
+        if ok and cur is not None:
+            return cur
+    return None
+
+async def _strowallet_post(settings: Optional[dict], path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    cfg = _strowallet_config(settings)
+    if not cfg["base_url"] or not cfg["api_key"]:
+        raise ValueError("Strowallet is enabled but STROWALLET_BASE_URL / STROWALLET_API_KEY is not configured")
+
+    url = f"{cfg['base_url']}{path}"
+    headers = {
+        # Different Strowallet deployments use different auth schemes; send both.
+        "Authorization": f"Bearer {cfg['api_key']}",
+        "X-API-Key": cfg["api_key"],
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+        try:
+            data = resp.json()
+        except Exception:
+            data = {"raw": resp.text}
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Strowallet API error ({resp.status_code}): {data}")
+
+    # Some APIs return 200 with an error field; treat obvious failures as errors.
+    success = _extract_first(data, "success", "status", "data.status")
+    if isinstance(success, bool) and success is False:
+        raise HTTPException(status_code=502, detail=f"Strowallet API error: {data}")
+    if isinstance(success, str) and success.lower() in {"failed", "error", "false"}:
+        raise HTTPException(status_code=502, detail=f"Strowallet API error: {data}")
+
+    return data
+
 # ==================== MODELS ====================
 
 class UserCreate(BaseModel):
@@ -272,6 +360,14 @@ class AdminSettingsUpdate(BaseModel):
     plisio_enabled: Optional[bool] = None
     plisio_api_key: Optional[str] = None
     plisio_secret_key: Optional[str] = None
+
+    # Virtual Cards (Strowallet) - optional automation
+    strowallet_enabled: Optional[bool] = None
+    strowallet_base_url: Optional[str] = None
+    strowallet_api_key: Optional[str] = None
+    strowallet_create_card_path: Optional[str] = None
+    strowallet_fund_card_path: Optional[str] = None
+    strowallet_withdraw_card_path: Optional[str] = None
 
     # Fees & Affiliate (optional, UI-configurable)
     card_order_fee_htg: Optional[int] = None
@@ -2304,10 +2400,140 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
     })
     
     await log_action(current_user["user_id"], "card_topup", {"deposit_id": deposit["deposit_id"], "amount": request.amount, "fee": fee, "total": total_deduction})
+
+    # If the card is a Strowallet-issued card and Strowallet automation is enabled,
+    # try to deliver the top-up instantly.
+    try:
+        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+        if _strowallet_enabled(settings) and (card_order.get("provider") == "strowallet") and card_order.get("provider_card_id"):
+            cfg = _strowallet_config(settings)
+            fund_payload: Dict[str, Any] = {
+                "card_id": card_order.get("provider_card_id"),
+                "amount": float(request.amount),
+                "currency": "USD",
+                "reference": deposit["deposit_id"],
+            }
+            stw_resp = await _strowallet_post(settings, cfg["fund_path"], fund_payload)
+            provider_txn_id = _extract_first(stw_resp, "data.transaction_id", "data.txn_id", "transaction_id", "txn_id", "id")
+
+            await db.virtual_card_deposits.update_one(
+                {"deposit_id": deposit["deposit_id"]},
+                {"$set": {
+                    "status": "approved",
+                    "processed_at": datetime.now(timezone.utc).isoformat(),
+                    "processed_by": "system",
+                    "delivery_info": f"Auto delivered via Strowallet{(' (txn ' + str(provider_txn_id) + ')') if provider_txn_id else ''}",
+                    "provider": "strowallet",
+                    "provider_txn_id": provider_txn_id,
+                    "provider_raw": stw_resp,
+                }}
+            )
+
+            await db.transactions.update_one(
+                {"reference_id": deposit["deposit_id"]},
+                {"$set": {"status": "completed"}}
+            )
+    except Exception as e:
+        # Keep the request pending for manual processing if Strowallet fails.
+        logger.warning(f"Strowallet auto top-up failed for deposit {deposit.get('deposit_id')}: {e}")
     
     if "_id" in deposit:
         del deposit["_id"]
     return {"deposit": deposit, "message": "Top-up request submitted successfully"}
+
+class CardWithdrawRequest(BaseModel):
+    order_id: str
+    amount: float
+
+@api_router.get("/virtual-cards/withdrawals")
+async def get_card_withdrawals(current_user: dict = Depends(get_current_user)):
+    """Get user's card withdrawal history (withdrawals from virtual card back to wallet)."""
+    withdrawals = await db.virtual_card_withdrawals.find(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0},
+    ).sort("created_at", -1).to_list(50)
+    return {"withdrawals": withdrawals}
+
+@api_router.post("/virtual-cards/withdraw")
+async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user: dict = Depends(get_current_user)):
+    """
+    Withdraw funds from a Strowallet virtual card back to the user's wallet (USD).
+    This requires Strowallet automation to be enabled and the card to have a provider_card_id.
+    """
+    if current_user["kyc_status"] != "approved":
+        raise HTTPException(status_code=403, detail="KYC verification required")
+
+    card_order = await db.virtual_card_orders.find_one({
+        "order_id": request.order_id,
+        "user_id": current_user["user_id"],
+        "status": "approved",
+    }, {"_id": 0})
+    if not card_order:
+        raise HTTPException(status_code=404, detail="Card not found or not approved")
+
+    amt = float(request.amount or 0)
+    if amt < 5:
+        raise HTTPException(status_code=400, detail="Minimum amount is $5")
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not _strowallet_enabled(settings):
+        raise HTTPException(status_code=400, detail="Card withdrawals are not enabled")
+    if card_order.get("provider") != "strowallet" or not card_order.get("provider_card_id"):
+        raise HTTPException(status_code=400, detail="This card is not eligible for automated withdrawals")
+
+    withdrawal_id = str(uuid.uuid4())
+    cfg = _strowallet_config(settings)
+    withdraw_payload: Dict[str, Any] = {
+        "card_id": card_order.get("provider_card_id"),
+        "amount": amt,
+        "currency": "USD",
+        "reference": withdrawal_id,
+    }
+
+    stw_resp = await _strowallet_post(settings, cfg["withdraw_path"], withdraw_payload)
+    provider_txn_id = _extract_first(stw_resp, "data.transaction_id", "data.txn_id", "transaction_id", "txn_id", "id")
+
+    record = {
+        "withdrawal_id": withdrawal_id,
+        "user_id": current_user["user_id"],
+        "client_id": current_user["client_id"],
+        "order_id": request.order_id,
+        "card_email": card_order.get("card_email"),
+        "card_brand": card_order.get("card_brand"),
+        "card_type": card_order.get("card_type"),
+        "card_last4": card_order.get("card_last4"),
+        "amount": amt,
+        "currency": "USD",
+        "status": "approved",
+        "provider": "strowallet",
+        "provider_txn_id": provider_txn_id,
+        "provider_raw": stw_resp,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_by": "system",
+    }
+
+    await db.virtual_card_withdrawals.insert_one(record)
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {"$inc": {"wallet_usd": amt}},
+    )
+    await db.transactions.insert_one({
+        "transaction_id": str(uuid.uuid4()),
+        "user_id": current_user["user_id"],
+        "type": "card_withdrawal",
+        "amount": amt,
+        "currency": "USD",
+        "status": "completed",
+        "description": f"Card withdrawal from {card_order.get('card_email')} (Strowallet)",
+        "reference_id": withdrawal_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    await log_action(current_user["user_id"], "card_withdrawal", {"withdrawal_id": withdrawal_id, "amount": amt})
+
+    if "_id" in record:
+        del record["_id"]
+    return {"withdrawal": record, "message": "Withdrawal processed successfully"}
 
 # Admin: Get all card orders
 @api_router.get("/admin/virtual-card-orders")
@@ -2479,11 +2705,88 @@ async def admin_process_card_order(
     
     # Add card details if approving
     if action == "approve":
-        if payload.card_brand:
+        # If Strowallet is enabled and admin didn't manually enter card details,
+        # create the card automatically and store the returned details.
+        manual_details_provided = any([
+            payload.card_number,
+            payload.card_last4,
+            payload.card_expiry,
+            payload.card_cvv,
+        ])
+
+        auto_created = False
+        if _strowallet_enabled(settings) and not manual_details_provided:
+            user = await db.users.find_one({"user_id": order["user_id"]}, {"_id": 0})
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
+
+            cfg = _strowallet_config(settings)
+
+            create_payload: Dict[str, Any] = {
+                # Common fields across many Strowallet deployments (best-effort).
+                "email": order.get("card_email") or user.get("email"),
+                "card_email": order.get("card_email") or user.get("email"),
+                "full_name": user.get("full_name"),
+                "name": user.get("full_name"),
+                "phone": user.get("phone"),
+                "reference": order_id,
+                "customer_reference": user.get("user_id"),
+            }
+
+            # Remove empty values to avoid API rejections.
+            create_payload = {k: v for k, v in create_payload.items() if v not in (None, "")}
+
+            stw_resp = await _strowallet_post(settings, cfg["create_path"], create_payload)
+            auto_created = True
+
+            provider_card_id = _extract_first(
+                stw_resp,
+                "data.card_id",
+                "data.id",
+                "card_id",
+                "id",
+                "data.card.id",
+            )
+            card_number = _extract_first(stw_resp, "data.card_number", "data.number", "card_number", "number", "data.card.number")
+            card_cvv = _extract_first(stw_resp, "data.cvv", "cvv", "data.card.cvv")
+            card_expiry = _extract_first(stw_resp, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry")
+            card_brand = _extract_first(stw_resp, "data.brand", "brand", "data.card.brand")
+            card_type = _extract_first(stw_resp, "data.type", "type", "data.card.type")
+            card_holder_name = _extract_first(stw_resp, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
+
+            update_doc["provider"] = "strowallet"
+            update_doc["provider_card_id"] = provider_card_id
+            update_doc["provider_raw"] = stw_resp
+
+            if card_brand:
+                update_doc["card_brand"] = str(card_brand)
+            else:
+                update_doc["card_brand"] = "Strowallet"
+
+            if card_type:
+                update_doc["card_type"] = str(card_type).lower()
+
+            if card_holder_name:
+                update_doc["card_holder_name"] = str(card_holder_name)
+            elif user.get("full_name"):
+                update_doc["card_holder_name"] = str(user["full_name"]).upper()
+
+            if card_number:
+                card_number_str = str(card_number).replace(" ", "")
+                update_doc["card_number"] = card_number_str
+                update_doc["card_last4"] = card_number_str[-4:]
+            if card_cvv:
+                update_doc["card_cvv"] = str(card_cvv)
+            if card_expiry:
+                update_doc["card_expiry"] = str(card_expiry)
+
+        # If the card was auto-created, ignore default UI values unless the admin
+        # explicitly provided manual card details.
+        if payload.card_brand and (manual_details_provided or not auto_created):
             update_doc["card_brand"] = payload.card_brand
-        if payload.card_type:
+        if payload.card_type and (manual_details_provided or not auto_created):
             update_doc["card_type"] = payload.card_type
-        if payload.card_holder_name:
+        if payload.card_holder_name and (manual_details_provided or not auto_created):
             update_doc["card_holder_name"] = payload.card_holder_name
         if payload.card_number:
             update_doc["card_number"] = payload.card_number
@@ -2491,9 +2794,9 @@ async def admin_process_card_order(
             update_doc["card_last4"] = payload.card_number[-4:]
         elif payload.card_last4:
             update_doc["card_last4"] = payload.card_last4
-        if payload.card_expiry:
+        if payload.card_expiry and (manual_details_provided or not auto_created):
             update_doc["card_expiry"] = payload.card_expiry
-        if payload.card_cvv:
+        if payload.card_cvv and (manual_details_provided or not auto_created):
             update_doc["card_cvv"] = payload.card_cvv
         if payload.billing_address:
             update_doc["billing_address"] = payload.billing_address
@@ -4500,6 +4803,12 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
             "plisio_enabled": False,
             "plisio_api_key": "",
             "plisio_secret_key": "",
+            "strowallet_enabled": False,
+            "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", ""),
+            "strowallet_api_key": "",
+            "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", ""),
+            "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", ""),
+            "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", ""),
             "telegram_enabled": False,
             "telegram_bot_token": "",
             "telegram_chat_id": "",
