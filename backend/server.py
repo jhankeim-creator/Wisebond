@@ -1131,6 +1131,7 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
                     "https://plisio.net/api/v1/invoices/new",
                     params=params,
                     data=payload,
+                    headers={"Accept": "application/json"},
                     timeout=30.0,
                 )
 
@@ -1142,11 +1143,22 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
 
             if resp.status_code != 200:
                 body_snippet = _safe_err(resp.text)
-                logger.error(f"Plisio invoice create failed: {resp.status_code} {body_snippet}")
+                content_type = resp.headers.get("content-type", "")
+                try:
+                    from urllib.parse import urlparse, parse_qs
+                    q = parse_qs(urlparse(str(resp.request.url)).query)
+                    query_keys = sorted(list(q.keys()))
+                except Exception:
+                    query_keys = []
+                logger.error(f"Plisio invoice create failed: {resp.status_code} ct={content_type} q={query_keys} body={body_snippet}")
                 # Return a helpful (but truncated) message to admin/user to troubleshoot.
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Failed to create Plisio invoice: {resp.status_code} - {body_snippet or 'No response body'}",
+                    detail=(
+                        f"Failed to create Plisio invoice: {resp.status_code} "
+                        f"(content-type: {content_type or 'unknown'}, query: {query_keys}) - "
+                        f"{body_snippet or 'No response body'}"
+                    ),
                 )
 
             # Prefer JSON; if Plisio returned HTML, raise a readable error.
