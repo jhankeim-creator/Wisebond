@@ -65,6 +65,9 @@ export default function AdminWithdrawals() {
     return `$${Number(amount || 0).toFixed(2)}`;
   };
 
+  const getMethodName = (w) => w?.payment_method_name || w?.method || '—';
+  const isDataUrl = (v) => typeof v === 'string' && v.startsWith('data:');
+
   return (
     <AdminLayout title={getText('Jesyon Retrè', 'Gestion des retraits', 'Withdrawal Management')}>
       <div className="space-y-6" data-testid="admin-withdrawals">
@@ -131,8 +134,10 @@ export default function AdminWithdrawals() {
                         <td>{fmt(w.amount, w.currency)}</td>
                         <td className="text-red-500">-{fmt(w.fee, w.currency)}</td>
                         <td className="font-semibold text-emerald-600">{fmt(w.net_amount, w.currency)}</td>
-                        <td className="capitalize">{w.method?.replace('_', ' ')}</td>
-                        <td className="max-w-[150px] truncate">{w.destination}</td>
+                        <td className="capitalize">{getMethodName(w)}</td>
+                        <td className="max-w-[150px] truncate">
+                          {w.destination || (w.field_values ? Object.values(w.field_values)[0] : '')}
+                        </td>
                         <td>{new Date(w.created_at).toLocaleDateString()}</td>
                         <td>
                           <Badge className={
@@ -196,15 +201,35 @@ export default function AdminWithdrawals() {
 
                 <div>
                   <p className="text-sm text-slate-500">{getText('Metòd', 'Méthode', 'Method')}</p>
-                  <p className="capitalize">{selectedWithdrawal.method?.replace('_', ' ')}</p>
+                  <p className="capitalize">{getMethodName(selectedWithdrawal)}</p>
                 </div>
 
-                <div>
-                  <p className="text-sm text-slate-500">{getText('Destinasyon', 'Destination', 'Destination')}</p>
-                  <code className="text-sm bg-slate-100 dark:bg-slate-800 p-2 rounded block break-all">
-                    {selectedWithdrawal.destination}
-                  </code>
-                </div>
+                {selectedWithdrawal.field_values && Object.keys(selectedWithdrawal.field_values).length > 0 ? (
+                  <div className="border rounded-lg p-3">
+                    <p className="text-sm text-slate-500 mb-2">{getText('Chan yo', 'Champs', 'Fields')}</p>
+                    <div className="space-y-2">
+                      {Object.entries(selectedWithdrawal.field_values).map(([k, v]) => (
+                        <div key={k} className="text-sm">
+                          <p className="text-slate-500">{k}</p>
+                          {isDataUrl(v) ? (
+                            <img src={v} alt={k} className="mt-1 rounded border max-w-full max-h-64 object-contain" />
+                          ) : (
+                            <code className="text-sm bg-slate-100 dark:bg-slate-800 p-2 rounded block break-all">
+                              {String(v)}
+                            </code>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-sm text-slate-500">{getText('Destinasyon', 'Destination', 'Destination')}</p>
+                    <code className="text-sm bg-slate-100 dark:bg-slate-800 p-2 rounded block break-all">
+                      {selectedWithdrawal.destination || '—'}
+                    </code>
+                  </div>
+                )}
 
                 {selectedWithdrawal.status === 'pending' && (
                   <div className="flex gap-4 pt-4 border-t">

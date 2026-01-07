@@ -59,16 +59,8 @@ export default function AdminDeposits() {
       toast.error('Erreur lors du chargement');
     }
   };
-
-  const syncProvider = async () => {
-    try {
-      const resp = await axios.post(`${API}/admin/deposits/${selectedDeposit.deposit_id}/sync-provider`);
-      setSelectedDeposit(resp.data.deposit);
-      toast.success('Mise à jour effectuée');
-    } catch (e) {
-      toast.error('Erreur lors du sync');
-    }
-  };
+  const getMethodName = (d) => d?.payment_method_name || d?.method || '—';
+  const isDataUrl = (v) => typeof v === 'string' && v.startsWith('data:');
 
   return (
     <AdminLayout title="Gestion des dépôts">
@@ -130,7 +122,7 @@ export default function AdminDeposits() {
                         <td className="font-semibold">
                           {deposit.currency === 'USD' ? '$' : 'G '}{deposit.amount?.toLocaleString()}
                         </td>
-                        <td className="capitalize">{deposit.method?.replace('_', ' ')}</td>
+                        <td className="capitalize">{getMethodName(deposit)}</td>
                         <td>{new Date(deposit.created_at).toLocaleString()}</td>
                         <td>
                           <Badge className={
@@ -178,10 +170,16 @@ export default function AdminDeposits() {
                     <p className="font-semibold text-lg">
                       {selectedDeposit.currency === 'USD' ? '$' : 'G '}{selectedDeposit.amount?.toLocaleString()}
                     </p>
+                    {typeof selectedDeposit.fee !== 'undefined' && typeof selectedDeposit.net_amount !== 'undefined' && (
+                      <p className="text-sm text-slate-600 mt-1">
+                        Frais: <span className="text-red-600">-{selectedDeposit.currency === 'USD' ? '$' : 'G '}{Number(selectedDeposit.fee || 0).toFixed(2)}</span>{' '}
+                        | Net: <span className="text-emerald-600 font-semibold">{selectedDeposit.currency === 'USD' ? '$' : 'G '}{Number(selectedDeposit.net_amount || 0).toFixed(2)}</span>
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">Méthode</p>
-                    <p className="capitalize">{selectedDeposit.method?.replace('_', ' ')}</p>
+                    <p className="capitalize">{getMethodName(selectedDeposit)}</p>
                   </div>
                   <div>
                     <p className="text-sm text-slate-500">Date</p>
@@ -189,49 +187,21 @@ export default function AdminDeposits() {
                   </div>
                 </div>
 
-                {selectedDeposit.provider === 'plisio' && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                    <p className="font-medium text-amber-800 mb-2">Plisio</p>
-                    <div className="text-sm space-y-1">
-                      <div><span className="text-slate-600">Status:</span> <span className="font-semibold">{selectedDeposit.provider_status || selectedDeposit.status}</span></div>
-                      <div><span className="text-slate-600">Txn:</span> <code className="text-xs bg-white p-1 rounded">{selectedDeposit.plisio_txn_id || '-'}</code></div>
-                      {selectedDeposit.plisio_invoice_url && (
-                        <div>
-                          <span className="text-slate-600">Invoice URL:</span>{' '}
-                          <a className="text-[#EA580C] hover:underline break-all" href={selectedDeposit.plisio_invoice_url} target="_blank" rel="noreferrer">
-                            {selectedDeposit.plisio_invoice_url}
-                          </a>
+                {selectedDeposit.field_values && Object.keys(selectedDeposit.field_values).length > 0 && (
+                  <div className="border rounded-lg p-3">
+                    <p className="text-sm font-semibold text-slate-800 mb-2">Champs soumis</p>
+                    <div className="space-y-2">
+                      {Object.entries(selectedDeposit.field_values).map(([k, v]) => (
+                        <div key={k} className="text-sm">
+                          <p className="text-slate-500">{k}</p>
+                          {isDataUrl(v) ? (
+                            <img src={v} alt={k} className="mt-1 rounded border max-w-full max-h-64 object-contain" />
+                          ) : (
+                            <code className="text-sm bg-slate-100 dark:bg-slate-800 p-2 rounded block break-all">{String(v)}</code>
+                          )}
                         </div>
-                      )}
-                      {selectedDeposit.plisio_currency && (
-                        <div><span className="text-slate-600">Network:</span> <span className="font-semibold">{selectedDeposit.plisio_currency}</span></div>
-                      )}
+                      ))}
                     </div>
-                    <div className="mt-3">
-                      <Button variant="outline" size="sm" onClick={syncProvider}>
-                        Sync Plisio
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {selectedDeposit.proof_image && (
-                  <div>
-                    <p className="text-sm text-slate-500 mb-2">Preuve de paiement</p>
-                    <img 
-                      src={selectedDeposit.proof_image} 
-                      alt="Proof" 
-                      className="rounded-lg border max-w-full max-h-64 object-contain"
-                    />
-                  </div>
-                )}
-
-                {selectedDeposit.wallet_address && (
-                  <div>
-                    <p className="text-sm text-slate-500">Adresse USDT</p>
-                    <code className="text-sm bg-slate-100 p-2 rounded block break-all">
-                      {selectedDeposit.wallet_address}
-                    </code>
                   </div>
                 )}
 

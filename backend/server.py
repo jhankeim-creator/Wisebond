@@ -8,7 +8,7 @@ import logging
 import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional
+from typing import Any, Dict, List, Literal, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
 import bcrypt
@@ -16,6 +16,7 @@ from jose import jwt, JWTError
 import secrets
 import base64
 import httpx
+import re
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -116,20 +117,72 @@ class PasswordResetConfirm(BaseModel):
 class ProfileUpdate(BaseModel):
     telegram_chat_id: Optional[str] = None
 
+PaymentGatewayPaymentType = Literal["deposit", "withdrawal"]
+PaymentGatewayStatus = Literal["active", "inactive"]
+PaymentGatewayFeeType = Literal["fixed", "percentage"]
+PaymentGatewayFieldType = Literal[
+    "text",
+    "number",
+    "email",
+    "phone",
+    "textarea",
+    "select",
+    "checkbox",
+    "file",
+]
+
+
+class PaymentGatewayCustomField(BaseModel):
+    field_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    key: str = Field(min_length=1, max_length=64)  # stable key used in submissions
+    label: str = Field(min_length=1, max_length=128)
+    type: PaymentGatewayFieldType
+    required: bool = False
+    placeholder: Optional[str] = None
+    help_text: Optional[str] = None
+    options: Optional[List[str]] = None  # for select
+    accept: Optional[str] = None  # for file (e.g. "image/*")
+
+
+class PaymentGatewayDisplayConfig(BaseModel):
+    instructions: Optional[str] = None
+    recipient_details: Optional[str] = None
+    qr_image: Optional[str] = None  # data URL (base64)
+
+
+class PaymentGatewayWithdrawalConfig(BaseModel):
+    processing_time: Optional[str] = None  # e.g. "1–24 hours"
+    processing_mode: Optional[Literal["manual", "automatic"]] = "manual"
+    admin_approval_required: Optional[bool] = True
+
+
+class PaymentGatewayMethodUpsert(BaseModel):
+    payment_method_name: str = Field(min_length=1, max_length=128)
+    payment_type: PaymentGatewayPaymentType
+    status: PaymentGatewayStatus = "inactive"
+    supported_currencies: List[Literal["HTG", "USD"]] = Field(default_factory=list)
+    minimum_amount: float = 0.0
+    maximum_amount: float = 0.0
+    fee_type: PaymentGatewayFeeType = "fixed"
+    fee_value: float = 0.0
+    display: Optional[PaymentGatewayDisplayConfig] = None
+    custom_fields: List[PaymentGatewayCustomField] = Field(default_factory=list)
+    withdrawal_config: Optional[PaymentGatewayWithdrawalConfig] = None
+
+
 class DepositRequest(BaseModel):
     amount: float
     currency: str
-    method: str
-    proof_image: Optional[str] = None
-    wallet_address: Optional[str] = None
-    network: Optional[str] = None
+    payment_method_id: str
+    field_values: Dict[str, Any] = Field(default_factory=dict)
+
 
 class WithdrawalRequest(BaseModel):
     amount: float
     currency: str
-    method: str
-    destination: str
-    source_currency: Optional[str] = None  # For cross-currency withdrawal
+    payment_method_id: str
+    field_values: Dict[str, Any] = Field(default_factory=dict)
+    source_currency: Optional[str] = None  # for cross-currency withdrawals
 
 class TransferRequest(BaseModel):
     recipient_client_id: str
@@ -246,23 +299,6 @@ class TopUpOrder(BaseModel):
     minutes: int
     price: float
     phone_number: str
-
-class PaymentMethodFeeConfig(BaseModel):
-    fee_type: str = "fixed"  # "fixed" or "percentage"
-    fee_value: float = 0.0  # Fixed amount or percentage (e.g., 5 means 5%)
-    min_amount: Optional[float] = None  # Minimum amount for this fee tier
-    max_amount: Optional[float] = None  # Maximum amount for this fee tier
-
-class PaymentMethodUpdate(BaseModel):
-    method_id: str
-    flow: str  # 'deposit' or 'withdrawal'
-    currencies: List[str]  # ['HTG', 'USD']
-    display_name: str
-    enabled: bool = True
-    sort_order: int = 0
-    public: dict = {}  # Public info shown to users (recipient, instructions, etc.)
-    private: dict = {}  # Private info for admin only
-    fees: Optional[List[PaymentMethodFeeConfig]] = None  # Fee configuration per amount range
 
 # ==================== AGENT DEPOSIT MODELS ====================
 
@@ -960,108 +996,81 @@ async def get_transactions(
 async def create_deposit(request: DepositRequest, current_user: dict = Depends(get_current_user)):
     if current_user["kyc_status"] != "approved":
         raise HTTPException(status_code=403, detail="KYC verification required for deposits")
-    
-    # Validate payment method exists and is enabled
-    payment_method = await db.payment_methods.find_one({
-        "method_id": request.method.lower(),
-        "flow": "deposit",
-        "enabled": True
-    }, {"_id": 0})
-    
-    if not payment_method:
-        raise HTTPException(status_code=400, detail=f"Payment method '{request.method}' is not available for deposits")
-    
-    # Validate currency is supported
-    if request.currency.upper() not in payment_method.get("currencies", []):
-        raise HTTPException(status_code=400, detail=f"Currency '{request.currency}' is not supported for this payment method")
-    
+
+    currency = request.currency.upper()
+    if currency not in ["HTG", "USD"]:
+        raise HTTPException(status_code=400, detail="Invalid currency")
+
+    method = await db.payment_gateway_methods.find_one(
+        {"payment_method_id": request.payment_method_id, "payment_type": "deposit"},
+        {"_id": 0},
+    )
+    if not method or method.get("status") != "active":
+        raise HTTPException(status_code=400, detail="Selected deposit method is not available")
+
+    if currency not in method.get("supported_currencies", []):
+        raise HTTPException(status_code=400, detail="Selected deposit method does not support this currency")
+
+    min_amount = float(method.get("minimum_amount") or 0)
+    max_amount = float(method.get("maximum_amount") or 0)
+    if min_amount and request.amount < min_amount:
+        raise HTTPException(status_code=400, detail=f"Minimum deposit is {min_amount}")
+    if max_amount and request.amount > max_amount:
+        raise HTTPException(status_code=400, detail=f"Maximum deposit is {max_amount}")
+
+    # Validate required custom fields
+    submitted = request.field_values or {}
+    for f in method.get("custom_fields", []):
+        key = f.get("key")
+        if not key:
+            continue
+        if f.get("required"):
+            if key not in submitted:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {f.get('label') or key}")
+            if f.get("type") == "checkbox" and submitted.get(key) is not True:
+                raise HTTPException(status_code=400, detail=f"Field must be checked: {f.get('label') or key}")
+            if f.get("type") == "file" and not str(submitted.get(key) or "").startswith("data:"):
+                raise HTTPException(status_code=400, detail=f"Missing required file: {f.get('label') or key}")
+
+    fee_type = method.get("fee_type", "fixed")
+    fee_value = float(method.get("fee_value") or 0)
+    fee = (request.amount * (fee_value / 100.0)) if fee_type == "percentage" else fee_value
+    fee = max(0.0, float(fee))
+    net_amount = max(0.0, float(request.amount - fee))
+
     deposit_id = str(uuid.uuid4())
     deposit = {
         "deposit_id": deposit_id,
         "user_id": current_user["user_id"],
         "client_id": current_user["client_id"],
-        "amount": request.amount,
-        "currency": request.currency.upper(),
-        "method": request.method,
-        "proof_image": request.proof_image,
-        "wallet_address": request.wallet_address,
-        "network": request.network,
+        "payment_method_id": request.payment_method_id,
+        "payment_method_name": method.get("payment_method_name"),
+        "payment_method_snapshot": {
+            "payment_method_id": method.get("payment_method_id"),
+            "payment_method_name": method.get("payment_method_name"),
+            "payment_type": "deposit",
+            "fee_type": fee_type,
+            "fee_value": fee_value,
+            "minimum_amount": min_amount,
+            "maximum_amount": max_amount,
+            "supported_currencies": method.get("supported_currencies", []),
+        },
+        "amount": float(request.amount),
+        "fee": fee,
+        "net_amount": net_amount,
+        "currency": currency,
+        "field_values": submitted,
         "status": "pending",
-        "provider": None,
-        "plisio_invoice_id": None,
-        "plisio_invoice_url": None,
-        "provider_status": None,
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    
-    # If USDT deposit, create Plisio invoice
-    if request.method.lower() == "usdt" and request.network:
-        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-        plisio_enabled = settings.get("plisio_enabled", False) if settings else False
-        plisio_api_key = settings.get("plisio_api_key", "") if settings else ""
-        plisio_secret_key = settings.get("plisio_secret_key", "") if settings else ""
-        
-        if plisio_enabled and plisio_api_key and plisio_secret_key:
-            try:
-                import httpx
-                
-                # Map network codes to Plisio currency codes
-                network_map = {
-                    "usdt_trc20": "USDTTRC20",
-                    "usdt_erc20": "USDTERC20",
-                    "usdt_bep20": "USDTBEP20",
-                    "usdt_polygon": "USDTPOLYGON",
-                    "usdt_arbitrum": "USDTARBITRUM",
-                    "USDTTRC20": "USDTTRC20",
-                    "USDTERC20": "USDTERC20",
-                    "USDTBEP20": "USDTBEP20",
-                    "USDTPOLYGON": "USDTPOLYGON",
-                    "USDTARBITRUM": "USDTARBITRUM"
-                }
-                
-                plisio_currency = network_map.get(request.network.upper(), "USDTTRC20")
-                
-                # Create Plisio invoice
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        "https://plisio.net/api/v1/invoices/new",
-                        data={
-                            "api_key": plisio_api_key,
-                            "api_secret": plisio_secret_key,
-                            "currency": plisio_currency,
-                            "source_currency": request.currency.upper(),
-                            "source_amount": request.amount,
-                            "order_name": f"Deposit {deposit_id}",
-                            "order_number": deposit_id,
-                            "callback_url": f"{os.environ.get('BACKEND_URL', 'https://wisebond.onrender.com')}/api/deposits/plisio-webhook",
-                            "psys_callback_url": f"{os.environ.get('BACKEND_URL', 'https://wisebond.onrender.com')}/api/deposits/plisio-webhook",
-                            "email": current_user.get("email", ""),
-                            "success_url": f"{os.environ.get('FRONTEND_URL', 'https://wallet.kayicom.com')}/deposit?status=success",
-                            "fail_url": f"{os.environ.get('FRONTEND_URL', 'https://wallet.kayicom.com')}/deposit?status=failed"
-                        },
-                        timeout=30.0
-                    )
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        if result.get("status") == "success" and result.get("data"):
-                            invoice_data = result["data"]
-                            deposit["provider"] = "plisio"
-                            deposit["plisio_invoice_id"] = invoice_data.get("txn_id")
-                            deposit["plisio_invoice_url"] = invoice_data.get("invoice_url")
-                            deposit["provider_status"] = invoice_data.get("status", "pending")
-                            logger.info(f"Plisio invoice created for deposit {deposit_id}: {invoice_data.get('txn_id')}")
-                        else:
-                            logger.error(f"Plisio API error: {result.get('message', 'Unknown error')}")
-                    else:
-                        logger.error(f"Plisio API request failed: {response.status_code} - {response.text}")
-            except Exception as e:
-                logger.error(f"Failed to create Plisio invoice: {e}")
-                # Continue with manual deposit if Plisio fails
-    
+
     await db.deposits.insert_one(deposit)
-    await log_action(current_user["user_id"], "deposit_request", {"amount": request.amount, "method": request.method})
-    
+    await log_action(
+        current_user["user_id"],
+        "deposit_request",
+        {"amount": request.amount, "payment_method_id": request.payment_method_id},
+    )
+
     if "_id" in deposit:
         del deposit["_id"]
     return {"deposit": deposit}
@@ -1078,354 +1087,145 @@ async def get_deposits(
     deposits = await db.deposits.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
     return {"deposits": deposits}
 
-@api_router.get("/deposits/usdt-options")
-async def get_usdt_options(current_user: dict = Depends(get_current_user)):
-    """Get available USDT networks for Plisio deposits"""
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    
-    plisio_enabled = settings.get("plisio_enabled", False) if settings else False
-    plisio_api_key = settings.get("plisio_api_key", "") if settings else ""
-    
-    # Available USDT networks supported by Plisio
-    networks = [
-        {"code": "usdt_trc20", "label": "USDT (TRC-20) - Tron"},
-        {"code": "usdt_erc20", "label": "USDT (ERC-20) - Ethereum"},
-        {"code": "usdt_bep20", "label": "USDT (BEP-20) - Binance Smart Chain"},
-        {"code": "usdt_polygon", "label": "USDT (Polygon)"},
-        {"code": "usdt_arbitrum", "label": "USDT (Arbitrum)"}
-    ]
-    
-    # Only return networks if Plisio is enabled and API key is configured
-    if plisio_enabled and plisio_api_key:
-        return {
-            "enabled": True,
-            "networks": networks
-        }
-    else:
-        return {
-            "enabled": False,
-            "networks": []
-        }
-
-@api_router.post("/deposits/{deposit_id}/sync")
-async def sync_deposit_status(deposit_id: str, current_user: dict = Depends(get_current_user)):
-    """Manually sync deposit status from Plisio"""
-    deposit = await db.deposits.find_one({"deposit_id": deposit_id, "user_id": current_user["user_id"]}, {"_id": 0})
-    if not deposit:
-        raise HTTPException(status_code=404, detail="Deposit not found")
-    
-    if deposit.get("provider") != "plisio" or not deposit.get("plisio_invoice_id"):
-        raise HTTPException(status_code=400, detail="This deposit is not a Plisio deposit")
-    
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    plisio_api_key = settings.get("plisio_api_key", "") if settings else ""
-    plisio_secret_key = settings.get("plisio_secret_key", "") if settings else ""
-    
-    if not plisio_api_key or not plisio_secret_key:
-        raise HTTPException(status_code=400, detail="Plisio not configured")
-    
-    try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"https://plisio.net/api/v1/operations/{deposit['plisio_invoice_id']}",
-                params={
-                    "api_key": plisio_api_key,
-                    "api_secret": plisio_secret_key
-                },
-                timeout=30.0
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                if result.get("status") == "success" and result.get("data"):
-                    invoice_data = result["data"]
-                    new_status = invoice_data.get("status", deposit.get("provider_status", "pending"))
-                    
-                    # Update deposit status
-                    update_data = {
-                        "provider_status": new_status
-                    }
-                    
-                    # If payment is confirmed, auto-approve deposit
-                    if new_status in ["completed", "mismatch"]:
-                        if deposit["status"] == "pending":
-                            update_data["status"] = "completed"
-                            # Credit user wallet
-                            currency_key = f"wallet_{deposit['currency'].lower()}"
-                            await db.users.update_one(
-                                {"user_id": deposit["user_id"]},
-                                {"$inc": {currency_key: deposit["amount"]}}
-                            )
-                            # Create transaction
-                            await db.transactions.insert_one({
-                                "transaction_id": str(uuid.uuid4()),
-                                "user_id": deposit["user_id"],
-                                "type": "deposit",
-                                "amount": deposit["amount"],
-                                "currency": deposit["currency"],
-                                "reference_id": deposit_id,
-                                "status": "completed",
-                                "description": f"Deposit via {deposit['method']} (Plisio)",
-                                "created_at": datetime.now(timezone.utc).isoformat()
-                            })
-                    
-                    await db.deposits.update_one(
-                        {"deposit_id": deposit_id},
-                        {"$set": update_data}
-                    )
-                    
-                    # Refresh deposit
-                    deposit = await db.deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
-                    if "_id" in deposit:
-                        del deposit["_id"]
-                    
-                    return {"deposit": deposit}
-                else:
-                    raise HTTPException(status_code=400, detail=result.get("message", "Failed to sync"))
-            else:
-                raise HTTPException(status_code=400, detail="Failed to sync with Plisio")
-    except Exception as e:
-        logger.error(f"Error syncing Plisio deposit: {e}")
-        raise HTTPException(status_code=500, detail=f"Error syncing deposit: {str(e)}")
-
-@api_router.post("/deposits/plisio-webhook")
-async def plisio_webhook(request: Request):
-    """Webhook endpoint for Plisio to notify about payment status"""
-    try:
-        # Plisio sends data as form data or JSON, try both
-        try:
-            body = await request.json()
-        except:
-            # If JSON fails, try form data
-            form_data = await request.form()
-            body = dict(form_data)
-        
-        logger.info(f"Plisio webhook received: {body}")
-        
-        # Verify webhook (Plisio sends order_number as deposit_id)
-        order_number = body.get("order_number") or body.get("orderNumber")
-        if not order_number:
-            logger.warning(f"Plisio webhook missing order_number. Received: {body}")
-            return {"status": "error", "message": "Missing order_number"}
-        
-        deposit = await db.deposits.find_one({"deposit_id": order_number}, {"_id": 0})
-        if not deposit:
-            logger.warning(f"Plisio webhook: deposit {order_number} not found")
-            return {"status": "error", "message": "Deposit not found"}
-        
-        # Only process if this is a Plisio deposit
-        if deposit.get("provider") != "plisio":
-            logger.warning(f"Plisio webhook: deposit {order_number} is not a Plisio deposit")
-            return {"status": "error", "message": "Not a Plisio deposit"}
-        
-        # Get Plisio status - check multiple possible field names
-        plisio_status = body.get("status") or body.get("Status") or body.get("invoice_status")
-        txn_id = body.get("txn_id") or body.get("txnId") or body.get("txn_id")
-        
-        if not plisio_status:
-            logger.warning(f"Plisio webhook missing status. Received: {body}")
-            return {"status": "error", "message": "Missing status"}
-        
-        logger.info(f"Plisio webhook: deposit {order_number}, status: {plisio_status}, txn_id: {txn_id}")
-        
-        # Update deposit status
-        update_data = {
-            "provider_status": plisio_status,
-            "plisio_txn_id": txn_id
-        }
-        
-        # Plisio status values: "new", "pending", "pending_internal", "mismatch", "expired", "cancelled", "completed", "confirmed"
-        # Auto-approve when payment is confirmed/completed
-        confirmed_statuses = ["completed", "confirmed", "mismatch", "paid"]
-        if plisio_status.lower() in [s.lower() for s in confirmed_statuses] and deposit["status"] == "pending":
-            update_data["status"] = "completed"
-            update_data["processed_at"] = datetime.now(timezone.utc).isoformat()
-            update_data["processed_by"] = "plisio_webhook"
-            
-            # Credit user wallet
-            currency_key = f"wallet_{deposit['currency'].lower()}"
-            await db.users.update_one(
-                {"user_id": deposit["user_id"]},
-                {"$inc": {currency_key: deposit["amount"]}}
-            )
-            
-            # Create transaction
-            await db.transactions.insert_one({
-                "transaction_id": str(uuid.uuid4()),
-                "user_id": deposit["user_id"],
-                "type": "deposit",
-                "amount": deposit["amount"],
-                "currency": deposit["currency"],
-                "reference_id": order_number,
-                "status": "completed",
-                "description": f"Deposit via {deposit['method']} (Plisio - Auto-approved)",
-                "created_at": datetime.now(timezone.utc).isoformat()
-            })
-            
-            # Send email notification
-            user = await db.users.find_one({"user_id": deposit["user_id"]}, {"_id": 0, "email": 1, "full_name": 1})
-            if user and user.get("email"):
-                subject = "KAYICOM - Deposit Approved"
-                content = f"""
-                <h2>Deposit Approved</h2>
-                <p>Hello {user.get('full_name', 'User')},</p>
-                <p>Your deposit of <strong>{deposit['amount']} {deposit['currency']}</strong> has been automatically approved.</p>
-                <p>Transaction ID: <code>{order_number}</code></p>
-                <p>Plisio Transaction: <code>{txn_id or 'N/A'}</code></p>
-                <p>Thank you for using KAYICOM!</p>
-                """
-                await send_email(user["email"], subject, content)
-            
-            logger.info(f"Plisio deposit {order_number} auto-approved via webhook (status: {plisio_status})")
-        elif plisio_status.lower() in ["expired", "cancelled", "failed"]:
-            # Mark as rejected if payment failed
-            if deposit["status"] == "pending":
-                update_data["status"] = "rejected"
-                update_data["processed_at"] = datetime.now(timezone.utc).isoformat()
-                update_data["processed_by"] = "plisio_webhook"
-                logger.info(f"Plisio deposit {order_number} rejected via webhook (status: {plisio_status})")
-        
-        await db.deposits.update_one(
-            {"deposit_id": order_number},
-            {"$set": update_data}
-        )
-        
-        return {"status": "success"}
-    except Exception as e:
-        logger.error(f"Plisio webhook error: {e}", exc_info=True)
-        return {"status": "error", "message": str(e)}
-
 # ==================== WITHDRAWAL ROUTES ====================
 
 @api_router.post("/withdrawals/create")
 async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Depends(get_current_user)):
     if current_user["kyc_status"] != "approved":
         raise HTTPException(status_code=403, detail="KYC verification required for withdrawals")
-    
-    # Validate payment method exists and is enabled
-    payment_method = await db.payment_methods.find_one({
-        "method_id": request.method.lower(),
-        "flow": "withdrawal",
-        "enabled": True
-    }, {"_id": 0})
-    
-    if not payment_method:
-        raise HTTPException(status_code=400, detail=f"Payment method '{request.method}' is not available for withdrawals")
-    
-    # Validate currency is supported
-    if request.currency.upper() not in payment_method.get("currencies", []):
-        raise HTTPException(status_code=400, detail=f"Currency '{request.currency}' is not supported for this payment method")
-    
-    # Determine source and target currencies
+
     target_currency = request.currency.upper()
+    if target_currency not in ["HTG", "USD"]:
+        raise HTTPException(status_code=400, detail="Invalid currency")
+
+    method = await db.payment_gateway_methods.find_one(
+        {"payment_method_id": request.payment_method_id, "payment_type": "withdrawal"},
+        {"_id": 0},
+    )
+    if not method or method.get("status") != "active":
+        raise HTTPException(status_code=400, detail="Selected withdrawal method is not available")
+
+    if target_currency not in method.get("supported_currencies", []):
+        raise HTTPException(status_code=400, detail="Selected withdrawal method does not support this currency")
+
+    min_amount = float(method.get("minimum_amount") or 0)
+    max_amount = float(method.get("maximum_amount") or 0)
+    if min_amount and request.amount < min_amount:
+        raise HTTPException(status_code=400, detail=f"Minimum withdrawal is {min_amount}")
+    if max_amount and request.amount > max_amount:
+        raise HTTPException(status_code=400, detail=f"Maximum withdrawal is {max_amount}")
+
+    # Validate required custom fields
+    submitted = request.field_values or {}
+    for f in method.get("custom_fields", []):
+        key = f.get("key")
+        if not key:
+            continue
+        if f.get("required"):
+            if key not in submitted:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {f.get('label') or key}")
+            if f.get("type") == "checkbox" and submitted.get(key) is not True:
+                raise HTTPException(status_code=400, detail=f"Field must be checked: {f.get('label') or key}")
+            if f.get("type") == "file" and not str(submitted.get(key) or "").startswith("data:"):
+                raise HTTPException(status_code=400, detail=f"Missing required file: {f.get('label') or key}")
+
+    fee_type = method.get("fee_type", "fixed")
+    fee_value = float(method.get("fee_value") or 0)
+    fee = (request.amount * (fee_value / 100.0)) if fee_type == "percentage" else fee_value
+    fee = max(0.0, float(fee))
+    net_amount = max(0.0, float(request.amount - fee))
+
+    # Determine source and target currencies (cross-currency withdrawals supported)
     source_currency = (request.source_currency or request.currency).upper()
-    
-    # Get exchange rates for cross-currency withdrawal
+    if source_currency not in ["HTG", "USD"]:
+        raise HTTPException(status_code=400, detail="Invalid source currency")
+
     rates = await db.exchange_rates.find_one({"rate_id": "main"}, {"_id": 0})
     if not rates:
         rates = {"htg_to_usd": 0.0075, "usd_to_htg": 133.0}
-    
-    # Calculate amount to deduct from source wallet
+
     if source_currency == target_currency:
-        amount_to_deduct = request.amount
+        amount_to_deduct = float(request.amount)
+        exchange_rate_used = 1
     elif source_currency == "USD" and target_currency == "HTG":
-        # User wants HTG but will pay from USD wallet
-        amount_to_deduct = request.amount * rates["htg_to_usd"]
-    else:  # source_currency == "HTG" and target_currency == "USD"
-        # User wants USD but will pay from HTG wallet
-        amount_to_deduct = request.amount * rates["usd_to_htg"]
-    
+        amount_to_deduct = float(request.amount) * float(rates["htg_to_usd"])
+        exchange_rate_used = float(rates["htg_to_usd"])
+    else:
+        amount_to_deduct = float(request.amount) * float(rates["usd_to_htg"])
+        exchange_rate_used = float(rates["usd_to_htg"])
+
     source_key = f"wallet_{source_currency.lower()}"
     if current_user.get(source_key, 0) < amount_to_deduct:
         raise HTTPException(status_code=400, detail="Insufficient balance")
-    
-    # Check withdrawal limits
-    limits = await db.withdrawal_limits.find_one({"method": request.method}, {"_id": 0})
-    if limits:
-        if request.amount < limits.get("min_amount", 0):
-            raise HTTPException(status_code=400, detail=f"Minimum withdrawal is {limits['min_amount']}")
-        if request.amount > limits.get("max_amount", float('inf')):
-            raise HTTPException(status_code=400, detail=f"Maximum withdrawal is {limits['max_amount']}")
-    
-    # Calculate fees - first check payment method fees, then fallback to fees collection
-    fee = 0
-    if payment_method.get("fees") and len(payment_method["fees"]) > 0:
-        # Use fees from payment method
-        for fee_config in payment_method["fees"]:
-            min_amount = fee_config.get("min_amount", 0)
-            max_amount = fee_config.get("max_amount", float('inf'))
-            if request.amount >= min_amount and request.amount <= max_amount:
-                if fee_config.get("fee_type") == "percentage":
-                    fee = request.amount * (fee_config["fee_value"] / 100)
-                else:
-                    fee = fee_config["fee_value"]
-                break
-    else:
-        # Fallback to fees collection (backward compatibility)
-        fee_config = await db.fees.find_one({
-            "method": request.method,
-            "min_amount": {"$lte": request.amount},
-            "max_amount": {"$gte": request.amount}
-        }, {"_id": 0})
-        
-        if fee_config:
-            if fee_config.get("fee_type") == "percentage":
-                fee = request.amount * (fee_config["fee_value"] / 100)
-            else:
-                fee = fee_config["fee_value"]
-    
+
+    withdrawal_cfg = method.get("withdrawal_config") or {}
     withdrawal_id = str(uuid.uuid4())
     withdrawal = {
         "withdrawal_id": withdrawal_id,
         "user_id": current_user["user_id"],
         "client_id": current_user["client_id"],
-        "amount": request.amount,
+        "payment_method_id": request.payment_method_id,
+        "payment_method_name": method.get("payment_method_name"),
+        "payment_method_snapshot": {
+            "payment_method_id": method.get("payment_method_id"),
+            "payment_method_name": method.get("payment_method_name"),
+            "payment_type": "withdrawal",
+            "fee_type": fee_type,
+            "fee_value": fee_value,
+            "minimum_amount": min_amount,
+            "maximum_amount": max_amount,
+            "supported_currencies": method.get("supported_currencies", []),
+            "withdrawal_config": withdrawal_cfg,
+        },
+        "amount": float(request.amount),
         "fee": fee,
-        "net_amount": request.amount - fee,
+        "net_amount": net_amount,
         "currency": target_currency,
         "source_currency": source_currency,
         "amount_deducted": amount_to_deduct,
-        "exchange_rate_used": rates["usd_to_htg"] if source_currency != target_currency else 1,
-        "method": request.method,
-        "destination": request.destination,
+        "exchange_rate_used": exchange_rate_used,
+        "field_values": submitted,
         "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    
-    # Deduct from source wallet
+
     await db.users.update_one(
         {"user_id": current_user["user_id"]},
-        {"$inc": {source_key: -amount_to_deduct}}
+        {"$inc": {source_key: -amount_to_deduct}},
     )
-    
     await db.withdrawals.insert_one(withdrawal)
-    
-    # Create transaction record
-    description = f"Withdrawal via {request.method}"
+
+    description = f"Withdrawal via {method.get('payment_method_name') or 'method'}"
     if source_currency != target_currency:
         description += f" (converted from {source_currency})"
-    
-    await db.transactions.insert_one({
-        "transaction_id": str(uuid.uuid4()),
-        "user_id": current_user["user_id"],
-        "type": "withdrawal",
-        "amount": -amount_to_deduct,
-        "currency": source_currency,
-        "target_amount": request.amount,
-        "target_currency": target_currency,
-        "reference_id": withdrawal_id,
-        "status": "pending",
-        "description": description,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    })
-    
-    await log_action(current_user["user_id"], "withdrawal_request", {
-        "amount": request.amount, 
-        "method": request.method,
-        "source_currency": source_currency,
-        "target_currency": target_currency
-    })
-    
+
+    await db.transactions.insert_one(
+        {
+            "transaction_id": str(uuid.uuid4()),
+            "user_id": current_user["user_id"],
+            "type": "withdrawal",
+            "amount": -amount_to_deduct,
+            "currency": source_currency,
+            "target_amount": float(request.amount),
+            "target_currency": target_currency,
+            "reference_id": withdrawal_id,
+            "status": "pending",
+            "description": description,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+
+    await log_action(
+        current_user["user_id"],
+        "withdrawal_request",
+        {
+            "amount": request.amount,
+            "payment_method_id": request.payment_method_id,
+            "source_currency": source_currency,
+            "target_currency": target_currency,
+        },
+    )
+
     if "_id" in withdrawal:
         del withdrawal["_id"]
     return {"withdrawal": withdrawal}
@@ -3414,21 +3214,22 @@ async def admin_process_deposit(
     )
     
     if action == "approve":
+        credit_amount = float(deposit.get("net_amount", deposit.get("amount", 0)) or 0)
         currency_key = f"wallet_{deposit['currency'].lower()}"
         await db.users.update_one(
             {"user_id": deposit["user_id"]},
-            {"$inc": {currency_key: deposit["amount"]}}
+            {"$inc": {currency_key: credit_amount}}
         )
         
         await db.transactions.insert_one({
             "transaction_id": str(uuid.uuid4()),
             "user_id": deposit["user_id"],
             "type": "deposit",
-            "amount": deposit["amount"],
+            "amount": credit_amount,
             "currency": deposit["currency"],
             "reference_id": deposit_id,
             "status": "completed",
-            "description": f"Deposit via {deposit['method']}",
+            "description": f"Deposit via {deposit.get('payment_method_name') or deposit.get('method') or 'method'}",
             "created_at": datetime.now(timezone.utc).isoformat()
         })
     
@@ -3440,7 +3241,8 @@ async def admin_process_deposit(
             content = f"""
             <h2>Deposit Approved</h2>
             <p>Hello {user.get('full_name', 'User')},</p>
-            <p>Your deposit of <strong>{deposit['amount']} {deposit['currency']}</strong> via <strong>{deposit['method']}</strong> has been approved and credited to your account.</p>
+            <p>Your deposit of <strong>{deposit.get('amount')} {deposit['currency']}</strong> via <strong>{deposit.get('payment_method_name') or deposit.get('method') or 'method'}</strong> has been approved.</p>
+            <p>Fee: <strong>{deposit.get('fee', 0)} {deposit['currency']}</strong> | Net credited: <strong>{deposit.get('net_amount', deposit.get('amount'))} {deposit['currency']}</strong></p>
             <p>Transaction ID: <code>{deposit_id}</code></p>
             <p>Thank you for using KAYICOM!</p>
             """
@@ -3449,7 +3251,7 @@ async def admin_process_deposit(
             content = f"""
             <h2>Deposit Rejected</h2>
             <p>Hello {user.get('full_name', 'User')},</p>
-            <p>Your deposit of <strong>{deposit['amount']} {deposit['currency']}</strong> via <strong>{deposit['method']}</strong> has been rejected.</p>
+            <p>Your deposit of <strong>{deposit.get('amount')} {deposit['currency']}</strong> via <strong>{deposit.get('payment_method_name') or deposit.get('method') or 'method'}</strong> has been rejected.</p>
             <p>Transaction ID: <code>{deposit_id}</code></p>
             <p>Please contact support if you have any questions.</p>
             """
@@ -3497,11 +3299,13 @@ async def admin_process_withdrawal(
     )
     
     if action == "reject":
-        # Refund the amount
-        currency_key = f"wallet_{withdrawal['currency'].lower()}"
+        # Refund what was deducted (supports cross-currency withdrawals)
+        source_currency = (withdrawal.get("source_currency") or withdrawal.get("currency") or "").lower()
+        currency_key = f"wallet_{source_currency}"
+        refund_amount = float(withdrawal.get("amount_deducted", withdrawal.get("amount", 0)) or 0)
         await db.users.update_one(
             {"user_id": withdrawal["user_id"]},
-            {"$inc": {currency_key: withdrawal["amount"]}}
+            {"$inc": {currency_key: refund_amount}}
         )
     else:
         # Process affiliate commission if applicable
@@ -3536,13 +3340,14 @@ async def admin_process_withdrawal(
     # Send email notification
     user = await db.users.find_one({"user_id": withdrawal["user_id"]}, {"_id": 0, "email": 1, "full_name": 1})
     if user:
+        method_name = withdrawal.get("payment_method_name") or withdrawal.get("method") or "method"
         if action == "approve":
             subject = "KAYICOM - Withdrawal Processed"
             content = f"""
             <h2>Withdrawal Processed</h2>
             <p>Hello {user.get('full_name', 'User')},</p>
-            <p>Your withdrawal of <strong>{withdrawal['amount']} {withdrawal['currency']}</strong> via <strong>{withdrawal['method']}</strong> has been processed and sent.</p>
-            <p>Destination: <strong>{withdrawal.get('destination', 'N/A')}</strong></p>
+            <p>Your withdrawal of <strong>{withdrawal.get('amount')} {withdrawal['currency']}</strong> via <strong>{method_name}</strong> has been processed.</p>
+            <p>Fee: <strong>{withdrawal.get('fee', 0)} {withdrawal['currency']}</strong> | Net sent: <strong>{withdrawal.get('net_amount', withdrawal.get('amount'))} {withdrawal['currency']}</strong></p>
             <p>Transaction ID: <code>{withdrawal_id}</code></p>
             <p>Thank you for using KAYICOM!</p>
             """
@@ -3551,7 +3356,7 @@ async def admin_process_withdrawal(
             content = f"""
             <h2>Withdrawal Rejected</h2>
             <p>Hello {user.get('full_name', 'User')},</p>
-            <p>Your withdrawal of <strong>{withdrawal['amount']} {withdrawal['currency']}</strong> via <strong>{withdrawal['method']}</strong> has been rejected.</p>
+            <p>Your withdrawal of <strong>{withdrawal.get('amount')} {withdrawal['currency']}</strong> via <strong>{method_name}</strong> has been rejected.</p>
             <p>The amount has been refunded to your account.</p>
             <p>Transaction ID: <code>{withdrawal_id}</code></p>
             <p>Please contact support if you have any questions.</p>
@@ -3713,320 +3518,130 @@ async def admin_update_withdrawal_limit(limit: WithdrawalLimitUpdate, admin: dic
     
     return {"message": "Withdrawal limit updated"}
 
-# Payment Methods Admin
-@api_router.get("/admin/payment-methods")
-async def admin_get_payment_methods(
-    flow: Optional[str] = None,
-    admin: dict = Depends(get_admin_user)
+def _validate_payment_gateway_method_input(method: PaymentGatewayMethodUpsert) -> None:
+    if method.minimum_amount < 0 or method.maximum_amount < 0:
+        raise HTTPException(status_code=400, detail="Minimum/maximum amounts must be >= 0")
+    if method.maximum_amount and method.maximum_amount < method.minimum_amount:
+        raise HTTPException(status_code=400, detail="Maximum amount must be >= minimum amount")
+    if not method.supported_currencies:
+        raise HTTPException(status_code=400, detail="At least one supported currency is required")
+    if method.fee_value < 0:
+        raise HTTPException(status_code=400, detail="Fee value must be >= 0")
+    if method.fee_type == "percentage" and method.fee_value > 100:
+        raise HTTPException(status_code=400, detail="Percentage fee cannot exceed 100")
+
+    # Custom fields validation
+    key_re = re.compile(r"^[a-zA-Z][a-zA-Z0-9_]{0,63}$")
+    seen: set[str] = set()
+    for f in method.custom_fields or []:
+        if not key_re.match(f.key):
+            raise HTTPException(status_code=400, detail=f"Invalid field key: {f.key}")
+        if f.key in seen:
+            raise HTTPException(status_code=400, detail=f"Duplicate field key: {f.key}")
+        seen.add(f.key)
+        if f.type == "select" and not (f.options and len(f.options) > 0):
+            raise HTTPException(status_code=400, detail=f"Select field '{f.key}' must have options")
+
+    if method.payment_type == "withdrawal" and method.withdrawal_config is None:
+        raise HTTPException(status_code=400, detail="Withdrawal methods require withdrawal configuration")
+    if method.payment_type == "deposit" and method.withdrawal_config is not None:
+        raise HTTPException(status_code=400, detail="Deposit methods cannot have withdrawal configuration")
+
+
+# Payment Gateway Admin
+@api_router.get("/admin/payment-gateway/methods")
+async def admin_get_payment_gateway_methods(
+    payment_type: Optional[PaymentGatewayPaymentType] = None,
+    admin: dict = Depends(get_admin_user),
 ):
-    """Get all payment methods, optionally filtered by flow"""
-    query = {}
-    if flow and flow != "all":
-        query["flow"] = flow
-    
-    methods = await db.payment_methods.find(query, {"_id": 0}).sort("sort_order", 1).to_list(100)
+    query: Dict[str, Any] = {}
+    if payment_type:
+        query["payment_type"] = payment_type
+    methods = await db.payment_gateway_methods.find(query, {"_id": 0}).sort("payment_method_name", 1).to_list(500)
     return {"methods": methods}
 
-@api_router.put("/admin/payment-methods")
-async def admin_create_or_update_payment_method(
-    method: PaymentMethodUpdate,
-    admin: dict = Depends(get_admin_user)
-):
-    """Create or update a payment method"""
-    if method.flow not in ["deposit", "withdrawal"]:
-        raise HTTPException(status_code=400, detail="Flow must be 'deposit' or 'withdrawal'")
-    
-    if not method.currencies or not all(c in ["HTG", "USD"] for c in method.currencies):
-        raise HTTPException(status_code=400, detail="Currencies must be HTG and/or USD")
-    
-    method_doc = {
-        "method_id": method.method_id,
-        "flow": method.flow,
-        "currencies": method.currencies,
-        "display_name": method.display_name,
-        "enabled": method.enabled,
-        "sort_order": method.sort_order,
-        "public": method.public,
-        "private": method.private,
-        "fees": [f.model_dump() for f in (method.fees or [])] if method.fees else [],
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "updated_by": admin["user_id"]
-    }
-    
-    # Check if method exists
-    existing = await db.payment_methods.find_one({
-        "method_id": method.method_id,
-        "flow": method.flow
-    })
-    
-    if existing:
-        await db.payment_methods.update_one(
-            {"method_id": method.method_id, "flow": method.flow},
-            {"$set": method_doc}
-        )
-        action = "payment_method_update"
-    else:
-        method_doc["created_at"] = datetime.now(timezone.utc).isoformat()
-        await db.payment_methods.insert_one(method_doc)
-        action = "payment_method_create"
-    
-    await log_action(admin["user_id"], action, {"method_id": method.method_id, "flow": method.flow})
-    
-    if "_id" in method_doc:
-        del method_doc["_id"]
-    return {"method": method_doc, "message": "Payment method saved successfully"}
 
-@api_router.delete("/admin/payment-methods/{flow}/{method_id}")
-async def admin_delete_payment_method(
-    flow: str,
-    method_id: str,
-    admin: dict = Depends(get_admin_user)
+@api_router.post("/admin/payment-gateway/methods")
+async def admin_create_payment_gateway_method(
+    method: PaymentGatewayMethodUpsert,
+    admin: dict = Depends(get_admin_user),
 ):
-    """Delete a payment method"""
-    result = await db.payment_methods.delete_one({
-        "method_id": method_id,
-        "flow": flow
-    })
-    
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Payment method not found")
-    
-    await log_action(admin["user_id"], "payment_method_delete", {"method_id": method_id, "flow": flow})
-    
-    return {"message": "Payment method deleted successfully"}
+    _validate_payment_gateway_method_input(method)
 
-@api_router.post("/admin/payment-methods/seed")
-async def admin_seed_payment_methods(admin: dict = Depends(get_admin_user)):
-    """Seed default payment methods"""
-    default_methods = [
+    doc = method.model_dump()
+    doc.update(
         {
-            "method_id": "moncash",
-            "flow": "deposit",
-            "currencies": ["HTG"],
-            "display_name": "MonCash",
-            "enabled": True,
-            "sort_order": 1,
-            "public": {
-                "placeholder": "Nimewo telefòn MonCash",
-                "instructions": "Voye montan an nan nimewo MonCash ki endike"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "natcash",
-            "flow": "deposit",
-            "currencies": ["HTG"],
-            "display_name": "NatCash",
-            "enabled": True,
-            "sort_order": 2,
-            "public": {
-                "placeholder": "Nimewo telefòn NatCash",
-                "instructions": "Voye montan an nan nimewo NatCash ki endike"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "zelle",
-            "flow": "deposit",
-            "currencies": ["USD"],
-            "display_name": "Zelle",
-            "enabled": True,
-            "sort_order": 1,
-            "public": {
-                "placeholder": "Email ou telefòn Zelle",
-                "instructions": "Voye nan email Zelle ki endike"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "paypal",
-            "flow": "deposit",
-            "currencies": ["USD"],
-            "display_name": "PayPal",
-            "enabled": True,
-            "sort_order": 2,
-            "public": {
-                "placeholder": "Email PayPal",
-                "instructions": "Voye nan email PayPal ki endike"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "usdt",
-            "flow": "deposit",
-            "currencies": ["USD"],
-            "display_name": "USDT (Plisio)",
-            "enabled": False,
-            "sort_order": 3,
-            "public": {
-                "placeholder": "Select network",
-                "instructions": "Select the network and we will create an automatic payment link"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "moncash",
-            "flow": "withdrawal",
-            "currencies": ["HTG"],
-            "display_name": "MonCash",
-            "enabled": True,
-            "sort_order": 1,
-            "public": {
-                "placeholder": "Nimewo telefòn MonCash"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "natcash",
-            "flow": "withdrawal",
-            "currencies": ["HTG"],
-            "display_name": "NatCash",
-            "enabled": True,
-            "sort_order": 2,
-            "public": {
-                "placeholder": "Nimewo telefòn NatCash"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "zelle",
-            "flow": "withdrawal",
-            "currencies": ["USD"],
-            "display_name": "Zelle",
-            "enabled": True,
-            "sort_order": 1,
-            "public": {
-                "placeholder": "Email ou telefòn Zelle"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "paypal",
-            "flow": "withdrawal",
-            "currencies": ["USD"],
-            "display_name": "PayPal",
-            "enabled": True,
-            "sort_order": 2,
-            "public": {
-                "placeholder": "Email PayPal"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "usdt",
-            "flow": "withdrawal",
-            "currencies": ["USD"],
-            "display_name": "USDT (TRC-20)",
-            "enabled": True,
-            "sort_order": 3,
-            "public": {
-                "placeholder": "Adrès USDT TRC-20"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "bank_usa",
-            "flow": "withdrawal",
-            "currencies": ["USD"],
-            "display_name": "Bank USA 🇺🇸",
-            "enabled": True,
-            "sort_order": 4,
-            "public": {
-                "placeholder": "Routing + Account Number"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "bank_mexico",
-            "flow": "withdrawal",
-            "currencies": ["USD"],
-            "display_name": "Bank Mexico 🇲🇽",
-            "enabled": True,
-            "sort_order": 5,
-            "public": {
-                "placeholder": "CLABE (18 chif)"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "bank_brazil",
-            "flow": "withdrawal",
-            "currencies": ["USD"],
-            "display_name": "Bank Brazil 🇧🇷",
-            "enabled": True,
-            "sort_order": 6,
-            "public": {
-                "placeholder": "CPF/CNPJ + Chave PIX"
-            },
-            "private": {}
-        },
-        {
-            "method_id": "bank_chile",
-            "flow": "withdrawal",
-            "currencies": ["USD"],
-            "display_name": "Bank Chile 🇨🇱",
-            "enabled": True,
-            "sort_order": 7,
-            "public": {
-                "placeholder": "RUT + Nimewo kont"
-            },
-            "private": {}
+            "payment_method_id": str(uuid.uuid4()),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": admin["user_id"],
         }
-    ]
-    
-    created_count = 0
-    updated_count = 0
-    
-    for method in default_methods:
-        method["updated_at"] = datetime.now(timezone.utc).isoformat()
-        method["updated_by"] = admin["user_id"]
-        
-        existing = await db.payment_methods.find_one({
-            "method_id": method["method_id"],
-            "flow": method["flow"]
-        })
-        
-        if existing:
-            await db.payment_methods.update_one(
-                {"method_id": method["method_id"], "flow": method["flow"]},
-                {"$set": method}
-            )
-            updated_count += 1
-        else:
-            method["created_at"] = datetime.now(timezone.utc).isoformat()
-            await db.payment_methods.insert_one(method)
-            created_count += 1
-    
-    await log_action(admin["user_id"], "payment_methods_seed", {
-        "created": created_count,
-        "updated": updated_count
-    })
-    
-    return {
-        "message": f"Seeded {len(default_methods)} payment methods",
-        "created": created_count,
-        "updated": updated_count
-    }
+    )
 
-# Public endpoint for payment methods (no auth required)
-@api_router.get("/public/payment-methods")
-async def get_public_payment_methods(
-    flow: Optional[str] = None,
-    currency: Optional[str] = None
+    await db.payment_gateway_methods.insert_one(doc)
+    await log_action(admin["user_id"], "payment_gateway_method_create", {"payment_method_id": doc["payment_method_id"]})
+    if "_id" in doc:
+        del doc["_id"]
+    return {"method": doc}
+
+
+@api_router.put("/admin/payment-gateway/methods/{payment_method_id}")
+async def admin_update_payment_gateway_method(
+    payment_method_id: str,
+    method: PaymentGatewayMethodUpsert,
+    admin: dict = Depends(get_admin_user),
 ):
-    """Get enabled payment methods for public display"""
-    query = {"enabled": True}
-    
-    if flow:
-        query["flow"] = flow
-    
-    methods = await db.payment_methods.find(query, {"_id": 0, "private": 0}).sort("sort_order", 1).to_list(100)
-    
-    # Filter by currency if specified
+    _validate_payment_gateway_method_input(method)
+
+    existing = await db.payment_gateway_methods.find_one({"payment_method_id": payment_method_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Payment gateway method not found")
+
+    doc = method.model_dump()
+    doc.update(
+        {
+            "payment_method_id": payment_method_id,
+            "created_at": existing.get("created_at") or datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": admin["user_id"],
+        }
+    )
+
+    await db.payment_gateway_methods.update_one({"payment_method_id": payment_method_id}, {"$set": doc})
+    await log_action(admin["user_id"], "payment_gateway_method_update", {"payment_method_id": payment_method_id})
+    return {"method": doc}
+
+
+@api_router.delete("/admin/payment-gateway/methods/{payment_method_id}")
+async def admin_delete_payment_gateway_method(
+    payment_method_id: str,
+    admin: dict = Depends(get_admin_user),
+):
+    result = await db.payment_gateway_methods.delete_one({"payment_method_id": payment_method_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Payment gateway method not found")
+    await log_action(admin["user_id"], "payment_gateway_method_delete", {"payment_method_id": payment_method_id})
+    return {"message": "Payment gateway method deleted"}
+
+
+# Public endpoint for payment gateway methods (no auth required)
+@api_router.get("/public/payment-gateway/methods")
+async def get_public_payment_gateway_methods(
+    payment_type: Optional[PaymentGatewayPaymentType] = None,
+    currency: Optional[str] = None,
+):
+    query: Dict[str, Any] = {"status": "active"}
+    if payment_type:
+        query["payment_type"] = payment_type
+    methods = await db.payment_gateway_methods.find(query, {"_id": 0}).sort("payment_method_name", 1).to_list(500)
+
     if currency:
-        methods = [m for m in methods if currency.upper() in m.get("currencies", [])]
-    
-    return methods
+        cur = currency.upper()
+        methods = [m for m in methods if cur in (m.get("supported_currencies") or [])]
+
+    return {
+        "methods": methods
+    }
 
 # Settings Admin
 @api_router.get("/admin/settings")
@@ -4575,6 +4190,8 @@ async def startup():
     await db.agent_deposits.create_index([("agent_id", 1), ("status", 1)])
     await db.agent_deposits.create_index([("client_user_id", 1)])
     await db.agent_requests.create_index([("user_id", 1)])
+    await db.payment_gateway_methods.create_index("payment_method_id", unique=True)
+    await db.payment_gateway_methods.create_index([("payment_type", 1), ("status", 1)])
     
     # Create default admin if not exists, or update existing admin email
     admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
