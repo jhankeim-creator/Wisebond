@@ -48,10 +48,22 @@ export default function AnnouncementBar() {
       document.documentElement.style.setProperty('--announcement-bar-h', `${Math.round(h)}px`);
     };
 
+    // Run immediately and after layout settles (fonts/images)
     applyHeight();
+    const raf = window.requestAnimationFrame(applyHeight);
+
+    // Track height changes even without window resize
+    let ro = null;
+    if (typeof window !== 'undefined' && 'ResizeObserver' in window && barRef.current) {
+      ro = new window.ResizeObserver(() => applyHeight());
+      ro.observe(barRef.current);
+    }
+
     window.addEventListener('resize', applyHeight);
     return () => {
       window.removeEventListener('resize', applyHeight);
+      if (ro) ro.disconnect();
+      window.cancelAnimationFrame(raf);
       document.documentElement.style.setProperty('--announcement-bar-h', '0px');
     };
   }, [cfg?.announcement_enabled, effectiveText]);
