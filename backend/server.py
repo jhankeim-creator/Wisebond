@@ -8,6 +8,7 @@ import logging
 import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field, EmailStr
+from pydantic.config import ConfigDict
 from typing import Any, Dict, List, Literal, Optional
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -239,6 +240,8 @@ class WithdrawalLimitUpdate(BaseModel):
     waiting_hours: int
 
 class AdminSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     # Email (Resend)
     resend_enabled: Optional[bool] = None
     resend_api_key: Optional[str] = None

@@ -88,7 +88,14 @@ export default function AdminSettings() {
   const fetchSettings = async () => {
     try {
       const response = await axios.get(`${API}/admin/settings`);
-      setSettings(prev => ({ ...prev, ...response.data.settings }));
+      const incoming = { ...(response.data.settings || {}) };
+      // Remove legacy payment settings keys if they still exist in DB
+      for (const k of Object.keys(incoming)) {
+        if (k.startsWith('moncash_') || k.startsWith('natcash_') || k.startsWith('zelle_') || k.startsWith('paypal_')) {
+          delete incoming[k];
+        }
+      }
+      setSettings(prev => ({ ...prev, ...incoming }));
     } catch (error) {
       console.error('Error fetching settings:', error);
     } finally {
@@ -117,10 +124,23 @@ export default function AdminSettings() {
         plisio_secret_key_last4,
         ...payload
       } = settings;
+
+      // Only send supported settings keys (avoid sending legacy payment keys)
+      const allowedKeys = new Set([
+        'resend_enabled', 'resend_api_key', 'sender_email',
+        'crisp_enabled', 'crisp_website_id',
+        'whatsapp_enabled', 'whatsapp_number', 'callmebot_api_key',
+        'telegram_enabled', 'telegram_bot_token', 'telegram_chat_id',
+        'plisio_enabled', 'plisio_api_key', 'plisio_secret_key',
+        'card_order_fee_htg', 'affiliate_reward_htg', 'affiliate_cards_required',
+      ]);
+      const filteredPayload = Object.fromEntries(
+        Object.entries(payload).filter(([k]) => allowedKeys.has(k))
+      );
       
       // Clean up empty strings - convert to null for optional fields
       const cleanedPayload = Object.fromEntries(
-        Object.entries(payload).map(([key, value]) => [
+        Object.entries(filteredPayload).map(([key, value]) => [
           key,
           value === '' ? null : value
         ])
