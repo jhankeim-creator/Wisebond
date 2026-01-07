@@ -131,6 +131,15 @@ PaymentGatewayFieldType = Literal[
     "file",
 ]
 
+PaymentGatewayIntegrationProvider = Literal["plisio"]
+
+
+class PaymentGatewayIntegrationConfig(BaseModel):
+    provider: PaymentGatewayIntegrationProvider
+    # For Plisio: if provided, which custom field contains the crypto/network selection.
+    # Example: "network" with values like "usdt_trc20".
+    network_field_key: Optional[str] = "network"
+
 
 class PaymentGatewayCustomField(BaseModel):
     field_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -168,6 +177,7 @@ class PaymentGatewayMethodUpsert(BaseModel):
     display: Optional[PaymentGatewayDisplayConfig] = None
     custom_fields: List[PaymentGatewayCustomField] = Field(default_factory=list)
     withdrawal_config: Optional[PaymentGatewayWithdrawalConfig] = None
+    integration: Optional[PaymentGatewayIntegrationConfig] = None
 
 
 class DepositRequest(BaseModel):
@@ -257,22 +267,6 @@ class AdminSettingsUpdate(BaseModel):
     card_order_fee_htg: Optional[int] = None
     affiliate_reward_htg: Optional[int] = None
     affiliate_cards_required: Optional[int] = None
-    
-    # Manual HTG deposits
-    moncash_enabled: Optional[bool] = None
-    moncash_number: Optional[str] = None
-    moncash_name: Optional[str] = None
-    moncash_qr: Optional[str] = None
-    natcash_enabled: Optional[bool] = None
-    natcash_number: Optional[str] = None
-    natcash_name: Optional[str] = None
-    natcash_qr: Optional[str] = None
-    
-    # USD payment methods
-    zelle_email: Optional[str] = None
-    zelle_name: Optional[str] = None
-    paypal_email: Optional[str] = None
-    paypal_name: Optional[str] = None
 
 class BulkEmailRequest(BaseModel):
     subject: str
@@ -1061,8 +1055,91 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
         "currency": currency,
         "field_values": submitted,
         "status": "pending",
+        "provider": None,
+        "provider_status": None,
+        "plisio_invoice_id": None,
+        "plisio_invoice_url": None,
+        "plisio_currency": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    # Optional: Plisio integration (automatic crypto invoice)
+    integration = method.get("integration") or {}
+    if integration.get("provider") == "plisio":
+        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+        if not settings or not settings.get("plisio_enabled"):
+            raise HTTPException(status_code=400, detail="Plisio is not enabled")
+
+        # Plisio sometimes exposes a single key; support both legacy fields.
+        plisio_key = (settings.get("plisio_secret_key") or settings.get("plisio_api_key") or "").strip()
+        plisio_secret = (settings.get("plisio_api_key") or "").strip()  # legacy dual-key support
+        if not plisio_key:
+            raise HTTPException(status_code=400, detail="Plisio key is not configured in settings")
+
+        network_field_key = integration.get("network_field_key") or "network"
+        selected_network = str((submitted or {}).get(network_field_key) or "").strip()
+
+        network_map = {
+            "usdt_trc20": "USDTTRC20",
+            "usdt_erc20": "USDTERC20",
+            "usdt_bep20": "USDTBEP20",
+            "usdt_polygon": "USDTPOLYGON",
+            "usdt_arbitrum": "USDTARBITRUM",
+            "USDTTRC20": "USDTTRC20",
+            "USDTERC20": "USDTERC20",
+            "USDTBEP20": "USDTBEP20",
+            "USDTPOLYGON": "USDTPOLYGON",
+            "USDTARBITRUM": "USDTARBITRUM",
+        }
+        plisio_currency = network_map.get(selected_network, "USDTTRC20")
+
+        backend_url = os.environ.get("BACKEND_URL", "https://wisebond.onrender.com").rstrip("/")
+        frontend_url = os.environ.get("FRONTEND_URL", "https://wisebond.vercel.app").rstrip("/")
+
+        payload = {
+            "api_key": plisio_key,
+            "currency": plisio_currency,
+            "source_currency": currency,
+            "source_amount": float(request.amount),
+            "order_name": f"Deposit {deposit_id}",
+            "order_number": deposit_id,
+            "callback_url": f"{backend_url}/api/deposits/plisio-webhook",
+            "psys_callback_url": f"{backend_url}/api/deposits/plisio-webhook",
+            "email": current_user.get("email", ""),
+            "success_url": f"{frontend_url}/deposit?status=success",
+            "fail_url": f"{frontend_url}/deposit?status=failed",
+        }
+        # legacy: some accounts require api_secret too
+        if plisio_secret and plisio_secret != plisio_key:
+            payload["api_secret"] = plisio_secret
+
+        try:
+            async with httpx.AsyncClient() as client_http:
+                resp = await client_http.post(
+                    "https://plisio.net/api/v1/invoices/new",
+                    data=payload,
+                    timeout=30.0,
+                )
+            if resp.status_code != 200:
+                logger.error(f"Plisio invoice create failed: {resp.status_code} {resp.text}")
+                raise HTTPException(status_code=400, detail="Failed to create Plisio invoice")
+
+            result = resp.json()
+            if result.get("status") != "success" or not result.get("data"):
+                logger.error(f"Plisio API error: {result}")
+                raise HTTPException(status_code=400, detail=result.get("message", "Plisio error"))
+
+            invoice_data = result["data"]
+            deposit["provider"] = "plisio"
+            deposit["provider_status"] = invoice_data.get("status", "pending")
+            deposit["plisio_invoice_id"] = invoice_data.get("txn_id") or invoice_data.get("id") or invoice_data.get("invoice_id")
+            deposit["plisio_invoice_url"] = invoice_data.get("invoice_url") or invoice_data.get("url")
+            deposit["plisio_currency"] = plisio_currency
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to create Plisio invoice: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="Failed to create Plisio invoice")
 
     await db.deposits.insert_one(deposit)
     await log_action(
@@ -1086,6 +1163,142 @@ async def get_deposits(
     
     deposits = await db.deposits.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
     return {"deposits": deposits}
+
+
+@api_router.post("/deposits/{deposit_id}/sync")
+async def sync_deposit_status(deposit_id: str, current_user: dict = Depends(get_current_user)):
+    """Manually sync Plisio deposit status and auto-credit on confirmation."""
+    deposit = await db.deposits.find_one({"deposit_id": deposit_id, "user_id": current_user["user_id"]}, {"_id": 0})
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+
+    if deposit.get("provider") != "plisio" or not deposit.get("plisio_invoice_id"):
+        raise HTTPException(status_code=400, detail="This deposit is not a Plisio deposit")
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    plisio_key = (settings.get("plisio_secret_key") or settings.get("plisio_api_key") or "").strip() if settings else ""
+    plisio_secret = (settings.get("plisio_api_key") or "").strip() if settings else ""
+    if not settings or not settings.get("plisio_enabled") or not plisio_key:
+        raise HTTPException(status_code=400, detail="Plisio not configured")
+
+    params = {"api_key": plisio_key}
+    if plisio_secret and plisio_secret != plisio_key:
+        params["api_secret"] = plisio_secret
+
+    try:
+        async with httpx.AsyncClient() as client_http:
+            resp = await client_http.get(
+                f"https://plisio.net/api/v1/operations/{deposit['plisio_invoice_id']}",
+                params=params,
+                timeout=30.0,
+            )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to sync with Plisio")
+
+        result = resp.json()
+        if result.get("status") != "success" or not result.get("data"):
+            raise HTTPException(status_code=400, detail=result.get("message", "Failed to sync"))
+
+        invoice_data = result["data"]
+        new_status = invoice_data.get("status", deposit.get("provider_status", "pending"))
+
+        update_data: Dict[str, Any] = {"provider_status": new_status}
+
+        confirmed_statuses = {"completed", "confirmed", "mismatch", "paid"}
+        if str(new_status).lower() in confirmed_statuses and deposit.get("status") == "pending":
+            update_data["status"] = "completed"
+            update_data["processed_at"] = datetime.now(timezone.utc).isoformat()
+            update_data["processed_by"] = "plisio_sync"
+
+            credit_amount = float(deposit.get("net_amount", deposit.get("amount", 0)) or 0)
+            currency_key = f"wallet_{deposit['currency'].lower()}"
+            await db.users.update_one({"user_id": deposit["user_id"]}, {"$inc": {currency_key: credit_amount}})
+
+            await db.transactions.insert_one({
+                "transaction_id": str(uuid.uuid4()),
+                "user_id": deposit["user_id"],
+                "type": "deposit",
+                "amount": credit_amount,
+                "currency": deposit["currency"],
+                "reference_id": deposit_id,
+                "status": "completed",
+                "description": f"Deposit via {deposit.get('payment_method_name') or 'Plisio'} (auto-approved)",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+
+        await db.deposits.update_one({"deposit_id": deposit_id}, {"$set": update_data})
+        deposit = await db.deposits.find_one({"deposit_id": deposit_id, "user_id": current_user["user_id"]}, {"_id": 0})
+        return {"deposit": deposit}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error syncing Plisio deposit: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error syncing deposit")
+
+
+@api_router.post("/deposits/plisio-webhook")
+async def plisio_webhook(request: Request):
+    """Webhook endpoint for Plisio to notify about payment status."""
+    try:
+        try:
+            body = await request.json()
+        except Exception:
+            form_data = await request.form()
+            body = dict(form_data)
+
+        order_number = body.get("order_number") or body.get("orderNumber")
+        if not order_number:
+            return {"status": "error", "message": "Missing order_number"}
+
+        deposit = await db.deposits.find_one({"deposit_id": order_number}, {"_id": 0})
+        if not deposit:
+            return {"status": "error", "message": "Deposit not found"}
+
+        if deposit.get("provider") != "plisio":
+            return {"status": "error", "message": "Not a Plisio deposit"}
+
+        plisio_status = body.get("status") or body.get("Status") or body.get("invoice_status")
+        txn_id = body.get("txn_id") or body.get("txnId") or body.get("txn")
+        if not plisio_status:
+            return {"status": "error", "message": "Missing status"}
+
+        update_data: Dict[str, Any] = {
+            "provider_status": plisio_status,
+            "plisio_txn_id": txn_id,
+        }
+
+        confirmed_statuses = {"completed", "confirmed", "mismatch", "paid"}
+        if str(plisio_status).lower() in confirmed_statuses and deposit.get("status") == "pending":
+            update_data["status"] = "completed"
+            update_data["processed_at"] = datetime.now(timezone.utc).isoformat()
+            update_data["processed_by"] = "plisio_webhook"
+
+            credit_amount = float(deposit.get("net_amount", deposit.get("amount", 0)) or 0)
+            currency_key = f"wallet_{deposit['currency'].lower()}"
+            await db.users.update_one({"user_id": deposit["user_id"]}, {"$inc": {currency_key: credit_amount}})
+
+            await db.transactions.insert_one({
+                "transaction_id": str(uuid.uuid4()),
+                "user_id": deposit["user_id"],
+                "type": "deposit",
+                "amount": credit_amount,
+                "currency": deposit["currency"],
+                "reference_id": order_number,
+                "status": "completed",
+                "description": f"Deposit via {deposit.get('payment_method_name') or 'Plisio'} (auto-approved)",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+
+        elif str(plisio_status).lower() in {"expired", "cancelled", "failed"} and deposit.get("status") == "pending":
+            update_data["status"] = "rejected"
+            update_data["processed_at"] = datetime.now(timezone.utc).isoformat()
+            update_data["processed_by"] = "plisio_webhook"
+
+        await db.deposits.update_one({"deposit_id": order_number}, {"$set": update_data})
+        return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Plisio webhook error: {e}", exc_info=True)
+        return {"status": "error", "message": "Webhook error"}
 
 # ==================== WITHDRAWAL ROUTES ====================
 
@@ -3547,6 +3760,13 @@ def _validate_payment_gateway_method_input(method: PaymentGatewayMethodUpsert) -
     if method.payment_type == "deposit" and method.withdrawal_config is not None:
         raise HTTPException(status_code=400, detail="Deposit methods cannot have withdrawal configuration")
 
+    if method.integration and method.integration.provider == "plisio":
+        if method.payment_type != "deposit":
+            raise HTTPException(status_code=400, detail="Plisio integration is only supported for deposit methods")
+        # Plisio is used for crypto deposits; typically USD-only.
+        if "USD" not in (method.supported_currencies or []):
+            raise HTTPException(status_code=400, detail="Plisio deposit methods must support USD currency")
+
 
 # Payment Gateway Admin
 @api_router.get("/admin/payment-gateway/methods")
@@ -3686,38 +3906,14 @@ async def get_public_chat_settings():
 # Public endpoint for app configuration (no auth required)
 @api_router.get("/public/app-config")
 async def get_public_app_config():
-    """Get app configuration for public display (MonCash/NatCash numbers, etc.)"""
+    """Get app configuration for public display (non-payment settings)."""
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     if not settings:
         return {
-            "moncash_enabled": False,
-            "moncash_number": None,
-            "moncash_name": None,
-            "moncash_qr": None,
-            "natcash_enabled": False,
-            "natcash_number": None,
-            "natcash_name": None,
-            "natcash_qr": None,
-            "zelle_email": "payments@kayicom.com",
-            "zelle_name": "KAYICOM",
-            "paypal_email": "payments@kayicom.com",
-            "paypal_name": "KAYICOM",
             "card_order_fee_htg": 500
         }
     
     return {
-        "moncash_enabled": settings.get("moncash_enabled", False),
-        "moncash_number": settings.get("moncash_number") if settings.get("moncash_enabled") else None,
-        "moncash_name": settings.get("moncash_name") if settings.get("moncash_enabled") else None,
-        "moncash_qr": settings.get("moncash_qr") if settings.get("moncash_enabled") else None,
-        "natcash_enabled": settings.get("natcash_enabled", False),
-        "natcash_number": settings.get("natcash_number") if settings.get("natcash_enabled") else None,
-        "natcash_name": settings.get("natcash_name") if settings.get("natcash_enabled") else None,
-        "natcash_qr": settings.get("natcash_qr") if settings.get("natcash_enabled") else None,
-        "zelle_email": settings.get("zelle_email", "payments@kayicom.com"),
-        "zelle_name": settings.get("zelle_name", "KAYICOM"),
-        "paypal_email": settings.get("paypal_email", "payments@kayicom.com"),
-        "paypal_name": settings.get("paypal_name", "KAYICOM"),
         "card_order_fee_htg": settings.get("card_order_fee_htg", 500)
     }
 

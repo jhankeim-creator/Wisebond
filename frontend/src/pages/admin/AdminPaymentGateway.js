@@ -45,6 +45,7 @@ const makeEmptyMethod = (paymentType) => ({
   withdrawal_config: paymentType === 'withdrawal'
     ? { processing_time: '1–24 hours', processing_mode: 'manual', admin_approval_required: true }
     : null,
+  integration: null,
 });
 
 function slugifyKey(label) {
@@ -213,6 +214,7 @@ export default function AdminPaymentGateway() {
         fee_type: editing.fee_type,
         fee_value: Number(editing.fee_value || 0),
         display: editing.display || {},
+        integration: editing.integration || null,
         custom_fields: (editing.custom_fields || []).map((f) => ({
           key: String(f.key || '').trim(),
           label: String(f.label || '').trim(),
@@ -250,6 +252,38 @@ export default function AdminPaymentGateway() {
 
   const addProofUpload = () => {
     addField({ label: 'Payment Proof', key: 'payment_proof', type: 'file', required: true, accept: 'image/*' });
+  };
+
+  const enablePlisio = (enabled) => {
+    if (!enabled) {
+      setEditing((prev) => ({ ...prev, integration: null }));
+      return;
+    }
+
+    setEditing((prev) => {
+      const existingFields = Array.isArray(prev.custom_fields) ? prev.custom_fields : [];
+      const hasNetwork = existingFields.some((f) => f?.key === 'network');
+      const nextFields = hasNetwork
+        ? existingFields
+        : [
+            ...existingFields,
+            {
+              label: 'USDT Network',
+              key: 'network',
+              type: 'select',
+              required: true,
+              options: ['usdt_trc20', 'usdt_erc20', 'usdt_bep20', 'usdt_polygon', 'usdt_arbitrum'],
+              help_text: 'Choose the USDT network for the payment invoice.',
+            },
+          ];
+
+      return {
+        ...prev,
+        supported_currencies: Array.from(new Set([...(prev.supported_currencies || []), 'USD'])),
+        integration: { provider: 'plisio', network_field_key: 'network' },
+        custom_fields: nextFields,
+      };
+    });
   };
 
   return (
@@ -682,6 +716,38 @@ export default function AdminPaymentGateway() {
                       })}
                     />
                   </div>
+                </div>
+              )}
+
+              {/* Deposit-only: Integration */}
+              {editing.payment_type === 'deposit' && (
+                <div className="border rounded-xl p-4 space-y-3">
+                  <p className="font-semibold">{getText('Entegrasyon', 'Intégration', 'Integration')}</p>
+                  <div className="flex items-center justify-between border rounded-lg p-3">
+                    <div>
+                      <p className="text-sm font-medium">Plisio (Crypto invoice link)</p>
+                      <p className="text-xs text-stone-500">
+                        {getText(
+                          'Sa ap kreye yon lyen peman otomatik (USDT) pou kliyan depo USD.',
+                          'Génère un lien de paiement automatique (USDT) pour dépôts USD.',
+                          'Generates an automatic crypto payment link (USDT) for USD deposits.'
+                        )}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={editing.integration?.provider === 'plisio'}
+                      onCheckedChange={(v) => enablePlisio(v)}
+                    />
+                  </div>
+                  {editing.integration?.provider === 'plisio' && (
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-300">
+                      {getText(
+                        'Asire w Plisio aktive nan Admin Settings epi ou mete kle a.',
+                        'Assurez-vous que Plisio est activé dans Admin Settings et que la clé est renseignée.',
+                        'Make sure Plisio is enabled in Admin Settings and the key is set.'
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -58,22 +58,6 @@ export default function AdminSettings() {
     plisio_enabled: false,
     plisio_api_key: '',
     plisio_secret_key: '',
-
-    // Manual HTG deposits
-    moncash_enabled: true,
-    moncash_number: '',
-    moncash_name: '',
-    moncash_qr: '',
-    natcash_enabled: true,
-    natcash_number: '',
-    natcash_name: '',
-    natcash_qr: '',
-    
-    // USD payment info
-    zelle_email: '',
-    zelle_name: '',
-    paypal_email: '',
-    paypal_name: '',
     
     // Fees & Affiliate
     card_order_fee_htg: 500,
@@ -498,195 +482,6 @@ export default function AdminSettings() {
 
   const DepositMethodsTab = () => (
     <div className="space-y-4">
-      {/* HTG Deposit Methods */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-              <Smartphone size={20} className="text-[#EA580C]" />
-            </div>
-            <div>
-              <CardTitle className="text-base">{getText('Metòd Depo HTG', 'Méthodes Dépôt HTG', 'HTG Deposit Methods')}</CardTitle>
-              <CardDescription className="text-sm">
-                {getText('Konfigire MonCash ak NatCash pou depo', 'Configurer MonCash et NatCash pour dépôts', 'Configure MonCash and NatCash for deposits')}
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* MonCash */}
-          <div className="border rounded-lg p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Badge className="bg-red-500 text-white">MonCash</Badge>
-                <span className="text-xs text-stone-500">DEPO</span>
-              </div>
-              <Switch
-                checked={!!settings.moncash_enabled}
-                onCheckedChange={(checked) => setSettings({ ...settings, moncash_enabled: checked })}
-              />
-            </div>
-            {settings.moncash_enabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">{getText('Non Reseptè', 'Nom', 'Name')}</Label>
-                  <Input
-                    placeholder="KAYICOM"
-                    value={settings.moncash_name || ''}
-                    onChange={(e) => setSettings({ ...settings, moncash_name: e.target.value })}
-                    className="mt-1 h-9"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">{getText('Nimewo', 'Numéro', 'Number')}</Label>
-                  <Input
-                    placeholder="+50900000000"
-                    value={settings.moncash_number || ''}
-                    onChange={(e) => setSettings({ ...settings, moncash_number: e.target.value })}
-                    className="mt-1 h-9"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Label className="text-xs">{getText('QR Kod URL', 'URL QR Code', 'QR Code URL')}</Label>
-                  <Input
-                    placeholder="https://example.com/qr-moncash.png"
-                    value={settings.moncash_qr || ''}
-                    onChange={(e) => setSettings({ ...settings, moncash_qr: e.target.value })}
-                    className="mt-1 h-9"
-                  />
-                  {settings.moncash_qr && (
-                    <img src={settings.moncash_qr} alt="QR" className="mt-2 w-16 h-16 object-contain rounded border" />
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* NatCash */}
-          <div className="border rounded-lg p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Badge className="bg-yellow-500 text-white">NatCash</Badge>
-                <span className="text-xs text-stone-500">DEPO</span>
-              </div>
-              <Switch
-                checked={!!settings.natcash_enabled}
-                onCheckedChange={(checked) => setSettings({ ...settings, natcash_enabled: checked })}
-              />
-            </div>
-            {settings.natcash_enabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-xs">{getText('Non Reseptè', 'Nom', 'Name')}</Label>
-                  <Input
-                    placeholder="KAYICOM"
-                    value={settings.natcash_name || ''}
-                    onChange={(e) => setSettings({ ...settings, natcash_name: e.target.value })}
-                    className="mt-1 h-9"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">{getText('Nimewo', 'Numéro', 'Number')}</Label>
-                  <Input
-                    placeholder="+50900000000"
-                    value={settings.natcash_number || ''}
-                    onChange={(e) => setSettings({ ...settings, natcash_number: e.target.value })}
-                    className="mt-1 h-9"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Label className="text-xs">{getText('QR Kod URL', 'URL QR Code', 'QR Code URL')}</Label>
-                  <Input
-                    placeholder="https://example.com/qr-natcash.png"
-                    value={settings.natcash_qr || ''}
-                    onChange={(e) => setSettings({ ...settings, natcash_qr: e.target.value })}
-                    className="mt-1 h-9"
-                  />
-                  {settings.natcash_qr && (
-                    <img src={settings.natcash_qr} alt="QR" className="mt-2 w-16 h-16 object-contain rounded border" />
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* USD Deposit Methods */}
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-              <DollarSign size={20} className="text-emerald-600" />
-            </div>
-            <div>
-              <CardTitle className="text-base">{getText('Metòd Depo USD', 'Méthodes Dépôt USD', 'USD Deposit Methods')}</CardTitle>
-              <CardDescription className="text-sm">
-                {getText('Konfigire Zelle ak PayPal pou depo', 'Configurer Zelle et PayPal pour dépôts', 'Configure Zelle and PayPal for deposits')}
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Zelle */}
-          <div className="border rounded-lg p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Badge className="bg-purple-600 text-white">Zelle</Badge>
-              <span className="text-xs text-stone-500">DEPO</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">{getText('Non Reseptè', 'Nom', 'Name')}</Label>
-                <Input
-                  placeholder="KAYICOM"
-                  value={settings.zelle_name || ''}
-                  onChange={(e) => setSettings({ ...settings, zelle_name: e.target.value })}
-                  className="mt-1 h-9"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Email</Label>
-                <Input
-                  placeholder="payments@kayicom.com"
-                  value={settings.zelle_email || ''}
-                  onChange={(e) => setSettings({ ...settings, zelle_email: e.target.value })}
-                  className="mt-1 h-9"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* PayPal */}
-          <div className="border rounded-lg p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Badge className="bg-blue-600 text-white">PayPal</Badge>
-              <span className="text-xs text-stone-500">DEPO</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">{getText('Non Reseptè', 'Nom', 'Name')}</Label>
-                <Input
-                  placeholder="KAYICOM"
-                  value={settings.paypal_name || ''}
-                  onChange={(e) => setSettings({ ...settings, paypal_name: e.target.value })}
-                  className="mt-1 h-9"
-                />
-              </div>
-              <div>
-                <Label className="text-xs">Email</Label>
-                <Input
-                  placeholder="payments@kayicom.com"
-                  value={settings.paypal_email || ''}
-                  onChange={(e) => setSettings({ ...settings, paypal_email: e.target.value })}
-                  className="mt-1 h-9"
-                />
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* USDT/Crypto */}
       <Card>
         <CardHeader className="pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -713,7 +508,7 @@ export default function AdminSettings() {
               <div>
                 <Label className="flex items-center gap-2">
                   <Key size={14} />
-                  {getText('Kle API', 'Clé API', 'API Key')}
+                  {getText('Kle Plisio', 'Clé Plisio', 'Plisio Key')}
                 </Label>
                 <Input
                   type="password"
@@ -722,11 +517,18 @@ export default function AdminSettings() {
                   onChange={(e) => setSettings({...settings, plisio_api_key: e.target.value})}
                   className="mt-1 font-mono text-sm"
                 />
+                <p className="text-xs text-stone-500 mt-1">
+                  {getText(
+                    'Plisio souvan mande yon sèl kle. Mete li la.',
+                    'Plisio demande souvent une seule clé. Mettez-la ici.',
+                    'Plisio often uses a single key. Put it here.'
+                  )}
+                </p>
               </div>
               <div>
                 <Label className="flex items-center gap-2">
                   <Shield size={14} />
-                  {getText('Sekrè', 'Secret', 'Secret')}
+                  {getText('Sekrè (opsyonèl)', 'Secret (optionnel)', 'Secret (optional)')}
                 </Label>
                 <Input
                   type="password"
@@ -743,17 +545,6 @@ export default function AdminSettings() {
           </CardContent>
         )}
       </Card>
-
-      {/* Info about Payment Methods */}
-      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4">
-        <p className="text-sm text-blue-800 dark:text-blue-300">
-          <strong>💡 {getText('Konsèy', 'Conseil', 'Tip')}:</strong> {getText(
-            'Pou plis metòd peman avanse (ak opsyon depo/retrè), ale nan "Mwayen Peman" nan meni a.',
-            'Pour plus de méthodes de paiement avancées (avec options dépôt/retrait), allez dans "Moyens de paiement" dans le menu.',
-            'For more advanced payment methods (with deposit/withdrawal options), go to "Payment Methods" in the menu.'
-          )}
-        </p>
-      </div>
     </div>
   );
 
