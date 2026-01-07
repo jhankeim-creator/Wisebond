@@ -1102,7 +1102,6 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
         frontend_url = os.environ.get("FRONTEND_URL", "https://wisebond.vercel.app").rstrip("/")
 
         payload = {
-            "api_key": plisio_key,
             "currency": plisio_currency,
             "source_currency": currency,
             "source_amount": float(request.amount),
@@ -1119,14 +1118,16 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
             t = (text or "").strip()
             return t[:800] + ("..." if len(t) > 800 else "")
 
-        async def _create_invoice(extra: Optional[Dict[str, Any]] = None):
-            data = dict(payload)
-            if extra:
-                data.update(extra)
+        async def _create_invoice(extra_params: Optional[Dict[str, Any]] = None):
+            # Plisio expects api_key/api_secret as query params (not form fields).
+            params = {"api_key": plisio_key}
+            if extra_params:
+                params.update(extra_params)
             async with httpx.AsyncClient() as client_http:
                 return await client_http.post(
                     "https://plisio.net/api/v1/invoices/new",
-                    data=data,
+                    params=params,
+                    data=payload,
                     timeout=30.0,
                 )
 
@@ -1145,7 +1146,11 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
                     detail=f"Failed to create Plisio invoice: {resp.status_code} - {body_snippet or 'No response body'}",
                 )
 
-            result = resp.json()
+            # Prefer JSON; if Plisio returned HTML, raise a readable error.
+            try:
+                result = resp.json()
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"Failed to create Plisio invoice: invalid response - {_safe_err(resp.text)}")
             if result.get("status") != "success" or not result.get("data"):
                 logger.error(f"Plisio API error: {result}")
                 raise HTTPException(status_code=400, detail=f"Plisio error: {result.get('message', 'Unknown error')}")
