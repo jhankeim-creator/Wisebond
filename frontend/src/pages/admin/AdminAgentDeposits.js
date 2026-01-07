@@ -172,7 +172,49 @@ export default function AdminAgentDeposits() {
             <CardTitle>{getText('Depo Ajan', 'Dépôts Agent', 'Agent Deposits')} ({deposits.length})</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
+            {/* Mobile cards */}
+            <div className="space-y-3 md:hidden">
+              {loading ? (
+                <div className="text-center py-8">{getText('Chajman...', 'Chargement...', 'Loading...')}</div>
+              ) : deposits.length === 0 ? (
+                <div className="text-center py-8 text-stone-500">{getText('Pa gen depo', 'Aucun dépôt', 'No deposits')}</div>
+              ) : (
+                deposits.map((deposit) => (
+                  <div key={deposit.deposit_id} className="border rounded-xl p-4 bg-white dark:bg-stone-800">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-stone-900 dark:text-white truncate">{deposit.agent_name}</p>
+                        <p className="text-xs text-stone-500 font-mono">{deposit.agent_client_id}</p>
+                        <p className="mt-2 font-semibold text-emerald-600">${deposit.amount_usd?.toLocaleString()}</p>
+                        <p className="text-sm text-stone-700 dark:text-stone-300">
+                          {getText('Kliyan', 'Client', 'Client')}: <span className="font-medium">{deposit.client_name}</span>
+                        </p>
+                        <p className="text-xs text-stone-500 font-mono">{deposit.client_id}</p>
+                        <p className="text-xs text-stone-400 mt-2">{new Date(deposit.created_at).toLocaleString()}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        <Badge className={
+                          deposit.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                          deposit.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                          'bg-red-100 text-red-700'
+                        }>
+                          {deposit.status === 'approved' ? getText('Apwouve', 'Approuvé', 'Approved') :
+                           deposit.status === 'pending' ? getText('An Atant', 'En Attente', 'Pending') :
+                           getText('Rejte', 'Rejeté', 'Rejected')}
+                        </Badge>
+                        <Button size="sm" variant="outline" onClick={() => viewDeposit(deposit.deposit_id)}>
+                          <Eye size={16} className="mr-2" />
+                          {getText('Wè', 'Voir', 'View')}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Desktop table */}
+            <div className="overflow-x-auto hidden md:block">
               <table className="data-table">
                 <thead>
                   <tr>
@@ -246,7 +288,7 @@ export default function AdminAgentDeposits() {
 
         {/* Review Modal */}
         <Dialog open={showModal} onOpenChange={setShowModal}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{getText('Detay Depo Ajan', 'Détails du Dépôt Agent', 'Agent Deposit Details')}</DialogTitle>
             </DialogHeader>
@@ -257,7 +299,7 @@ export default function AdminAgentDeposits() {
                   <h4 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">
                     {getText('Enfòmasyon Ajan', 'Informations Agent', 'Agent Information')}
                   </h4>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-blue-600 dark:text-blue-400">{getText('Non', 'Nom', 'Name')}</p>
                       <p className="font-semibold">{selectedDeposit.agent_name}</p>
@@ -268,11 +310,11 @@ export default function AdminAgentDeposits() {
                     </div>
                     <div>
                       <p className="text-sm text-blue-600 dark:text-blue-400">{getText('Telefòn', 'Téléphone', 'Phone')}</p>
-                      <p>{selectedDeposit.agent_phone}</p>
+                      <p className="break-all">{selectedDeposit.agent_phone}</p>
                     </div>
                     <div>
                       <p className="text-sm text-blue-600 dark:text-blue-400">WhatsApp</p>
-                      <p>{selectedDeposit.agent_whatsapp || selectedDeposit.agent_phone}</p>
+                      <p className="break-all">{selectedDeposit.agent_whatsapp || selectedDeposit.agent_phone}</p>
                     </div>
                   </div>
                 </div>
@@ -282,7 +324,7 @@ export default function AdminAgentDeposits() {
                   <h4 className="font-semibold text-emerald-800 dark:text-emerald-300 mb-2">
                     {getText('Enfòmasyon Kliyan', 'Informations Client', 'Client Information')}
                   </h4>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <p className="text-sm text-emerald-600 dark:text-emerald-400">{getText('Non', 'Nom', 'Name')}</p>
                       <p className="font-semibold">{selectedDeposit.client_name}</p>
@@ -293,13 +335,13 @@ export default function AdminAgentDeposits() {
                     </div>
                     <div>
                       <p className="text-sm text-emerald-600 dark:text-emerald-400">{getText('Telefòn', 'Téléphone', 'Phone')}</p>
-                      <p>{selectedDeposit.client_phone}</p>
+                      <p className="break-all">{selectedDeposit.client_phone}</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Transaction Details */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
                     <p className="text-sm text-stone-500 dark:text-stone-400">{getText('Montan USD', 'Montant USD', 'USD Amount')}</p>
                     <p className="text-2xl font-bold text-emerald-600">${selectedDeposit.amount_usd?.toLocaleString()}</p>
@@ -323,7 +365,7 @@ export default function AdminAgentDeposits() {
                   <p className="text-sm text-amber-700 dark:text-amber-300 mb-2">
                     {getText('Verifikasyon HTG', 'Vérification HTG', 'HTG Verification')}
                   </p>
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                     <div>
                       <p className="text-xs text-amber-600">{getText('HTG Espere', 'HTG Attendu', 'Expected HTG')}</p>
                       <p className="font-bold">G {selectedDeposit.expected_htg?.toLocaleString()}</p>
@@ -361,7 +403,7 @@ export default function AdminAgentDeposits() {
 
                 {/* Actions */}
                 {selectedDeposit.status === 'pending' && (
-                  <div className="flex gap-4 pt-4 border-t">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4 border-t">
                     <Button 
                       onClick={() => handleProcess('approve')}
                       disabled={processing}
