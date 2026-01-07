@@ -2252,7 +2252,9 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
                 fee = fee_config["fee"]
             break
     
-    total_deduction = request.amount  # Deduct full amount, fee is taken from net amount to card
+    # Fee is added on top: client receives `amount` on card, wallet is charged (amount + fee)
+    fee = round(float(fee or 0), 2)
+    total_deduction = round(float(request.amount) + float(fee), 2)
     
     if current_user.get("wallet_usd", 0) < total_deduction:
         raise HTTPException(status_code=400, detail="Insufficient USD balance")
@@ -2276,7 +2278,8 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
         "card_last4": card_order.get("card_last4"),
         "amount": request.amount,
         "fee": fee,
-        "net_amount": request.amount - fee,
+        "net_amount": request.amount,
+        "total_amount": total_deduction,
         "status": "pending",  # pending, approved, rejected
         "admin_notes": None,
         "delivery_info": None,  # Admin can add delivery confirmation
@@ -2292,15 +2295,15 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
         "transaction_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
         "type": "card_topup",
-        "amount": -request.amount,
+        "amount": -total_deduction,
         "currency": "USD",
         "status": "pending",
-        "description": f"Card top-up to {card_order.get('card_email')} (pending)",
+        "description": f"Card top-up to {card_order.get('card_email')} (pending) - amount ${float(request.amount):.2f} fee ${float(fee):.2f}",
         "reference_id": deposit["deposit_id"],
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     
-    await log_action(current_user["user_id"], "card_topup", {"deposit_id": deposit["deposit_id"], "amount": request.amount})
+    await log_action(current_user["user_id"], "card_topup", {"deposit_id": deposit["deposit_id"], "amount": request.amount, "fee": fee, "total": total_deduction})
     
     if "_id" in deposit:
         del deposit["_id"]
@@ -4766,10 +4769,11 @@ async def admin_process_card_topup(
     )
     
     if payload.action == "reject":
-        # Refund the amount to user's USD balance
+        # Refund the total charged amount (amount + fee) to user's USD balance
+        refund_amount = float(deposit.get("total_amount", deposit.get("amount", 0)) or 0)
         await db.users.update_one(
             {"user_id": deposit["user_id"]},
-            {"$inc": {"wallet_usd": deposit["amount"]}}
+            {"$inc": {"wallet_usd": refund_amount}}
         )
         
         # Create refund transaction
@@ -4777,7 +4781,7 @@ async def admin_process_card_topup(
             "transaction_id": str(uuid.uuid4()),
             "user_id": deposit["user_id"],
             "type": "card_topup_refund",
-            "amount": deposit["amount"],
+            "amount": refund_amount,
             "currency": "USD",
             "status": "completed",
             "description": f"Card top-up refund (rejected)",
