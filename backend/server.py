@@ -2380,8 +2380,7 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
     
     if not card_order:
         raise HTTPException(status_code=404, detail="Card not found or not approved")
-    if str(card_order.get("card_status") or "active") == "locked":
-        raise HTTPException(status_code=400, detail="Card is locked")
+    # Allow top-ups even if the card is locked/frozen, so users can fix insufficient funds.
     
     if request.amount < 5:
         raise HTTPException(status_code=400, detail="Minimum amount is $5")
@@ -2621,8 +2620,7 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
         raise HTTPException(status_code=400, detail="Card withdrawals are not enabled")
     if card_order.get("provider") != "strowallet" or not card_order.get("provider_card_id"):
         raise HTTPException(status_code=400, detail="This card is not eligible for automated withdrawals")
-    if str(card_order.get("card_status") or "active") == "locked":
-        raise HTTPException(status_code=400, detail="Card is locked")
+    # Allow withdrawals even if the card is locked/frozen.
 
     withdrawal_id = str(uuid.uuid4())
     cfg = _strowallet_config(settings)
@@ -2728,22 +2726,35 @@ async def strowallet_webhook(request: Request):
     updated = await db.virtual_card_orders.find_one({"order_id": order["order_id"]}, {"_id": 0})
     failed_count = int((updated or {}).get("failed_payment_count", 0) or 0)
 
-    if failed_count >= 3:
-        # Lock and attempt provider freeze if configured.
-        lock_update = {
-            "card_status": "locked",
-            "locked_reason": "Auto-locked after 3 failed payments",
-            "locked_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await db.virtual_card_orders.update_one({"order_id": order["order_id"]}, {"$set": lock_update})
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    cfg = _strowallet_config(settings)
 
-        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-        cfg = _strowallet_config(settings)
+    # Auto-freeze on FIRST failed payment to prevent the card being blocked by multiple failures.
+    if failed_count == 1:
+        await db.virtual_card_orders.update_one(
+            {"order_id": order["order_id"]},
+            {"$set": {
+                "card_status": "locked",
+                "locked_reason": "Auto-frozen after first failed payment (to prevent 3-fail block)",
+                "locked_at": datetime.now(timezone.utc).isoformat(),
+            }}
+        )
         try:
             if _strowallet_enabled(settings) and cfg.get("freeze_path"):
-                await _strowallet_post(settings, cfg["freeze_path"], {"card_id": card_id, "reference": f"autolock-{order['order_id']}"})
+                await _strowallet_post(settings, cfg["freeze_path"], {"card_id": card_id, "reference": f"autofreeze-1-{order['order_id']}"})
         except Exception as e:
-            logger.warning(f"Failed to freeze Strowallet card {card_id} after 3 failed payments: {e}")
+            logger.warning(f"Failed to freeze Strowallet card {card_id} after first failed payment: {e}")
+
+    if failed_count >= 3:
+        # Hard lock (support-only unlock).
+        await db.virtual_card_orders.update_one(
+            {"order_id": order["order_id"]},
+            {"$set": {
+                "card_status": "locked",
+                "locked_reason": "Auto-locked after 3 failed payments",
+                "locked_at": datetime.now(timezone.utc).isoformat(),
+            }}
+        )
 
     await log_action(order.get("user_id") or "system", "strowallet_failed_payment", {"order_id": order["order_id"], "card_id": card_id, "failed_count": failed_count})
     return {"ok": True, "failed_count": failed_count}
