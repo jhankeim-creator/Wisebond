@@ -68,7 +68,7 @@ export default function AdminSettings() {
     strowallet_create_card_path: '',
     strowallet_fund_card_path: '',
     strowallet_withdraw_card_path: '',
-    strowallet_brand_name: '',
+    strowallet_brand_name: 'KAYICOM',
     
     // Fees & Affiliate
     card_order_fee_htg: 500,
