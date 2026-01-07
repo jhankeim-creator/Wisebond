@@ -96,6 +96,7 @@ def _strowallet_enabled(settings: Optional[dict]) -> bool:
 def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
     base_url = ((settings or {}).get("strowallet_base_url") or os.environ.get("STROWALLET_BASE_URL") or "").strip()
     api_key = ((settings or {}).get("strowallet_api_key") or os.environ.get("STROWALLET_API_KEY") or "").strip()
+    brand_name = ((settings or {}).get("strowallet_brand_name") or os.environ.get("STROWALLET_BRAND_NAME") or "").strip()
 
     # Endpoint paths can vary by Strowallet plan; allow overrides.
     create_path = ((settings or {}).get("strowallet_create_card_path") or os.environ.get("STROWALLET_CREATE_CARD_PATH") or "/api/virtualcards/create-card").strip()
@@ -113,6 +114,7 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
         "create_path": create_path,
         "fund_path": fund_path,
         "withdraw_path": withdraw_path,
+        "brand_name": brand_name,
     }
 
 def _extract_first(d: Any, *paths: str) -> Optional[Any]:
@@ -368,6 +370,8 @@ class AdminSettingsUpdate(BaseModel):
     strowallet_create_card_path: Optional[str] = None
     strowallet_fund_card_path: Optional[str] = None
     strowallet_withdraw_card_path: Optional[str] = None
+    # White-label branding for automated cards (displayed in UI as card_brand)
+    strowallet_brand_name: Optional[str] = None
 
     # Fees & Affiliate (optional, UI-configurable)
     card_order_fee_htg: Optional[int] = None
@@ -2758,10 +2762,13 @@ async def admin_process_card_order(
             update_doc["provider_card_id"] = provider_card_id
             update_doc["provider_raw"] = stw_resp
 
-            if card_brand:
+            # White-label: prefer configured brand name for UI display.
+            if cfg.get("brand_name"):
+                update_doc["card_brand"] = cfg["brand_name"]
+            elif card_brand:
                 update_doc["card_brand"] = str(card_brand)
             else:
-                update_doc["card_brand"] = "Strowallet"
+                update_doc["card_brand"] = "Virtual Card"
 
             if card_type:
                 update_doc["card_type"] = str(card_type).lower()
@@ -4809,6 +4816,7 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
             "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", ""),
             "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", ""),
             "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", ""),
+            "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", ""),
             "telegram_enabled": False,
             "telegram_bot_token": "",
             "telegram_chat_id": "",
