@@ -350,6 +350,15 @@ class AgentRechargeRequest(BaseModel):
     amount_usd: float
     reason: str
 
+class AgentPayoutProfileUpdate(BaseModel):
+    payment_method_id: str
+    field_values: Dict[str, Any] = Field(default_factory=dict)
+
+class AgentCommissionWithdrawalCreate(BaseModel):
+    amount: float
+    payment_method_id: str
+    field_values: Dict[str, Any] = Field(default_factory=dict)
+
 class ClientReportRequest(BaseModel):
     client_phone_or_id: str
     reason: str
@@ -3375,36 +3384,219 @@ async def admin_update_user_info(
 # Agent: Withdraw commission
 @api_router.post("/agent/withdraw-commission")
 async def agent_withdraw_commission(current_user: dict = Depends(get_agent_user)):
-    """Withdraw agent commission to main USD wallet"""
-    agent_balance = current_user.get("agent_wallet_usd", 0)
-    
-    if agent_balance <= 0:
-        raise HTTPException(status_code=400, detail="No commission available to withdraw")
-    
-    # Transfer to main wallet
+    """
+    Deprecated: previously transferred commission to main wallet.
+    Now commissions must be withdrawn from the Agent space via payout methods.
+    """
+    raise HTTPException(status_code=400, detail="Use commission payout in Agent space")
+
+
+@api_router.get("/agent/payout-profile")
+async def agent_get_payout_profile(current_user: dict = Depends(get_agent_user)):
+    profile = current_user.get("agent_payout_profile") or {}
+    return {
+        "full_name": current_user.get("full_name"),
+        "payment_method_id": profile.get("payment_method_id"),
+        "field_values": profile.get("field_values") or {},
+    }
+
+
+@api_router.put("/agent/payout-profile")
+async def agent_update_payout_profile(payload: AgentPayoutProfileUpdate, current_user: dict = Depends(get_agent_user)):
+    method = await db.payment_gateway_methods.find_one(
+        {"payment_method_id": payload.payment_method_id, "payment_type": "withdrawal", "status": "active"},
+        {"_id": 0},
+    )
+    if not method:
+        raise HTTPException(status_code=400, detail="Selected withdrawal method is not available")
+    if "USD" not in (method.get("supported_currencies") or []):
+        raise HTTPException(status_code=400, detail="Selected withdrawal method does not support USD")
+
+    submitted = payload.field_values or {}
+    for f in method.get("custom_fields", []):
+        key = f.get("key")
+        if not key:
+            continue
+        if f.get("required"):
+            if key not in submitted:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {f.get('label') or key}")
+            if f.get("type") == "checkbox" and submitted.get(key) is not True:
+                raise HTTPException(status_code=400, detail=f"Field must be checked: {f.get('label') or key}")
+            if f.get("type") == "file" and not str(submitted.get(key) or "").startswith("data:"):
+                raise HTTPException(status_code=400, detail=f"Missing required file: {f.get('label') or key}")
+
     await db.users.update_one(
         {"user_id": current_user["user_id"]},
-        {
-            "$inc": {"wallet_usd": agent_balance},
-            "$set": {"agent_wallet_usd": 0}
-        }
+        {"$set": {"agent_payout_profile": {"payment_method_id": payload.payment_method_id, "field_values": submitted}}},
     )
-    
-    # Create transaction
+    await log_action(current_user["user_id"], "agent_payout_profile_update", {"payment_method_id": payload.payment_method_id})
+    return {"message": "Payout profile saved"}
+
+
+@api_router.get("/agent/commission-withdrawals")
+async def agent_get_commission_withdrawals(current_user: dict = Depends(get_agent_user)):
+    items = await db.agent_commission_withdrawals.find(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0},
+    ).sort("created_at", -1).to_list(100)
+    return {"withdrawals": items}
+
+
+@api_router.post("/agent/commission-withdrawals")
+async def agent_create_commission_withdrawal(payload: AgentCommissionWithdrawalCreate, current_user: dict = Depends(get_agent_user)):
+    amount = float(payload.amount or 0)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Invalid amount")
+
+    agent_balance = float(current_user.get("agent_wallet_usd", 0) or 0)
+    if amount > agent_balance:
+        raise HTTPException(status_code=400, detail="Insufficient agent commission balance")
+
+    method = await db.payment_gateway_methods.find_one(
+        {"payment_method_id": payload.payment_method_id, "payment_type": "withdrawal", "status": "active"},
+        {"_id": 0},
+    )
+    if not method:
+        raise HTTPException(status_code=400, detail="Selected withdrawal method is not available")
+    if "USD" not in (method.get("supported_currencies") or []):
+        raise HTTPException(status_code=400, detail="Selected withdrawal method does not support USD")
+
+    submitted = payload.field_values or {}
+    for f in method.get("custom_fields", []):
+        key = f.get("key")
+        if not key:
+            continue
+        if f.get("required"):
+            if key not in submitted:
+                raise HTTPException(status_code=400, detail=f"Missing required field: {f.get('label') or key}")
+            if f.get("type") == "checkbox" and submitted.get(key) is not True:
+                raise HTTPException(status_code=400, detail=f"Field must be checked: {f.get('label') or key}")
+            if f.get("type") == "file" and not str(submitted.get(key) or "").startswith("data:"):
+                raise HTTPException(status_code=400, detail=f"Missing required file: {f.get('label') or key}")
+
+    fee_type = method.get("fee_type", "fixed")
+    fee_value = float(method.get("fee_value") or 0)
+    fee = (amount * (fee_value / 100.0)) if fee_type == "percentage" else fee_value
+    fee = max(0.0, float(fee))
+    if fee >= amount:
+        raise HTTPException(status_code=400, detail="Fee is greater than or equal to amount")
+    net_amount = max(0.0, float(amount - fee))
+
+    withdrawal_id = str(uuid.uuid4())
+    doc = {
+        "withdrawal_id": withdrawal_id,
+        "user_id": current_user["user_id"],
+        "client_id": current_user["client_id"],
+        "full_name": current_user.get("full_name"),
+        "currency": "USD",
+        "amount": amount,
+        "fee": fee,
+        "net_amount": net_amount,
+        "payment_method_id": payload.payment_method_id,
+        "payment_method_name": method.get("payment_method_name"),
+        "payment_method_snapshot": {
+            "payment_method_id": method.get("payment_method_id"),
+            "payment_method_name": method.get("payment_method_name"),
+            "payment_type": "withdrawal",
+            "fee_type": fee_type,
+            "fee_value": fee_value,
+            "supported_currencies": method.get("supported_currencies", []),
+        },
+        "field_values": submitted,
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": None,
+        "processed_by": None,
+        "admin_notes": None,
+    }
+
+    # Lock funds by deducting from agent wallet immediately
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {"$inc": {"agent_wallet_usd": -amount}},
+    )
+    await db.agent_commission_withdrawals.insert_one(doc)
+
     await db.transactions.insert_one({
         "transaction_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
-        "type": "agent_commission_withdrawal",
-        "amount": agent_balance,
+        "type": "agent_commission_payout_request",
+        "amount": -amount,
         "currency": "USD",
-        "status": "completed",
-        "description": "Agent commission withdrawal to main wallet",
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "status": "pending",
+        "description": f"Agent commission payout request via {method.get('payment_method_name')}",
+        "reference_id": withdrawal_id,
+        "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    
-    await log_action(current_user["user_id"], "agent_commission_withdrawal", {"amount": agent_balance})
-    
-    return {"message": "Commission transferred to wallet", "amount": agent_balance}
+
+    await log_action(current_user["user_id"], "agent_commission_payout_request", {"withdrawal_id": withdrawal_id, "amount": amount})
+    return {"withdrawal": doc}
+
+
+@api_router.get("/admin/agent-commission-withdrawals")
+async def admin_get_agent_commission_withdrawals(
+    status: Optional[str] = None,
+    limit: int = Query(default=50, le=200),
+    admin: dict = Depends(get_admin_user),
+):
+    query: Dict[str, Any] = {}
+    if status:
+        query["status"] = status
+    items = await db.agent_commission_withdrawals.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"withdrawals": items}
+
+
+@api_router.patch("/admin/agent-commission-withdrawals/{withdrawal_id}")
+async def admin_process_agent_commission_withdrawal(
+    withdrawal_id: str,
+    action: str,
+    admin_notes: Optional[str] = None,
+    admin: dict = Depends(get_admin_user),
+):
+    w = await db.agent_commission_withdrawals.find_one({"withdrawal_id": withdrawal_id}, {"_id": 0})
+    if not w:
+        raise HTTPException(status_code=404, detail="Withdrawal not found")
+    if w.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Already processed")
+    if action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    new_status = "approved" if action == "approve" else "rejected"
+    await db.agent_commission_withdrawals.update_one(
+        {"withdrawal_id": withdrawal_id},
+        {"$set": {
+            "status": new_status,
+            "admin_notes": admin_notes,
+            "processed_at": datetime.now(timezone.utc).isoformat(),
+            "processed_by": admin["user_id"],
+        }},
+    )
+
+    await db.transactions.update_one(
+        {"reference_id": withdrawal_id, "type": "agent_commission_payout_request"},
+        {"$set": {"status": new_status}},
+    )
+
+    if action == "reject":
+        # Refund locked amount back to agent wallet
+        await db.users.update_one(
+            {"user_id": w["user_id"]},
+            {"$inc": {"agent_wallet_usd": float(w.get("amount") or 0)}},
+        )
+        await db.transactions.insert_one({
+            "transaction_id": str(uuid.uuid4()),
+            "user_id": w["user_id"],
+            "type": "agent_commission_payout_refund",
+            "amount": float(w.get("amount") or 0),
+            "currency": "USD",
+            "status": "completed",
+            "description": "Agent commission payout request refund (rejected)",
+            "reference_id": withdrawal_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+    await log_action(admin["user_id"], "agent_commission_payout_process", {"withdrawal_id": withdrawal_id, "action": action})
+    return {"message": f"Commission withdrawal {action}d"}
 
 # ==================== EXCHANGE RATES ====================
 

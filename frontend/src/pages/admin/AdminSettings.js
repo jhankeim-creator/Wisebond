@@ -138,6 +138,20 @@ export default function AdminSettings() {
         ...payload
       } = settings;
 
+      // Validate announcement: must have at least one language text if enabled
+      if (
+        settings.announcement_enabled &&
+        !(settings.announcement_text_ht || settings.announcement_text_fr || settings.announcement_text_en)
+      ) {
+        toast.error(getText(
+          'Mete omwen 1 tèks pou anons la (HT/FR/EN) avan ou sove.',
+          'Ajoutez au moins 1 texte (HT/FR/EN) avant d’enregistrer.',
+          'Add at least 1 announcement text (HT/FR/EN) before saving.'
+        ));
+        setSaving(false);
+        return;
+      }
+
       // Only send supported settings keys (avoid sending legacy payment keys)
       const allowedKeys = new Set([
         'resend_enabled', 'resend_api_key', 'sender_email',
@@ -273,6 +287,27 @@ export default function AdminSettings() {
             <div>
               <Label>{getText('Lyen (opsyonèl)', 'Lien (optionnel)', 'Link (optional)')}</Label>
               <Input value={settings.announcement_link || ''} onChange={(e) => setSettings({ ...settings, announcement_link: e.target.value })} className="mt-1" placeholder="https://..." />
+            </div>
+
+            {/* Preview */}
+            <div className="pt-2">
+              <p className="text-xs text-stone-500 mb-2">{getText('Preview', 'Aperçu', 'Preview')}</p>
+              <div className="flex items-start gap-3 rounded-2xl border border-black/10 dark:border-white/10 bg-gradient-to-r from-[#EA580C] to-amber-500 text-white shadow-lg p-4">
+                <div className="mt-0.5">
+                  <Bell size={18} className="text-white/90" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm leading-relaxed break-words">
+                    {(settings.announcement_text_ht || settings.announcement_text_fr || settings.announcement_text_en || '').trim() ||
+                      getText('Mete tèks anons la...', 'Ajoutez le texte...', 'Add announcement text...')}
+                  </p>
+                  {settings.announcement_link && (
+                    <p className="mt-2 text-xs text-white/90 break-all">
+                      {settings.announcement_link}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </CardContent>
         )}

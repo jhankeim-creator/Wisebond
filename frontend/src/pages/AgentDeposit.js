@@ -29,6 +29,7 @@ import {
   Camera
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import QRScanner from '@/components/QRScanner';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
@@ -63,6 +64,17 @@ export default function AgentDeposit() {
   const [reportDetails, setReportDetails] = useState('');
   const [reports, setReports] = useState([]);
 
+  // Commission payout (agent withdrawal)
+  const [withdrawalMethods, setWithdrawalMethods] = useState([]);
+  const [payoutProfile, setPayoutProfile] = useState(null);
+  const [payoutMethodId, setPayoutMethodId] = useState('');
+  const [payoutFieldValues, setPayoutFieldValues] = useState({});
+  const [payoutAmount, setPayoutAmount] = useState('');
+  const [savingPayoutProfile, setSavingPayoutProfile] = useState(false);
+  const [submittingPayout, setSubmittingPayout] = useState(false);
+  const [commissionWithdrawals, setCommissionWithdrawals] = useState([]);
+  const [showPayoutModal, setShowPayoutModal] = useState(false);
+
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
     if (language === 'fr') return fr;
@@ -80,6 +92,9 @@ export default function AgentDeposit() {
       fetchDashboard();
       fetchDeposits();
       fetchReports();
+      fetchCommissionWithdrawals();
+      fetchPayoutProfile();
+      fetchWithdrawalMethods();
     }
   }, [isAgent]);
 
@@ -347,26 +362,89 @@ export default function AgentDeposit() {
     }
   };
 
-  const withdrawCommission = async () => {
-    if (!dashboard || dashboard.agent_wallet_usd <= 0) {
-      toast.error(getText('Pa gen komisyon pou retire', 'Pas de commission à retirer', 'No commission to withdraw'));
+  const fetchWithdrawalMethods = async () => {
+    try {
+      const res = await axios.get(`${API}/public/payment-gateway/methods?payment_type=withdrawal&currency=USD`);
+      setWithdrawalMethods(res.data?.methods || []);
+    } catch (e) {
+      setWithdrawalMethods([]);
+    }
+  };
+
+  const fetchPayoutProfile = async () => {
+    try {
+      const res = await axios.get(`${API}/agent/payout-profile`);
+      setPayoutProfile(res.data);
+      if (res.data?.payment_method_id) {
+        setPayoutMethodId(res.data.payment_method_id);
+        setPayoutFieldValues(res.data.field_values || {});
+      }
+    } catch (e) {
+      setPayoutProfile(null);
+    }
+  };
+
+  const fetchCommissionWithdrawals = async () => {
+    try {
+      const res = await axios.get(`${API}/agent/commission-withdrawals`);
+      setCommissionWithdrawals(res.data?.withdrawals || []);
+    } catch (e) {
+      setCommissionWithdrawals([]);
+    }
+  };
+
+  const selectedWithdrawalMethod = withdrawalMethods.find(m => m.payment_method_id === payoutMethodId);
+
+  const savePayoutProfile = async () => {
+    if (!payoutMethodId) {
+      toast.error(getText('Chwazi metòd retrè a', 'Choisissez la méthode', 'Choose a withdrawal method'));
       return;
     }
-    
-    setLoading(true);
+    setSavingPayoutProfile(true);
     try {
-      await axios.post(`${API}/agent/withdraw-commission`);
-      toast.success(getText(
-        'Komisyon transfere nan bous ou!',
-        'Commission transférée dans votre portefeuille!',
-        'Commission transferred to your wallet!'
-      ));
-      await refreshUser();
-      await fetchDashboard();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+      await axios.put(`${API}/agent/payout-profile`, {
+        payment_method_id: payoutMethodId,
+        field_values: payoutFieldValues || {}
+      });
+      toast.success(getText('Enfòmasyon retrè sove!', 'Infos de retrait enregistrées!', 'Payout info saved!'));
+      fetchPayoutProfile();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
     } finally {
-      setLoading(false);
+      setSavingPayoutProfile(false);
+    }
+  };
+
+  const submitCommissionWithdrawal = async () => {
+    const amt = parseFloat(payoutAmount);
+    if (!amt || amt <= 0) {
+      toast.error(getText('Antre montan an', 'Entrez le montant', 'Enter amount'));
+      return;
+    }
+    if (!dashboard || amt > (dashboard.agent_wallet_usd || 0)) {
+      toast.error(getText('Balans komisyon ensifizan', 'Solde insuffisant', 'Insufficient balance'));
+      return;
+    }
+    if (!payoutMethodId) {
+      toast.error(getText('Chwazi metòd retrè a', 'Choisissez la méthode', 'Choose a withdrawal method'));
+      return;
+    }
+    setSubmittingPayout(true);
+    try {
+      await axios.post(`${API}/agent/commission-withdrawals`, {
+        amount: amt,
+        payment_method_id: payoutMethodId,
+        field_values: payoutFieldValues || {}
+      });
+      toast.success(getText('Demann retrè soumèt!', 'Demande envoyée!', 'Withdrawal request submitted!'));
+      setShowPayoutModal(false);
+      setPayoutAmount('');
+      fetchDashboard();
+      fetchCommissionWithdrawals();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    } finally {
+      setSubmittingPayout(false);
     }
   };
 
@@ -565,8 +643,8 @@ export default function AgentDeposit() {
                   <Button 
                     size="sm" 
                     className="mt-2 bg-purple-600 hover:bg-purple-700 text-white text-xs"
-                    onClick={withdrawCommission}
-                    disabled={loading}
+                    onClick={() => setShowPayoutModal(true)}
+                    disabled={loading || submittingPayout}
                   >
                     {getText('Retire', 'Retirer', 'Withdraw')}
                   </Button>
@@ -575,6 +653,149 @@ export default function AgentDeposit() {
             </Card>
           </div>
         )}
+
+        {/* Commission payout settings + history */}
+        {isAgent && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wallet className="text-purple-600" size={20} />
+                {getText('Retrè Komisyon (Ajan)', 'Retrait Commission (Agent)', 'Commission Withdrawal (Agent)')}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
+                <p className="text-sm text-stone-500">{getText('Non konplè', 'Nom complet', 'Full name')}</p>
+                <p className="font-semibold text-stone-900 dark:text-white">{user?.full_name}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>{getText('Chwazi metòd pou resevwa komisyon', 'Choisir la méthode', 'Choose payout method')}</Label>
+                <Select value={payoutMethodId} onValueChange={(v) => { setPayoutMethodId(v); setPayoutFieldValues({}); }}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder={getText('Chwazi...', 'Choisir...', 'Choose...')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {withdrawalMethods.map((m) => (
+                      <SelectItem key={m.payment_method_id} value={m.payment_method_id}>
+                        {m.payment_method_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedWithdrawalMethod && (
+                <div className="space-y-3 border rounded-xl p-4">
+                  <p className="text-sm font-semibold">{getText('Enfòmasyon retrè', 'Infos de retrait', 'Payout details')}</p>
+                  {(selectedWithdrawalMethod.custom_fields || []).map((f) => (
+                    <div key={f.field_id} className="space-y-1">
+                      <Label>
+                        {f.label} {f.required ? '*' : ''}
+                      </Label>
+                      {f.type === 'textarea' ? (
+                        <Textarea
+                          value={payoutFieldValues?.[f.key] || ''}
+                          onChange={(e) => setPayoutFieldValues(prev => ({ ...(prev || {}), [f.key]: e.target.value }))}
+                          rows={2}
+                        />
+                      ) : f.type === 'select' ? (
+                        <Select
+                          value={payoutFieldValues?.[f.key] || ''}
+                          onValueChange={(v) => setPayoutFieldValues(prev => ({ ...(prev || {}), [f.key]: v }))}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder={getText('Chwazi...', 'Choisir...', 'Choose...')} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(f.options || []).map((opt) => (
+                              <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          type={f.type === 'number' ? 'number' : f.type === 'email' ? 'email' : 'text'}
+                          value={payoutFieldValues?.[f.key] || ''}
+                          onChange={(e) => setPayoutFieldValues(prev => ({ ...(prev || {}), [f.key]: e.target.value }))}
+                          placeholder={f.placeholder || ''}
+                        />
+                      )}
+                      {f.help_text && <p className="text-xs text-stone-500">{f.help_text}</p>}
+                    </div>
+                  ))}
+                  <div className="flex gap-2 flex-wrap">
+                    <Button onClick={savePayoutProfile} disabled={savingPayoutProfile} className="bg-[#EA580C]">
+                      {savingPayoutProfile ? getText('Ap sove...', 'Sauvegarde...', 'Saving...') : getText('Sove enfòmasyon retrè', 'Enregistrer', 'Save payout info')}
+                    </Button>
+                    <Button variant="outline" onClick={() => setShowPayoutModal(true)}>
+                      {getText('Fè demann retrè', 'Demander retrait', 'Request withdrawal')}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* History */}
+              <div>
+                <p className="font-semibold mb-2">{getText('Istorik retrè', 'Historique retraits', 'Withdrawal history')}</p>
+                {commissionWithdrawals.length === 0 ? (
+                  <p className="text-sm text-stone-500">{getText('Pa gen retrè ankò', 'Aucun retrait', 'No withdrawals yet')}</p>
+                ) : (
+                  <div className="space-y-2">
+                    {commissionWithdrawals.slice(0, 10).map((w) => (
+                      <div key={w.withdrawal_id} className="border rounded-xl p-3 bg-white dark:bg-stone-800">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-semibold">${Number(w.amount || 0).toFixed(2)} USD</p>
+                            <p className="text-xs text-stone-500 break-all">{w.payment_method_name}</p>
+                            <p className="text-xs text-stone-400">{new Date(w.created_at).toLocaleString()}</p>
+                          </div>
+                          <Badge className={
+                            w.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                            w.status === 'pending' ? 'bg-amber-100 text-amber-700' :
+                            'bg-red-100 text-red-700'
+                          }>
+                            {w.status === 'approved' ? getText('Apwouve', 'Approuvé', 'Approved') :
+                             w.status === 'pending' ? getText('An atant', 'En attente', 'Pending') :
+                             getText('Rejte', 'Rejeté', 'Rejected')}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Payout request modal */}
+        <Dialog open={showPayoutModal} onOpenChange={setShowPayoutModal}>
+          <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{getText('Demann retrè komisyon', 'Demande de retrait', 'Commission withdrawal request')}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
+                <p className="text-sm text-stone-500">{getText('Balans komisyon', 'Solde', 'Balance')}</p>
+                <p className="text-xl font-bold text-purple-600">${Number(dashboard?.agent_wallet_usd || 0).toFixed(2)}</p>
+              </div>
+              <div>
+                <Label>{getText('Montan pou retire (USD)', 'Montant (USD)', 'Amount (USD)')}</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={payoutAmount}
+                  onChange={(e) => setPayoutAmount(e.target.value)}
+                  placeholder="0.00"
+                />
+              </div>
+              <Button onClick={submitCommissionWithdrawal} disabled={submittingPayout} className="btn-primary w-full">
+                {submittingPayout ? getText('Ap soumèt...', 'Soumission...', 'Submitting...') : getText('Soumèt demann', 'Soumettre', 'Submit request')}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Action Buttons */}
         <div className="flex gap-2 sm:gap-3 flex-wrap">
