@@ -69,9 +69,9 @@ export default function Withdraw() {
     return Number(selectedMethod.fee_value || 0);
   }, [amount, selectedMethod]);
 
-  const netAmount = useMemo(() => {
+  const totalAmount = useMemo(() => {
     const amt = parseFloat(amount || '0');
-    return Math.max(0, amt - (calcFee || 0));
+    return Math.max(0, amt + (calcFee || 0));
   }, [amount, calcFee]);
 
   const onFileUpload = (fieldKey, file) => {
@@ -105,7 +105,7 @@ export default function Withdraw() {
       return;
     }
 
-    if (amt > getBalance()) {
+    if (totalAmount > getBalance()) {
       toast.error(getText('Balans ensifizan', 'Solde insuffisant', 'Insufficient balance'));
       return;
     }
@@ -353,11 +353,18 @@ export default function Withdraw() {
               </div>
               <div className="flex justify-between text-stone-600 dark:text-stone-400">
                 <span>{getText('Frè', 'Frais', 'Fee')}</span>
-                <span className="text-red-500">-{currency === 'USD' ? '$' : 'G '}{Number(calcFee || 0).toFixed(2)}</span>
+                <span className="text-amber-700">{currency === 'USD' ? '$' : 'G '}{Number(calcFee || 0).toFixed(2)}</span>
               </div>
               <div className="border-t border-stone-200 dark:border-stone-700 pt-2 flex justify-between font-semibold text-stone-900 dark:text-white">
-                <span>{getText('Montan nèt', 'Montant net', 'Net amount')}</span>
-                <span className="text-emerald-600">{currency === 'USD' ? '$' : 'G '}{Number(netAmount || 0).toFixed(2)}</span>
+                <span>{getText('Total ap sòti nan bous ou', 'Total débité', 'Total deducted')}</span>
+                <span className="text-[#EA580C]">{currency === 'USD' ? '$' : 'G '}{Number(totalAmount || 0).toFixed(2)}</span>
+              </div>
+              <div className="text-xs text-stone-500 dark:text-stone-400">
+                {getText(
+                  'Nòt: frè a ajoute sou montan retrè a.',
+                  'Note: les frais sont ajoutés au montant du retrait.',
+                  'Note: fee is added on top of the withdrawal amount.'
+                )}
               </div>
             </div>
           ) : null}

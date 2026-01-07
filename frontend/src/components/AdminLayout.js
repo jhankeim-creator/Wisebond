@@ -157,7 +157,10 @@ export const AdminLayout = ({ children, title }) => {
       {/* Main Content */}
       <main className="lg:ml-64 min-h-screen">
         {/* Header with Logo */}
-        <header className="sticky top-0 z-20 bg-white/90 dark:bg-stone-800/90 backdrop-blur-xl border-b border-stone-200 dark:border-stone-700">
+        <header
+          className="sticky top-0 z-20 bg-white/90 dark:bg-stone-800/90 backdrop-blur-xl border-b border-stone-200 dark:border-stone-700"
+          style={{ top: 'var(--announcement-bar-h, 0px)' }}
+        >
           <div className="flex items-center justify-between px-4 lg:px-8 py-4">
             <div className="flex items-center gap-4">
               {/* Mobile Menu Button */}

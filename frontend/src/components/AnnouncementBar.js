@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { ExternalLink, Megaphone } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
@@ -7,6 +7,7 @@ import { API_BASE } from '@/lib/utils';
 export default function AnnouncementBar() {
   const { language } = useLanguage();
   const [cfg, setCfg] = useState(null);
+  const barRef = useRef(null);
 
   const localizedText = useMemo(() => {
     if (!cfg) return '';
@@ -39,12 +40,28 @@ export default function AnnouncementBar() {
     };
   }, []);
 
+  // Ensure the bar is always visible (fixed) and layouts offset correctly
+  useEffect(() => {
+    const applyHeight = () => {
+      const enabled = Boolean(cfg?.announcement_enabled) && Boolean(effectiveText);
+      const h = enabled ? (barRef.current?.getBoundingClientRect?.().height || 0) : 0;
+      document.documentElement.style.setProperty('--announcement-bar-h', `${Math.round(h)}px`);
+    };
+
+    applyHeight();
+    window.addEventListener('resize', applyHeight);
+    return () => {
+      window.removeEventListener('resize', applyHeight);
+      document.documentElement.style.setProperty('--announcement-bar-h', '0px');
+    };
+  }, [cfg?.announcement_enabled, effectiveText]);
+
   if (!cfg?.announcement_enabled) return null;
   if (!effectiveText) return null;
 
   return (
-    <div className="w-full">
-      <div className="w-full bg-gradient-to-r from-[#EA580C] to-amber-500 text-white">
+    <div ref={barRef} className="fixed top-0 inset-x-0 z-[60] w-full">
+      <div className="w-full bg-gradient-to-r from-[#EA580C] to-amber-500 text-white shadow-lg">
         <div className="mx-auto max-w-6xl px-4 py-3">
           <div className="flex items-start gap-3">
             <div className="mt-0.5 flex-shrink-0">

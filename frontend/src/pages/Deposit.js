@@ -62,9 +62,9 @@ export default function Deposit() {
     return Number(selectedMethod.fee_value || 0);
   }, [amount, selectedMethod]);
 
-  const netAmount = useMemo(() => {
+  const totalAmount = useMemo(() => {
     const amt = parseFloat(amount || '0');
-    return Math.max(0, amt - (calcFee || 0));
+    return Math.max(0, amt + (calcFee || 0));
   }, [amount, calcFee]);
 
   const onFileUpload = (fieldKey, file, accept) => {
@@ -341,11 +341,18 @@ export default function Deposit() {
               </div>
               <div className="flex justify-between text-stone-600">
                 <span>{getText('Frè', 'Frais', 'Fee')}</span>
-                <span className="text-red-500">-{currency === 'USD' ? '$' : 'G '}{Number(calcFee || 0).toFixed(2)}</span>
+                <span className="text-amber-700">{currency === 'USD' ? '$' : 'G '}{Number(calcFee || 0).toFixed(2)}</span>
               </div>
               <div className="border-t border-stone-200 pt-2 flex justify-between font-semibold text-stone-900">
-                <span>{getText('Nèt kredite', 'Net crédité', 'Net credited')}</span>
-                <span className="text-emerald-600">{currency === 'USD' ? '$' : 'G '}{Number(netAmount || 0).toFixed(2)}</span>
+                <span>{getText('Total pou peye', 'Total à payer', 'Total to pay')}</span>
+                <span className="text-[#EA580C]">{currency === 'USD' ? '$' : 'G '}{Number(totalAmount || 0).toFixed(2)}</span>
+              </div>
+              <div className="text-xs text-stone-500">
+                {getText(
+                  'Nòt: frè a ajoute sou montan an. Sa ou vle kredite a se montan ou antre a.',
+                  'Note: les frais sont ajoutés au montant. Le montant crédité est celui que vous avez saisi.',
+                  'Note: fee is added on top. The credited amount is the amount you entered.'
+                )}
               </div>
             </div>
           ) : null}

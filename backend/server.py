@@ -1119,7 +1119,9 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
     fee_value = float(method.get("fee_value") or 0)
     fee = (request.amount * (fee_value / 100.0)) if fee_type == "percentage" else fee_value
     fee = max(0.0, float(fee))
-    net_amount = max(0.0, float(request.amount - fee))
+    # Fee is added on top: user pays (amount + fee), credited amount is `amount`
+    net_amount = max(0.0, float(request.amount))
+    total_amount = max(0.0, float(request.amount + fee))
 
     deposit_id = str(uuid.uuid4())
     deposit = {
@@ -1141,6 +1143,7 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
         "amount": float(request.amount),
         "fee": fee,
         "net_amount": net_amount,
+        "total_amount": total_amount,
         "currency": currency,
         "field_values": submitted,
         "status": "pending",
@@ -1197,7 +1200,7 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
         payload = {
             "currency": plisio_currency,
             "source_currency": currency,
-            "source_amount": float(request.amount),
+            "source_amount": float(total_amount),
             "order_name": f"Deposit {deposit_id}",
             "order_number": deposit_id,
             "callback_url": f"{backend_url}/api/deposits/plisio-webhook",
@@ -1297,6 +1300,8 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
             <h2>New Deposit Request</h2>
             <p><strong>Client:</strong> {current_user.get('full_name', '')} ({current_user.get('client_id', '')})</p>
             <p><strong>Amount:</strong> {deposit['amount']} {deposit['currency']}</p>
+            <p><strong>Fee:</strong> {deposit.get('fee', 0)} {deposit['currency']}</p>
+            <p><strong>Total to pay:</strong> {deposit.get('total_amount', (deposit.get('amount', 0) or 0) + (deposit.get('fee', 0) or 0))} {deposit['currency']}</p>
             <p><strong>Method:</strong> {deposit.get('payment_method_name') or deposit.get('payment_method_id')}</p>
             <p><strong>Status:</strong> pending</p>
             <p>Deposit ID: <code>{deposit['deposit_id']}</code></p>
@@ -1305,6 +1310,8 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
                 f"💰 <b>New Deposit Request</b>\n"
                 f"Client: <b>{current_user.get('full_name','')}</b> ({current_user.get('client_id','')})\n"
                 f"Amount: <b>{deposit['amount']} {deposit['currency']}</b>\n"
+                f"Fee: <b>{deposit.get('fee', 0)} {deposit['currency']}</b>\n"
+                f"Total: <b>{deposit.get('total_amount', (deposit.get('amount', 0) or 0) + (deposit.get('fee', 0) or 0))} {deposit['currency']}</b>\n"
                 f"Method: <b>{deposit.get('payment_method_name') or deposit.get('payment_method_id')}</b>\n"
                 f"ID: <code>{deposit['deposit_id']}</code>"
             ),
@@ -1411,7 +1418,7 @@ async def _plisio_sync_deposit_by_id(deposit_id: str, processed_by: str) -> Opti
                 <h2>Deposit Approved</h2>
                 <p>Hello {user.get('full_name', 'User')},</p>
                 <p>Your deposit of <strong>{deposit.get('amount')} {deposit.get('currency')}</strong> has been approved.</p>
-                <p>Fee: <strong>{deposit.get('fee', 0)} {deposit.get('currency')}</strong> | Net credited: <strong>{deposit.get('net_amount', deposit.get('amount'))} {deposit.get('currency')}</strong></p>
+                <p>Fee: <strong>{deposit.get('fee', 0)} {deposit.get('currency')}</strong> | Total paid: <strong>{deposit.get('total_amount', (deposit.get('amount', 0) or 0) + (deposit.get('fee', 0) or 0))} {deposit.get('currency')}</strong></p>
                 <p>Transaction ID: <code>{deposit_id}</code></p>
                 <p>Thank you for using KAYICOM!</p>
                 """
@@ -1576,7 +1583,9 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
     fee_value = float(method.get("fee_value") or 0)
     fee = (request.amount * (fee_value / 100.0)) if fee_type == "percentage" else fee_value
     fee = max(0.0, float(fee))
-    net_amount = max(0.0, float(request.amount - fee))
+    # Fee is added on top: user receives `amount`, wallet is charged (amount + fee)
+    net_amount = max(0.0, float(request.amount))
+    total_amount = max(0.0, float(request.amount + fee))
 
     # Determine source and target currencies (cross-currency withdrawals supported)
     source_currency = (request.source_currency or request.currency).upper()
@@ -1588,13 +1597,13 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
         rates = {"htg_to_usd": 0.0075, "usd_to_htg": 133.0}
 
     if source_currency == target_currency:
-        amount_to_deduct = float(request.amount)
+        amount_to_deduct = float(total_amount)
         exchange_rate_used = 1
     elif source_currency == "USD" and target_currency == "HTG":
-        amount_to_deduct = float(request.amount) * float(rates["htg_to_usd"])
+        amount_to_deduct = float(total_amount) * float(rates["htg_to_usd"])
         exchange_rate_used = float(rates["htg_to_usd"])
     else:
-        amount_to_deduct = float(request.amount) * float(rates["usd_to_htg"])
+        amount_to_deduct = float(total_amount) * float(rates["usd_to_htg"])
         exchange_rate_used = float(rates["usd_to_htg"])
 
     source_key = f"wallet_{source_currency.lower()}"
@@ -1623,6 +1632,7 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
         "amount": float(request.amount),
         "fee": fee,
         "net_amount": net_amount,
+        "total_amount": total_amount,
         "currency": target_currency,
         "source_currency": source_currency,
         "amount_deducted": amount_to_deduct,
@@ -1647,6 +1657,7 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
             <p><strong>Client:</strong> {current_user.get('full_name', '')} ({current_user.get('client_id', '')})</p>
             <p><strong>Amount:</strong> {withdrawal['amount']} {withdrawal['currency']}</p>
             <p><strong>Fee:</strong> {withdrawal.get('fee', 0)} {withdrawal['currency']}</p>
+            <p><strong>Total deducted:</strong> {withdrawal.get('total_amount', (withdrawal.get('amount', 0) or 0) + (withdrawal.get('fee', 0) or 0))} {withdrawal['currency']}</p>
             <p><strong>Method:</strong> {withdrawal.get('payment_method_name') or withdrawal.get('payment_method_id')}</p>
             <p><strong>Status:</strong> pending</p>
             <p>Withdrawal ID: <code>{withdrawal['withdrawal_id']}</code></p>
@@ -1655,6 +1666,8 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
                 f"🏧 <b>New Withdrawal Request</b>\n"
                 f"Client: <b>{current_user.get('full_name','')}</b> ({current_user.get('client_id','')})\n"
                 f"Amount: <b>{withdrawal['amount']} {withdrawal['currency']}</b>\n"
+                f"Fee: <b>{withdrawal.get('fee', 0)} {withdrawal['currency']}</b>\n"
+                f"Total: <b>{withdrawal.get('total_amount', (withdrawal.get('amount', 0) or 0) + (withdrawal.get('fee', 0) or 0))} {withdrawal['currency']}</b>\n"
                 f"Method: <b>{withdrawal.get('payment_method_name') or withdrawal.get('payment_method_id')}</b>\n"
                 f"ID: <code>{withdrawal['withdrawal_id']}</code>"
             ),
@@ -3994,7 +4007,7 @@ async def admin_process_deposit(
             <h2>Deposit Approved</h2>
             <p>Hello {user.get('full_name', 'User')},</p>
             <p>Your deposit of <strong>{deposit.get('amount')} {deposit['currency']}</strong> via <strong>{deposit.get('payment_method_name') or deposit.get('method') or 'method'}</strong> has been approved.</p>
-            <p>Fee: <strong>{deposit.get('fee', 0)} {deposit['currency']}</strong> | Net credited: <strong>{deposit.get('net_amount', deposit.get('amount'))} {deposit['currency']}</strong></p>
+            <p>Fee: <strong>{deposit.get('fee', 0)} {deposit['currency']}</strong> | Total paid: <strong>{deposit.get('total_amount', (deposit.get('amount', 0) or 0) + (deposit.get('fee', 0) or 0))} {deposit['currency']}</strong></p>
             <p>Transaction ID: <code>{deposit_id}</code></p>
             <p>Thank you for using KAYICOM!</p>
             """
@@ -4099,7 +4112,7 @@ async def admin_process_withdrawal(
             <h2>Withdrawal Processed</h2>
             <p>Hello {user.get('full_name', 'User')},</p>
             <p>Your withdrawal of <strong>{withdrawal.get('amount')} {withdrawal['currency']}</strong> via <strong>{method_name}</strong> has been processed.</p>
-            <p>Fee: <strong>{withdrawal.get('fee', 0)} {withdrawal['currency']}</strong> | Net sent: <strong>{withdrawal.get('net_amount', withdrawal.get('amount'))} {withdrawal['currency']}</strong></p>
+            <p>Fee: <strong>{withdrawal.get('fee', 0)} {withdrawal['currency']}</strong> | Total deducted: <strong>{withdrawal.get('total_amount', (withdrawal.get('amount', 0) or 0) + (withdrawal.get('fee', 0) or 0))} {withdrawal['currency']}</strong></p>
             <p>Transaction ID: <code>{withdrawal_id}</code></p>
             <p>Thank you for using KAYICOM!</p>
             """

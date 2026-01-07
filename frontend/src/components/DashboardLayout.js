@@ -19,6 +19,7 @@ export const DashboardLayout = ({ children, title }) => {
       <button 
         onClick={() => setSidebarOpen(true)}
         className="mobile-menu-btn"
+        style={{ top: 'calc(1rem + var(--announcement-bar-h, 0px))' }}
         data-testid="mobile-menu-btn"
       >
         <Menu size={24} className="text-stone-700 dark:text-stone-300" />
@@ -26,7 +27,10 @@ export const DashboardLayout = ({ children, title }) => {
       
       <main className="main-content">
         {/* Header */}
-        <header className="sticky top-0 z-20 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-700">
+        <header
+          className="sticky top-0 z-20 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-700"
+          style={{ top: 'var(--announcement-bar-h, 0px)' }}
+        >
           <div className="flex items-center justify-between px-4 sm:px-6 py-4">
             <div className="flex items-center gap-4">
               <Link to="/" className="hover:opacity-80 transition-opacity">
