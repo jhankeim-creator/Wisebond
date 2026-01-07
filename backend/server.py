@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Request
+from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -1102,7 +1103,8 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
         plisio_currency = network_map.get(selected_network, "USDTTRC20")
 
         backend_url = os.environ.get("BACKEND_URL", "https://wisebond.onrender.com").rstrip("/")
-        frontend_url = os.environ.get("FRONTEND_URL", "https://wallet.kayicom.com").rstrip("/")
+        # NOTE: Plisio may only allow verifying one domain. We keep Plisio return URLs on BACKEND_URL
+        # and redirect users back to FRONTEND_URL from /api/plisio/return and /api/plisio/fail.
 
         payload = {
             "currency": plisio_currency,
@@ -1113,8 +1115,8 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
             "callback_url": f"{backend_url}/api/deposits/plisio-webhook",
             "psys_callback_url": f"{backend_url}/api/deposits/plisio-webhook",
             "email": current_user.get("email", ""),
-            "success_url": f"{frontend_url}/deposit?status=success",
-            "fail_url": f"{frontend_url}/deposit?status=failed",
+            "success_url": f"{backend_url}/api/plisio/return?deposit_id={deposit_id}&status=success",
+            "fail_url": f"{backend_url}/api/plisio/fail?deposit_id={deposit_id}",
         }
         def _safe_err(text: str) -> str:
             # Avoid returning very large bodies to the client
@@ -1204,6 +1206,29 @@ async def get_deposits(
     
     deposits = await db.deposits.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
     return {"deposits": deposits}
+
+
+@api_router.get("/plisio/return")
+async def plisio_return(deposit_id: Optional[str] = None, status: str = "success"):
+    """
+    User-facing return URL for Plisio.
+    Plisio may require the return URL domain to be verified; we keep it on BACKEND_URL and redirect to FRONTEND_URL.
+    """
+    frontend_url = os.environ.get("FRONTEND_URL", "https://wallet.kayicom.com").rstrip("/")
+    qs = f"?status={status}"
+    if deposit_id:
+        qs += f"&deposit_id={deposit_id}"
+    return RedirectResponse(url=f"{frontend_url}/deposit{qs}", status_code=302)
+
+
+@api_router.get("/plisio/fail")
+async def plisio_fail(deposit_id: Optional[str] = None):
+    """User-facing fail URL for Plisio (redirects to frontend)."""
+    frontend_url = os.environ.get("FRONTEND_URL", "https://wallet.kayicom.com").rstrip("/")
+    qs = "?status=failed"
+    if deposit_id:
+        qs += f"&deposit_id={deposit_id}"
+    return RedirectResponse(url=f"{frontend_url}/deposit{qs}", status_code=302)
 
 
 @api_router.post("/deposits/{deposit_id}/sync")
