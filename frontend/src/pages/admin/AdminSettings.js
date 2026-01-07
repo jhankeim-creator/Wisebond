@@ -247,22 +247,24 @@ export default function AdminSettings() {
       {/* Announcement bar */}
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
                 <Megaphone size={20} className="text-amber-600" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <CardTitle className="text-base">{getText('Bann Anons', 'Bandeau d’annonce', 'Announcement Bar')}</CardTitle>
                 <CardDescription className="text-sm">
                   {getText('Montre yon anons anwo ekran an', 'Afficher une annonce en haut', 'Show a banner at the top')}
                 </CardDescription>
               </div>
             </div>
-            <Switch
-              checked={settings.announcement_enabled}
-              onCheckedChange={(checked) => setSettings({ ...settings, announcement_enabled: checked })}
-            />
+            <div className="flex justify-end sm:justify-normal">
+              <Switch
+                checked={settings.announcement_enabled}
+                onCheckedChange={(checked) => setSettings({ ...settings, announcement_enabled: checked })}
+              />
+            </div>
           </div>
         </CardHeader>
         {settings.announcement_enabled && (
