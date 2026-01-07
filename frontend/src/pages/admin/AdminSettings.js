@@ -275,16 +275,29 @@ export default function AdminSettings() {
               )}
             </div>
             <div>
-              <Label>Text (HT)</Label>
-              <Textarea value={settings.announcement_text_ht || ''} onChange={(e) => setSettings({ ...settings, announcement_text_ht: e.target.value })} rows={2} className="mt-1" />
-            </div>
-            <div>
-              <Label>Text (FR)</Label>
-              <Textarea value={settings.announcement_text_fr || ''} onChange={(e) => setSettings({ ...settings, announcement_text_fr: e.target.value })} rows={2} className="mt-1" />
-            </div>
-            <div>
-              <Label>Text (EN)</Label>
-              <Textarea value={settings.announcement_text_en || ''} onChange={(e) => setSettings({ ...settings, announcement_text_en: e.target.value })} rows={2} className="mt-1" />
+              <Label>{getText('Tèks anons la', 'Texte de l’annonce', 'Announcement text')}</Label>
+              <Textarea
+                value={(settings.announcement_text_ht || settings.announcement_text_fr || settings.announcement_text_en || '')}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  // Single text: apply to all languages so the banner always shows.
+                  setSettings({
+                    ...settings,
+                    announcement_text_ht: v,
+                    announcement_text_fr: v,
+                    announcement_text_en: v,
+                  });
+                }}
+                rows={3}
+                className="mt-1"
+              />
+              <p className="text-xs text-stone-500 mt-1">
+                {getText(
+                  'Nòt: menm tèks la ap parèt pou tout lang yo.',
+                  'Note: le même texte s’affichera pour toutes les langues.',
+                  'Note: the same text will show for all languages.'
+                )}
+              </p>
             </div>
             <div>
               <Label>{getText('Lyen (opsyonèl)', 'Lien (optionnel)', 'Link (optional)')}</Label>
