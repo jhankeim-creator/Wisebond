@@ -240,6 +240,12 @@ class WithdrawalLimitUpdate(BaseModel):
     max_amount: float
     waiting_hours: int
 
+class TopUpFeeTier(BaseModel):
+    min_amount: float
+    max_amount: float
+    fee_value: float
+    is_percentage: bool = False
+
 class AdminSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -271,6 +277,25 @@ class AdminSettingsUpdate(BaseModel):
     card_order_fee_htg: Optional[int] = None
     affiliate_reward_htg: Optional[int] = None
     affiliate_cards_required: Optional[int] = None
+    card_background_image: Optional[str] = None
+    topup_fee_tiers: Optional[List[TopUpFeeTier]] = None
+
+    # Floating announcement (optional)
+    announcement_enabled: Optional[bool] = None
+    announcement_text_ht: Optional[str] = None
+    announcement_text_fr: Optional[str] = None
+    announcement_text_en: Optional[str] = None
+    announcement_link: Optional[str] = None
+
+class TeamMemberCreate(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    phone: str
+    role: Optional[str] = "admin"
+
+class TeamMemberUpdate(BaseModel):
+    is_active: bool
 
 class BulkEmailRequest(BaseModel):
     subject: str
@@ -294,9 +319,11 @@ class VirtualCardOrder(BaseModel):
 class TopUpOrder(BaseModel):
     country: str
     country_name: str
-    minutes: int
-    price: float
     phone_number: str
+    # New flow: user provides an amount. (Legacy minutes/price still accepted for old clients.)
+    amount: Optional[float] = None
+    minutes: Optional[int] = None
+    price: Optional[float] = None
 
 # ==================== AGENT DEPOSIT MODELS ====================
 
@@ -625,6 +652,31 @@ def calculate_agent_commission_sync(amount_usd: float, tiers: list) -> float:
                 return tier["commission"]
     
     return round(amount_usd * 0.01, 2)
+
+def calculate_tiered_fee(amount: float, tiers: list) -> float:
+    """Calculate a tiered fee (fixed or percentage) based on amount."""
+    try:
+        amt = float(amount)
+    except Exception:
+        return 0.0
+    if amt <= 0:
+        return 0.0
+
+    for tier in tiers or []:
+        try:
+            min_a = float(tier.get("min_amount", 0))
+            max_a = float(tier.get("max_amount", 0))
+            fee_v = float(tier.get("fee_value", 0))
+            is_pct = bool(tier.get("is_percentage", False))
+        except Exception:
+            continue
+
+        if min_a <= amt <= max_a:
+            if is_pct:
+                return round(amt * (fee_v / 100.0), 2)
+            return round(fee_v, 2)
+
+    return 0.0
 
 async def get_commission_tier_label(amount_usd: float) -> str:
     """Get the commission tier description for display"""
@@ -1992,7 +2044,7 @@ async def withdraw_affiliate_earnings(current_user: dict = Depends(get_current_u
 # ==================== VIRTUAL CARD ROUTES (Manual Third-Party System) ====================
 
 CARD_FEE_HTG = 500  # Card order fee in HTG
-CARD_BONUS_USD = 5  # $5 USD bonus for approved cards
+CARD_BONUS_USD = 0  # Bonus removed (kept for backward compatibility)
 
 @api_router.get("/virtual-cards")
 async def get_virtual_cards(current_user: dict = Depends(get_current_user)):
@@ -2204,6 +2256,10 @@ async def admin_create_card_manually(
     user = await db.users.find_one({"user_id": payload.user_id}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    default_card_bg = settings.get("card_background_image") if settings else None
+    card_image = payload.card_image or default_card_bg
     
     # Create card order directly as approved
     order = {
@@ -2222,7 +2278,7 @@ async def admin_create_card_manually(
         "billing_city": payload.billing_city,
         "billing_country": payload.billing_country,
         "billing_zip": payload.billing_zip,
-        "card_image": payload.card_image,
+        "card_image": card_image,
         "fee": 0,  # No fee for manual creation
         "status": "approved",  # Already approved
         "admin_notes": "Created manually by admin",
@@ -2233,8 +2289,9 @@ async def admin_create_card_manually(
     
     await db.virtual_card_orders.insert_one(order)
     
-    # NOTE: Manual cards do NOT get $5 bonus and do NOT count for affiliate rewards
-    # Only cards ordered by users themselves get the bonus
+    # If user was referred, count this approved card toward affiliate milestones
+    if user.get("referred_by"):
+        await process_card_affiliate_reward(user["referred_by"])
     
     # Send email notification to user
     if user.get("email"):
@@ -2284,6 +2341,9 @@ async def admin_process_card_order(
     order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    default_card_bg = settings.get("card_background_image") if settings else None
     
     action = payload.action
     if not action:
@@ -2332,6 +2392,8 @@ async def admin_process_card_order(
             update_doc["billing_zip"] = payload.billing_zip
         if payload.card_image:
             update_doc["card_image"] = payload.card_image
+        elif not order.get("card_image") and default_card_bg:
+            update_doc["card_image"] = default_card_bg
     
     await db.virtual_card_orders.update_one(
         {"order_id": order_id},
@@ -2339,24 +2401,6 @@ async def admin_process_card_order(
     )
     
     if action == "approve":
-        # Add $5 USD bonus to user's wallet
-        await db.users.update_one(
-            {"user_id": order["user_id"]},
-            {"$inc": {"wallet_usd": CARD_BONUS_USD}}
-        )
-        
-        # Create bonus transaction
-        await db.transactions.insert_one({
-            "transaction_id": str(uuid.uuid4()),
-            "user_id": order["user_id"],
-            "type": "card_bonus",
-            "amount": CARD_BONUS_USD,
-            "currency": "USD",
-            "status": "completed",
-            "description": "Virtual card approval bonus",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
-        
         # Process affiliate reward if user was referred
         user = await db.users.find_one({"user_id": order["user_id"]}, {"_id": 0})
         if user and user.get("referred_by"):
@@ -2370,7 +2414,6 @@ async def admin_process_card_order(
             <p>Hello {user.get('full_name', 'User')},</p>
             <p>Great news! Your virtual card order has been approved.</p>
             <p><strong>Card Email:</strong> {order.get('card_email', 'N/A')}</p>
-            <p><strong>Bonus Added:</strong> ${CARD_BONUS_USD} USD</p>
             <p>Order ID: <code>{order_id}</code></p>
             <p>You can now use your virtual card for transactions. The card details have been sent to your registered email.</p>
             <p>Thank you for using KAYICOM!</p>
@@ -2400,9 +2443,15 @@ async def admin_process_card_order(
     return {"message": f"Card order {action}d successfully"}
 
 async def process_card_affiliate_reward(affiliate_code: str):
-    """Process affiliate reward: 2000 HTG for every 5 referrals who get a card approved"""
+    """Process affiliate reward: configurable HTG reward for every N referrals who get a card approved."""
     referrer = await db.users.find_one({"affiliate_code": affiliate_code}, {"_id": 0})
     if not referrer:
+        return
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    cards_required = int(settings.get("affiliate_cards_required", 5)) if settings else 5
+    reward_htg = int(settings.get("affiliate_reward_htg", 2000)) if settings else 2000
+    if cards_required <= 0 or reward_htg <= 0:
         return
     
     # Count referrals with approved card orders
@@ -2420,18 +2469,18 @@ async def process_card_affiliate_reward(affiliate_code: str):
         if has_approved_card:
             cards_count += 1
     
-    # Check if we've hit a new milestone of 5
+    # Check if we've hit a new milestone of N
     rewarded_count = referrer.get("affiliate_cards_rewarded", 0)
-    new_rewards = (cards_count // 5) - rewarded_count
+    new_rewards = (cards_count // cards_required) - rewarded_count
     
     if new_rewards > 0:
-        reward_amount = new_rewards * 2000  # 2000 HTG per 5 cards
+        reward_amount = new_rewards * reward_htg  # HTG per milestone
         
         await db.users.update_one(
             {"user_id": referrer["user_id"]},
             {
                 "$inc": {"affiliate_earnings": reward_amount},
-                "$set": {"affiliate_cards_rewarded": cards_count // 5}
+                "$set": {"affiliate_cards_rewarded": cards_count // cards_required}
             }
         )
         
@@ -2443,7 +2492,7 @@ async def process_card_affiliate_reward(affiliate_code: str):
             "amount": reward_amount,
             "currency": "HTG",
             "status": "completed",
-            "description": f"Affiliate reward for {new_rewards * 5} card orders",
+            "description": f"Affiliate reward for {new_rewards * cards_required} approved referral cards",
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         
@@ -2457,13 +2506,26 @@ async def create_topup_order(request: TopUpOrder, current_user: dict = Depends(g
     if current_user["kyc_status"] != "approved":
         raise HTTPException(status_code=403, detail="KYC verification required")
     
-    if current_user.get("wallet_usd", 0) < request.price:
+    # New flow: amount is required. Legacy clients may still send price.
+    amount = request.amount if request.amount is not None else request.price
+    if amount is None:
+        raise HTTPException(status_code=400, detail="Amount is required")
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Invalid amount")
+
+    # Fee tiers configured in admin settings
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    tiers = settings.get("topup_fee_tiers", []) if settings else []
+    fee = calculate_tiered_fee(amount, tiers)
+    total = round(float(amount) + float(fee), 2)
+
+    if current_user.get("wallet_usd", 0) < total:
         raise HTTPException(status_code=400, detail="Insufficient USD balance")
     
     # Deduct from wallet
     await db.users.update_one(
         {"user_id": current_user["user_id"]},
-        {"$inc": {"wallet_usd": -request.price}}
+        {"$inc": {"wallet_usd": -total}}
     )
     
     # Create order
@@ -2473,8 +2535,13 @@ async def create_topup_order(request: TopUpOrder, current_user: dict = Depends(g
         "client_id": current_user["client_id"],
         "country": request.country,
         "country_name": request.country_name,
+        # Legacy fields (kept if provided)
         "minutes": request.minutes,
         "price": request.price,
+        # New fields
+        "amount": float(amount),
+        "fee": float(fee),
+        "total": float(total),
         "phone_number": request.phone_number,
         "status": "pending",  # pending, completed, cancelled
         "admin_notes": None,
@@ -2490,10 +2557,10 @@ async def create_topup_order(request: TopUpOrder, current_user: dict = Depends(g
         "transaction_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
         "type": "topup_order",
-        "amount": -request.price,
+        "amount": -total,
         "currency": "USD",
         "status": "pending",
-        "description": f"Top-up order: {request.minutes} mins for {request.country_name}",
+        "description": f"Top-up order: ${float(amount):.2f} for {request.country_name} (fee ${float(fee):.2f})",
         "reference_id": order["order_id"],
         "created_at": datetime.now(timezone.utc).isoformat()
     })
@@ -2526,6 +2593,26 @@ async def admin_get_topup_orders(
     
     orders = await db.topup_orders.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
     return {"orders": orders}
+
+# Admin: Purge old virtual card orders (dangerous)
+@api_router.post("/admin/virtual-card-orders/purge")
+async def admin_purge_virtual_card_orders(
+    days: int = Query(default=30, ge=1, le=3650),
+    status: Optional[str] = None,
+    admin: dict = Depends(get_admin_user),
+):
+    """
+    Permanently deletes virtual card orders older than N days.
+    Use with caution.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    query: Dict[str, Any] = {"created_at": {"$lt": cutoff.isoformat()}}
+    if status:
+        query["status"] = status
+
+    result = await db.virtual_card_orders.delete_many(query)
+    await log_action(admin["user_id"], "virtual_card_orders_purge", {"days": days, "status": status, "deleted": result.deleted_count})
+    return {"deleted": result.deleted_count, "days": days, "status": status}
 
 # Admin: Process top-up order
 @api_router.patch("/admin/topup-orders/{order_id}")
@@ -2565,16 +2652,17 @@ async def admin_process_topup_order(
     
     if action == "cancel":
         # Refund the amount
+        refund_total = float(order.get("total") or order.get("price") or 0)
         await db.users.update_one(
             {"user_id": order["user_id"]},
-            {"$inc": {"wallet_usd": order["price"]}}
+            {"$inc": {"wallet_usd": refund_total}}
         )
         
         await db.transactions.insert_one({
             "transaction_id": str(uuid.uuid4()),
             "user_id": order["user_id"],
             "type": "topup_refund",
-            "amount": order["price"],
+            "amount": refund_total,
             "currency": "USD",
             "status": "completed",
             "description": f"Top-up order refund (cancelled)",
@@ -3965,6 +4053,71 @@ async def admin_delete_payment_gateway_method(
     await log_action(admin["user_id"], "payment_gateway_method_delete", {"payment_method_id": payment_method_id})
     return {"message": "Payment gateway method deleted"}
 
+@api_router.get("/admin/team")
+async def admin_get_team(admin: dict = Depends(get_admin_user)):
+    """List admin/team users."""
+    team = await db.users.find(
+        {"is_admin": True},
+        {"_id": 0, "user_id": 1, "client_id": 1, "full_name": 1, "email": 1, "phone": 1, "is_active": 1, "created_at": 1, "admin_role": 1},
+    ).sort("created_at", -1).to_list(200)
+    return {"team": team}
+
+
+@api_router.post("/admin/team")
+async def admin_create_team_member(payload: TeamMemberCreate, admin: dict = Depends(get_admin_user)):
+    """Create an admin/team member user."""
+    existing = await db.users.find_one({"email": payload.email.lower()}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user_id = str(uuid.uuid4())
+    client_id = generate_client_id()
+
+    user_doc = {
+        "user_id": user_id,
+        "client_id": client_id,
+        "email": payload.email.lower(),
+        "password_hash": hash_password(payload.password),
+        "full_name": payload.full_name,
+        "phone": payload.phone,
+        "language": "fr",
+        "kyc_status": "approved",
+        "wallet_htg": 0.0,
+        "wallet_usd": 0.0,
+        "affiliate_code": generate_affiliate_code(),
+        "affiliate_earnings": 0.0,
+        "referred_by": None,
+        "is_active": True,
+        "is_admin": True,
+        "admin_role": (payload.role or "admin"),
+        "two_factor_enabled": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    await db.users.insert_one(user_doc)
+    await log_action(admin["user_id"], "team_create", {"user_id": user_id, "email": user_doc["email"], "role": user_doc["admin_role"]})
+
+    # Don't return password hash
+    user_doc.pop("password_hash", None)
+    if "_id" in user_doc:
+        del user_doc["_id"]
+    return {"member": user_doc}
+
+
+@api_router.patch("/admin/team/{user_id}")
+async def admin_update_team_member(user_id: str, payload: TeamMemberUpdate, admin: dict = Depends(get_admin_user)):
+    """Activate/deactivate a team member."""
+    target = await db.users.find_one({"user_id": user_id, "is_admin": True}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Team member not found")
+
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": {"is_active": payload.is_active}},
+    )
+    await log_action(admin["user_id"], "team_update", {"user_id": user_id, "is_active": payload.is_active})
+    return {"message": "Team member updated"}
+
 
 # Public endpoint for payment gateway methods (no auth required)
 @api_router.get("/public/payment-gateway/methods")
@@ -4001,7 +4154,20 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
             "whatsapp_number": "",
             "plisio_enabled": False,
             "plisio_api_key": "",
-            "plisio_secret_key": ""
+            "plisio_secret_key": "",
+            "telegram_enabled": False,
+            "telegram_bot_token": "",
+            "telegram_chat_id": "",
+            "card_order_fee_htg": 500,
+            "affiliate_reward_htg": 2000,
+            "affiliate_cards_required": 5,
+            "card_background_image": None,
+            "topup_fee_tiers": [],
+            "announcement_enabled": False,
+            "announcement_text_ht": None,
+            "announcement_text_fr": None,
+            "announcement_text_en": None,
+            "announcement_link": None,
         }
     return {"settings": settings}
 
@@ -4032,11 +4198,25 @@ async def get_public_app_config():
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     if not settings:
         return {
-            "card_order_fee_htg": 500
+            "card_order_fee_htg": 500,
+            "card_background_image": None,
+            "topup_fee_tiers": [],
+            "announcement_enabled": False,
+            "announcement_text_ht": None,
+            "announcement_text_fr": None,
+            "announcement_text_en": None,
+            "announcement_link": None,
         }
     
     return {
-        "card_order_fee_htg": settings.get("card_order_fee_htg", 500)
+        "card_order_fee_htg": settings.get("card_order_fee_htg", 500),
+        "card_background_image": settings.get("card_background_image"),
+        "topup_fee_tiers": settings.get("topup_fee_tiers", []),
+        "announcement_enabled": settings.get("announcement_enabled", False),
+        "announcement_text_ht": settings.get("announcement_text_ht"),
+        "announcement_text_fr": settings.get("announcement_text_fr"),
+        "announcement_text_en": settings.get("announcement_text_en"),
+        "announcement_link": settings.get("announcement_link"),
     }
 
 @api_router.put("/admin/settings")
@@ -4141,6 +4321,9 @@ async def admin_update_card_details(
     order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    default_card_bg = settings.get("card_background_image") if settings else None
     
     update_doc = {}
     if payload.card_brand:
@@ -4168,6 +4351,8 @@ async def admin_update_card_details(
         update_doc["billing_zip"] = payload.billing_zip
     if payload.card_image:
         update_doc["card_image"] = payload.card_image
+    elif not order.get("card_image") and default_card_bg:
+        update_doc["card_image"] = default_card_bg
     if payload.admin_notes is not None:
         update_doc["admin_notes"] = payload.admin_notes
     

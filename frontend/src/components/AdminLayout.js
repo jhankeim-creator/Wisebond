@@ -28,6 +28,7 @@ import {
   UserPlus,
   Wallet
 } from 'lucide-react';
+import FloatingAnnouncement from '@/components/FloatingAnnouncement';
 
 export const AdminLayout = ({ children, title }) => {
   const { language } = useLanguage();
@@ -73,6 +74,7 @@ export const AdminLayout = ({ children, title }) => {
 
   return (
     <div className="min-h-screen bg-stone-100 dark:bg-stone-900">
+      <FloatingAnnouncement />
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div 

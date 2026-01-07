@@ -62,7 +62,20 @@ export default function AdminSettings() {
     // Fees & Affiliate
     card_order_fee_htg: 500,
     affiliate_reward_htg: 2000,
-    affiliate_cards_required: 5
+    affiliate_cards_required: 5,
+
+    // Card default background
+    card_background_image: null,
+
+    // International minutes (TopUp) fee tiers
+    topup_fee_tiers: [],
+
+    // Floating announcement
+    announcement_enabled: false,
+    announcement_text_ht: '',
+    announcement_text_fr: '',
+    announcement_text_en: '',
+    announcement_link: ''
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -133,6 +146,9 @@ export default function AdminSettings() {
         'telegram_enabled', 'telegram_bot_token', 'telegram_chat_id',
         'plisio_enabled', 'plisio_api_key', 'plisio_secret_key',
         'card_order_fee_htg', 'affiliate_reward_htg', 'affiliate_cards_required',
+        'card_background_image',
+        'topup_fee_tiers',
+        'announcement_enabled', 'announcement_text_ht', 'announcement_text_fr', 'announcement_text_en', 'announcement_link',
       ]);
       const filteredPayload = Object.fromEntries(
         Object.entries(payload).filter(([k]) => allowedKeys.has(k))
@@ -629,6 +645,166 @@ export default function AdminSettings() {
         </CardContent>
       </Card>
 
+      {/* Default Card Background */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+              <CreditCard size={20} className="text-amber-600" />
+            </div>
+            <div>
+              <CardTitle className="text-base">{getText('Imaj Fon Kat (pa defo)', 'Image Carte (par défaut)', 'Default Card Background')}</CardTitle>
+              <CardDescription className="text-sm">
+                {getText('Yon sèl imaj pou tout kat yo', 'Une seule image pour toutes les cartes', 'One image for all cards')}
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                const reader = new FileReader();
+                reader.onloadend = () => setSettings({ ...settings, card_background_image: reader.result });
+                reader.readAsDataURL(f);
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSettings({ ...settings, card_background_image: null })}
+            >
+              {getText('Retire', 'Retirer', 'Remove')}
+            </Button>
+          </div>
+          {settings.card_background_image && (
+            <div className="border rounded-xl p-3 bg-stone-50 dark:bg-stone-800">
+              <img src={settings.card_background_image} alt="Default card" className="max-h-40 rounded-lg mx-auto" />
+            </div>
+          )}
+          <p className="text-xs text-stone-500">
+            {getText(
+              'Si admin pa mete imaj pou yon kat, sistèm nan ap itilize imaj pa defo sa a.',
+              'Si l’admin ne met pas d’image, le système utilisera cette image par défaut.',
+              'If admin doesn’t set a card image, this default will be used.'
+            )}
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* TopUp fee tiers */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <DollarSign size={20} className="text-blue-600" />
+            </div>
+            <div>
+              <CardTitle className="text-base">{getText('Frè Minit Entènasyonal', 'Frais Minutes Internationales', 'International Minutes Fees')}</CardTitle>
+              <CardDescription className="text-sm">
+                {getText('Frè an pousantaj oswa fiks selon montan', 'Frais en % ou fixe selon montant', 'Percent or fixed fee by amount')}
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            <div className="grid grid-cols-12 gap-2 text-xs font-semibold text-stone-600 px-2">
+              <div className="col-span-3">{getText('Min ($)', 'Min ($)', 'Min ($)')}</div>
+              <div className="col-span-3">{getText('Max ($)', 'Max ($)', 'Max ($)')}</div>
+              <div className="col-span-3">{getText('Frè', 'Frais', 'Fee')}</div>
+              <div className="col-span-3">{getText('%?', '%?', '%?')}</div>
+            </div>
+            {(settings.topup_fee_tiers || []).map((tier, idx) => (
+              <div key={idx} className="grid grid-cols-12 gap-2 items-center border rounded-lg p-2 bg-white dark:bg-stone-800">
+                <div className="col-span-3">
+                  <Input
+                    type="number"
+                    value={tier.min_amount}
+                    onChange={(e) => {
+                      const tiers = [...(settings.topup_fee_tiers || [])];
+                      tiers[idx] = { ...tiers[idx], min_amount: parseFloat(e.target.value) || 0 };
+                      setSettings({ ...settings, topup_fee_tiers: tiers });
+                    }}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="col-span-3">
+                  <Input
+                    type="number"
+                    value={tier.max_amount}
+                    onChange={(e) => {
+                      const tiers = [...(settings.topup_fee_tiers || [])];
+                      tiers[idx] = { ...tiers[idx], max_amount: parseFloat(e.target.value) || 0 };
+                      setSettings({ ...settings, topup_fee_tiers: tiers });
+                    }}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="col-span-3">
+                  <Input
+                    type="number"
+                    value={tier.fee_value}
+                    onChange={(e) => {
+                      const tiers = [...(settings.topup_fee_tiers || [])];
+                      tiers[idx] = { ...tiers[idx], fee_value: parseFloat(e.target.value) || 0 };
+                      setSettings({ ...settings, topup_fee_tiers: tiers });
+                    }}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="col-span-3 flex items-center gap-2">
+                  <Switch
+                    checked={!!tier.is_percentage}
+                    onCheckedChange={(checked) => {
+                      const tiers = [...(settings.topup_fee_tiers || [])];
+                      tiers[idx] = { ...tiers[idx], is_percentage: checked };
+                      setSettings({ ...settings, topup_fee_tiers: tiers });
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const tiers = (settings.topup_fee_tiers || []).filter((_, i) => i !== idx);
+                      setSettings({ ...settings, topup_fee_tiers: tiers });
+                    }}
+                  >
+                    {getText('Efase', 'Supprimer', 'Delete')}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              const tiers = [...(settings.topup_fee_tiers || [])];
+              const last = tiers[tiers.length - 1];
+              const min = last ? (parseFloat(last.max_amount) || 0) + 0.01 : 0;
+              tiers.push({ min_amount: min, max_amount: min + 100, fee_value: 0, is_percentage: false });
+              setSettings({ ...settings, topup_fee_tiers: tiers });
+            }}
+          >
+            {getText('Ajoute nivo frè', 'Ajouter palier', 'Add fee tier')}
+          </Button>
+          <p className="text-xs text-stone-500">
+            {getText(
+              'Egzanp: 0–50 = 1$ (fiks), 50–200 = 2% (pousantaj).',
+              'Ex: 0–50 = 1$ (fixe), 50–200 = 2% (pourcentage).',
+              'Example: 0–50 = $1 (fixed), 50–200 = 2% (percentage).'
+            )}
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Transparent Fee Display */}
       <Card>
         <CardHeader className="pb-3">
@@ -677,6 +853,49 @@ export default function AdminSettings() {
 
   const SystemTab = () => (
     <div className="space-y-4">
+      {/* Floating announcement */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                <Bell size={20} className="text-amber-600" />
+              </div>
+              <div>
+                <CardTitle className="text-base">{getText('Flote Anons', 'Annonce flottante', 'Floating Announcement')}</CardTitle>
+                <CardDescription className="text-sm">
+                  {getText('Montre yon anons anba ekran an', 'Afficher une annonce en bas', 'Show a banner at the bottom')}
+                </CardDescription>
+              </div>
+            </div>
+            <Switch
+              checked={settings.announcement_enabled}
+              onCheckedChange={(checked) => setSettings({ ...settings, announcement_enabled: checked })}
+            />
+          </div>
+        </CardHeader>
+        {settings.announcement_enabled && (
+          <CardContent className="space-y-3 border-t pt-4">
+            <div>
+              <Label>Text (HT)</Label>
+              <Textarea value={settings.announcement_text_ht || ''} onChange={(e) => setSettings({ ...settings, announcement_text_ht: e.target.value })} rows={2} className="mt-1" />
+            </div>
+            <div>
+              <Label>Text (FR)</Label>
+              <Textarea value={settings.announcement_text_fr || ''} onChange={(e) => setSettings({ ...settings, announcement_text_fr: e.target.value })} rows={2} className="mt-1" />
+            </div>
+            <div>
+              <Label>Text (EN)</Label>
+              <Textarea value={settings.announcement_text_en || ''} onChange={(e) => setSettings({ ...settings, announcement_text_en: e.target.value })} rows={2} className="mt-1" />
+            </div>
+            <div>
+              <Label>{getText('Lyen (opsyonèl)', 'Lien (optionnel)', 'Link (optional)')}</Label>
+              <Input value={settings.announcement_link || ''} onChange={(e) => setSettings({ ...settings, announcement_link: e.target.value })} className="mt-1" placeholder="https://..." />
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
       {/* Diagnostics */}
       <Card>
         <CardHeader className="pb-3">

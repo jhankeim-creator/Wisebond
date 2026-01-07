@@ -64,6 +64,8 @@ export default function AdminVirtualCards() {
     card_image: ''
   });
 
+  const [defaultCardBg, setDefaultCardBg] = useState('');
+
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
     if (language === 'fr') return fr;
@@ -107,6 +109,19 @@ export default function AdminVirtualCards() {
   useEffect(() => {
     fetchTopups();
   }, [fetchTopups]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await axios.get(`${API}/public/app-config`);
+        if (res.data?.card_background_image) {
+          setDefaultCardBg(res.data.card_background_image);
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
+  }, []);
 
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
@@ -187,7 +202,7 @@ export default function AdminVirtualCards() {
       billing_city: '',
       billing_country: '',
       billing_zip: '',
-      card_image: ''
+      card_image: defaultCardBg || ''
     });
   };
 
@@ -256,7 +271,7 @@ export default function AdminVirtualCards() {
       billing_city: '',
       billing_country: '',
       billing_zip: '',
-      card_image: ''
+      card_image: defaultCardBg || ''
     });
   };
 
@@ -276,7 +291,7 @@ export default function AdminVirtualCards() {
       billing_city: order.billing_city || '',
       billing_country: order.billing_country || '',
       billing_zip: order.billing_zip || '',
-      card_image: order.card_image || ''
+      card_image: order.card_image || defaultCardBg || ''
     });
     setShowOrderModal(true);
   };
@@ -564,9 +579,9 @@ export default function AdminVirtualCards() {
                     <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
                       <p className="text-sm text-blue-700 dark:text-blue-300">
                         <strong>{getText('Nòt:', 'Note:', 'Note:')}</strong> {getText(
-                          'Lè ou apwouve, kliyan an ap resevwa $5 USD bonis. Lè ou rejte, lajan frè a ap ranbouse.',
-                          'Lors de l\'approbation, le client recevra $5 USD bonus. En cas de rejet, les frais seront remboursés.',
-                          'When approved, the client will receive $5 USD bonus. If rejected, the fees will be refunded.'
+                          'Lè ou apwouve, kliyan an ap resevwa kat la. Lè ou rejte, lajan frè a ap ranbouse.',
+                          'Lors de l\'approbation, le client recevra la carte. En cas de rejet, les frais seront remboursés.',
+                          'When approved, the client will receive the card. If rejected, the fees will be refunded.'
                         )}
                       </p>
                     </div>
