@@ -759,7 +759,7 @@ export default function AdminVirtualCards() {
                         />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <Label>{getText('Mak Kat', 'Marque', 'Brand')}</Label>
                           <Input placeholder="Wise, Payoneer" value={cardDetails.card_brand} onChange={(e) => setCardDetails({...cardDetails, card_brand: e.target.value})} className="mt-1" />
@@ -781,7 +781,7 @@ export default function AdminVirtualCards() {
                         <Input value={cardDetails.card_holder_name} onChange={(e) => setCardDetails({...cardDetails, card_holder_name: e.target.value.toUpperCase()})} className="mt-1 uppercase" />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <Label>{getText('Nimewo Kat', 'Numéro Carte', 'Card Number')}</Label>
                           <Input value={cardDetails.card_number} onChange={(e) => setCardDetails({...cardDetails, card_number: e.target.value})} className="mt-1 font-mono" maxLength={19} />
@@ -802,7 +802,7 @@ export default function AdminVirtualCards() {
                         <h5 className="font-medium mb-3">{getText('Adrès Faktirasyon', 'Adresse Facturation', 'Billing Address')}</h5>
                         <div className="space-y-3">
                           <Input placeholder={getText('Adrès', 'Adresse', 'Address')} value={cardDetails.billing_address} onChange={(e) => setCardDetails({...cardDetails, billing_address: e.target.value})} />
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                             <Input placeholder={getText('Vil', 'Ville', 'City')} value={cardDetails.billing_city} onChange={(e) => setCardDetails({...cardDetails, billing_city: e.target.value})} />
                             <Input placeholder={getText('Peyi', 'Pays', 'Country')} value={cardDetails.billing_country} onChange={(e) => setCardDetails({...cardDetails, billing_country: e.target.value})} />
                             <Input placeholder="ZIP" value={cardDetails.billing_zip} onChange={(e) => setCardDetails({...cardDetails, billing_zip: e.target.value})} />
@@ -854,7 +854,7 @@ export default function AdminVirtualCards() {
                         <CreditCard size={18} />
                         {getText('Modifye kat la', 'Modifier la carte', 'Edit card')}
                       </h4>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <Label>{getText('Mak Kat', 'Marque', 'Brand')}</Label>
                           <Input value={cardDetails.card_brand} onChange={(e) => setCardDetails({ ...cardDetails, card_brand: e.target.value })} className="mt-1" />
@@ -876,7 +876,7 @@ export default function AdminVirtualCards() {
                         <Input value={cardDetails.card_holder_name} onChange={(e) => setCardDetails({ ...cardDetails, card_holder_name: e.target.value.toUpperCase() })} className="mt-1 uppercase" />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
                           <Label>{getText('Nimewo Kat', 'Numéro Carte', 'Card Number')}</Label>
                           <Input value={cardDetails.card_number} onChange={(e) => setCardDetails({ ...cardDetails, card_number: e.target.value })} className="mt-1 font-mono" maxLength={19} />

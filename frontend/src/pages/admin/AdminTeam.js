@@ -110,39 +110,72 @@ export default function AdminTeam() {
             ) : team.length === 0 ? (
               <div className="text-center py-8 text-stone-500">{getText('Pa gen manm', 'Aucun membre', 'No members')}</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>{getText('Non', 'Nom', 'Name')}</th>
-                      <th>{getText('Imèl', 'Email', 'Email')}</th>
-                      <th>{getText('Wòl', 'Rôle', 'Role')}</th>
-                      <th>{getText('Statis', 'Statut', 'Status')}</th>
-                      <th>{getText('Aksyon', 'Actions', 'Actions')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {team.map((m) => (
-                      <tr key={m.user_id}>
-                        <td className="font-medium">{m.full_name}</td>
-                        <td>{m.email}</td>
-                        <td className="capitalize">{m.admin_role || 'admin'}</td>
-                        <td>{m.is_active ? getText('Aktif', 'Actif', 'Active') : getText('Bloke', 'Bloqué', 'Blocked')}</td>
-                        <td>
-                          <Button
-                            size="sm"
-                            variant={m.is_active ? 'destructive' : 'default'}
-                            onClick={() => toggleActive(m)}
-                            title={m.is_active ? getText('Dezaktive', 'Désactiver', 'Disable') : getText('Aktive', 'Activer', 'Enable')}
-                          >
-                            {m.is_active ? <UserX size={16} /> : <CheckCircle size={16} />}
-                          </Button>
-                        </td>
+              <>
+                {/* Mobile cards */}
+                <div className="space-y-3 md:hidden">
+                  {team.map((m) => (
+                    <div key={m.user_id} className="border rounded-xl p-4 bg-white dark:bg-stone-800">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-stone-900 dark:text-white truncate">{m.full_name}</p>
+                          <p className="text-sm text-stone-600 dark:text-stone-300 break-all">{m.email}</p>
+                          <p className="text-xs text-stone-500 mt-1">
+                            <span className="font-medium">{getText('Wòl', 'Rôle', 'Role')}:</span>{' '}
+                            <span className="capitalize">{m.admin_role || 'admin'}</span>
+                          </p>
+                          <p className="text-xs text-stone-500 mt-1">
+                            <span className="font-medium">{getText('Statis', 'Statut', 'Status')}:</span>{' '}
+                            {m.is_active ? getText('Aktif', 'Actif', 'Active') : getText('Bloke', 'Bloqué', 'Blocked')}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant={m.is_active ? 'destructive' : 'default'}
+                          onClick={() => toggleActive(m)}
+                          title={m.is_active ? getText('Dezaktive', 'Désactiver', 'Disable') : getText('Aktive', 'Activer', 'Enable')}
+                        >
+                          {m.is_active ? <UserX size={16} /> : <CheckCircle size={16} />}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Desktop table */}
+                <div className="overflow-x-auto hidden md:block">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>{getText('Non', 'Nom', 'Name')}</th>
+                        <th>{getText('Imèl', 'Email', 'Email')}</th>
+                        <th>{getText('Wòl', 'Rôle', 'Role')}</th>
+                        <th>{getText('Statis', 'Statut', 'Status')}</th>
+                        <th>{getText('Aksyon', 'Actions', 'Actions')}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {team.map((m) => (
+                        <tr key={m.user_id}>
+                          <td className="font-medium">{m.full_name}</td>
+                          <td>{m.email}</td>
+                          <td className="capitalize">{m.admin_role || 'admin'}</td>
+                          <td>{m.is_active ? getText('Aktif', 'Actif', 'Active') : getText('Bloke', 'Bloqué', 'Blocked')}</td>
+                          <td>
+                            <Button
+                              size="sm"
+                              variant={m.is_active ? 'destructive' : 'default'}
+                              onClick={() => toggleActive(m)}
+                              title={m.is_active ? getText('Dezaktive', 'Désactiver', 'Disable') : getText('Aktive', 'Activer', 'Enable')}
+                            >
+                              {m.is_active ? <UserX size={16} /> : <CheckCircle size={16} />}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
