@@ -1,5 +1,6 @@
 // KAYICOM Wallet Service Worker - Lightweight PWA
-const CACHE_NAME = 'kayicom-wallet-v1';
+// Bump cache version to force clients to refresh assets after deployments
+const CACHE_NAME = 'kayicom-wallet-v2';
 const OFFLINE_URL = '/';
 
 // Essential files to cache for offline use
