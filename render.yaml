@@ -13,6 +13,10 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ORIGINS
-        value: "*" # User should update this to their Vercel URL after frontend deployment
+        value: "https://wallet.kayicom.com" # Frontend domain
+      - key: FRONTEND_URL
+        value: "https://wallet.kayicom.com"
+      - key: BACKEND_URL
+        value: "https://wisebond.onrender.com"
       - key: PORT
         value: 10000

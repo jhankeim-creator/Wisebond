@@ -1099,7 +1099,7 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
         plisio_currency = network_map.get(selected_network, "USDTTRC20")
 
         backend_url = os.environ.get("BACKEND_URL", "https://wisebond.onrender.com").rstrip("/")
-        frontend_url = os.environ.get("FRONTEND_URL", "https://wisebond.vercel.app").rstrip("/")
+        frontend_url = os.environ.get("FRONTEND_URL", "https://wallet.kayicom.com").rstrip("/")
 
         payload = {
             "currency": plisio_currency,
