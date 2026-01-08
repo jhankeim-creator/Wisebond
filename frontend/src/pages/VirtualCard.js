@@ -26,7 +26,8 @@ import {
   Copy,
   MapPin,
   Plus,
-  ArrowRight
+  ArrowRight,
+  ArrowDown
 } from 'lucide-react';
 
 const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
@@ -41,9 +42,12 @@ export default function VirtualCard() {
   
   const [cardOrders, setCardOrders] = useState([]);
   const [cardDeposits, setCardDeposits] = useState([]);
+  const [cardWithdrawals, setCardWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [virtualCardsEnabled, setVirtualCardsEnabled] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showCardDetails, setShowCardDetails] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
   const [ordering, setOrdering] = useState(false);
@@ -58,6 +62,14 @@ export default function VirtualCard() {
   const [topUpCardId, setTopUpCardId] = useState('');
   const [cardFees, setCardFees] = useState([]);
   const [submittingTopUp, setSubmittingTopUp] = useState(false);
+
+  // Withdraw state
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawCardId, setWithdrawCardId] = useState('');
+  const [submittingWithdraw, setSubmittingWithdraw] = useState(false);
+  const [updatingControls, setUpdatingControls] = useState(false);
+  const [spendingLimit, setSpendingLimit] = useState('');
+  const [spendingPeriod, setSpendingPeriod] = useState('monthly');
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -78,6 +90,9 @@ export default function VirtualCard() {
         axios.get(`${API}/public/app-config`),
         axios.get(`${API}/withdrawals/fees`)
       ]);
+      if (typeof configResp.data?.virtual_cards_enabled === 'boolean') {
+        setVirtualCardsEnabled(configResp.data.virtual_cards_enabled);
+      }
       if (configResp.data?.card_order_fee_htg) {
         setCardFee(configResp.data.card_order_fee_htg);
       }
@@ -89,17 +104,20 @@ export default function VirtualCard() {
       }
     } catch (e) {
       // keep default
+      if (virtualCardsEnabled === null) setVirtualCardsEnabled(true);
     }
   };
 
   const fetchData = async () => {
     try {
-      const [ordersRes, depositsRes] = await Promise.all([
+      const [ordersRes, depositsRes, withdrawalsRes] = await Promise.all([
         axios.get(`${API}/virtual-cards/orders`),
-        axios.get(`${API}/virtual-cards/deposits`)
+        axios.get(`${API}/virtual-cards/deposits`),
+        axios.get(`${API}/virtual-cards/withdrawals`)
       ]);
       setCardOrders(ordersRes.data.orders || []);
       setCardDeposits(depositsRes.data.deposits || []);
+      setCardWithdrawals(withdrawalsRes.data.withdrawals || []);
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
@@ -193,11 +211,73 @@ export default function VirtualCard() {
     setShowTopUpModal(true);
   };
 
+  const openWithdrawModal = () => {
+    // Auto-select card if only one
+    if (approvedCards.length === 1) {
+      setWithdrawCardId(approvedCards[0].order_id);
+    }
+    setShowWithdrawModal(true);
+  };
+
+  const submitWithdraw = async () => {
+    const amt = parseFloat(withdrawAmount);
+    if (!withdrawCardId) {
+      toast.error(getText('Chwazi yon kat', 'Choisissez une carte', 'Choose a card'));
+      return;
+    }
+    if (!amt || amt < 5) {
+      toast.error(getText('Montan minimòm: $5', 'Montant minimum: $5', 'Minimum amount: $5'));
+      return;
+    }
+
+    setSubmittingWithdraw(true);
+    try {
+      await axios.post(`${API}/virtual-cards/withdraw`, {
+        order_id: withdrawCardId,
+        amount: amt
+      });
+      toast.success(getText(
+        'Retrè soumèt! Si kat la sipòte li, li ap trete otomatik.',
+        'Retrait soumis! Si la carte le supporte, il sera traité automatiquement.',
+        'Withdrawal submitted! If supported, it will be processed automatically.'
+      ));
+      setShowWithdrawModal(false);
+      setWithdrawAmount('');
+      setWithdrawCardId('');
+      refreshUser();
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error');
+    } finally {
+      setSubmittingWithdraw(false);
+    }
+  };
+
   const viewCardDetails = (order) => {
     setSelectedCard(order);
     setShowCVV(false);
     setShowFullNumber(false);
+    setSpendingLimit(order?.spending_limit_usd != null ? String(order.spending_limit_usd) : '');
+    setSpendingPeriod(order?.spending_limit_period || 'monthly');
     setShowCardDetails(true);
+  };
+
+  const updateControls = async (updates) => {
+    if (!selectedCard?.order_id) return;
+    setUpdatingControls(true);
+    try {
+      const res = await axios.patch(`${API}/virtual-cards/${selectedCard.order_id}/controls`, updates);
+      const updated = res.data?.card;
+      if (updated) {
+        setSelectedCard(updated);
+      }
+      toast.success(getText('Mete ajou!', 'Mis à jour!', 'Updated!'));
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error');
+    } finally {
+      setUpdatingControls(false);
+    }
   };
 
   const copyToClipboard = (text, label) => {
@@ -245,8 +325,33 @@ export default function VirtualCard() {
   return (
     <DashboardLayout title={getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card')}>
       <div className="space-y-6" data-testid="virtual-card-page">
+        {/* Feature flag */}
+        {virtualCardsEnabled === false ? (
+          <Card>
+            <CardContent className="p-8 text-center">
+              <AlertCircle className="mx-auto text-amber-500 mb-4" size={48} />
+              <h3 className="text-xl font-bold text-stone-900 dark:text-white mb-2">
+                {getText('Kat vityèl pa disponib kounye a', 'Cartes virtuelles indisponibles', 'Virtual cards unavailable')}
+              </h3>
+              <p className="text-stone-600 dark:text-stone-400">
+                {getText(
+                  'Fonksyon sa a ap aktive lè admin lan pare.',
+                  'Cette fonctionnalité sera activée par l’admin quand elle sera prête.',
+                  'This feature will be enabled by the admin when ready.'
+                )}
+              </p>
+            </CardContent>
+          </Card>
+        ) : null}
+
         {/* KYC Check */}
-        {user?.kyc_status !== 'approved' ? (
+        {virtualCardsEnabled === false ? null : virtualCardsEnabled === null ? (
+          <Card>
+            <CardContent className="p-8 text-center text-stone-500">
+              {getText('Chajman...', 'Chargement...', 'Loading...')}
+            </CardContent>
+          </Card>
+        ) : user?.kyc_status !== 'approved' ? (
           <Card>
             <CardContent className="p-8 text-center">
               <AlertCircle className="mx-auto text-amber-500 mb-4" size={48} />
@@ -312,6 +417,12 @@ export default function VirtualCard() {
                   <Button onClick={openTopUpModal} className="bg-emerald-500 hover:bg-emerald-600 text-white">
                     <Plus className="mr-2" size={18} />
                     {getText('Ajoute kòb sou kat', 'Ajouter des fonds', 'Add funds to card')}
+                  </Button>
+                )}
+                {approvedCards.length > 0 && (
+                  <Button onClick={openWithdrawModal} variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50">
+                    <ArrowDown className="mr-2" size={18} />
+                    {getText('Retire sou bous', 'Retirer vers wallet', 'Withdraw to wallet')}
                   </Button>
                 )}
                 <Button onClick={() => setShowOrderModal(true)} className="btn-primary">
@@ -469,6 +580,52 @@ export default function VirtualCard() {
                           </div>
                         </div>
                         {getStatusBadge(deposit.status)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Withdrawals History */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <History size={20} className="text-stone-600" />
+                  {getText('Istorik Retrè Kat', 'Historique des Retraits', 'Card Withdrawal History')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="skeleton h-16 rounded-lg" />
+                    ))}
+                  </div>
+                ) : cardWithdrawals.length === 0 ? (
+                  <div className="text-center py-8 text-stone-500">
+                    <Wallet className="mx-auto mb-3 text-stone-400" size={48} />
+                    <p>{getText('Pa gen istorik retrè', 'Pas d\'historique de retrait', 'No withdrawal history')}</p>
+                    <p className="text-sm mt-1">{getText('Retrè yo ap parèt isit la', 'Vos retraits apparaîtront ici', 'Your withdrawals will appear here')}</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-stone-100 dark:divide-stone-700">
+                    {cardWithdrawals.map((w) => (
+                      <div key={w.withdrawal_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-stone-100 dark:bg-stone-800">
+                            <ArrowDown className="text-stone-600 dark:text-stone-300" size={20} />
+                          </div>
+                          <div>
+                            <p className="font-medium text-stone-900 dark:text-white">
+                              ${Number(w.amount || 0).toFixed(2)} USD
+                            </p>
+                            <p className="text-sm text-stone-500">
+                              {new Date(w.created_at).toLocaleDateString()} - {w.card_email}
+                            </p>
+                          </div>
+                        </div>
+                        {getStatusBadge(w.status)}
                       </div>
                     ))}
                   </div>
@@ -688,6 +845,91 @@ export default function VirtualCard() {
           </DialogContent>
         </Dialog>
 
+        {/* Withdraw Modal */}
+        <Dialog open={showWithdrawModal} onOpenChange={setShowWithdrawModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ArrowDown className="text-amber-600" size={24} />
+                {getText('Retire sou bous', 'Retirer vers wallet', 'Withdraw to wallet')}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-6 py-4">
+              <div className="bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl p-4">
+                <p className="text-sm text-stone-600 dark:text-stone-300">
+                  {getText(
+                    'Retrè sa a ap voye lajan soti nan kat la tounen nan bous USD ou (si kat la sipòte sa).',
+                    'Ce retrait renvoie les fonds de la carte vers votre wallet USD (si la carte le supporte).',
+                    'This withdraw sends funds from the card back to your USD wallet (if supported).'
+                  )}
+                </p>
+              </div>
+
+              {/* Card selection */}
+              {approvedCards.length > 1 ? (
+                <div>
+                  <Label>{getText('Chwazi kat la', 'Choisir la carte', 'Choose the card')}</Label>
+                  <Select value={withdrawCardId} onValueChange={setWithdrawCardId}>
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder={getText('Chwazi yon kat', 'Choisir une carte', 'Choose a card')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {approvedCards.map(card => (
+                        <SelectItem key={card.order_id} value={card.order_id}>
+                          <div className="flex items-center gap-2">
+                            <CreditCard size={16} />
+                            <span>{card.card_brand || 'Card'}</span>
+                            <span className="text-stone-500">•••• {card.card_last4 || '****'}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : approvedCards.length === 1 ? (
+                <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
+                  <p className="text-sm text-stone-500 mb-1">{getText('Kat chwazi', 'Carte sélectionnée', 'Selected card')}</p>
+                  <div className="flex items-center gap-2">
+                    <CreditCard size={20} className="text-amber-600" />
+                    <span className="font-medium">{approvedCards[0].card_brand || 'Card'}</span>
+                    <span className="text-stone-500 font-mono">•••• {approvedCards[0].card_last4 || '****'}</span>
+                  </div>
+                  <p className="text-xs text-stone-400 mt-1">{approvedCards[0].card_email}</p>
+                </div>
+              ) : null}
+
+              {/* Amount */}
+              <div>
+                <Label>{getText('Montan (USD)', 'Montant (USD)', 'Amount (USD)')}</Label>
+                <div className="relative mt-2">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl text-stone-400">$</span>
+                  <Input
+                    type="number"
+                    placeholder="0.00"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    className="pl-10 text-xl font-bold"
+                    min="5"
+                  />
+                </div>
+                <p className="text-xs text-stone-500 mt-1">{getText('Minimòm: $5', 'Minimum: $5', 'Minimum: $5')}</p>
+              </div>
+
+              <Button
+                onClick={submitWithdraw}
+                disabled={submittingWithdraw || !withdrawAmount || parseFloat(withdrawAmount) < 5 || !withdrawCardId}
+                className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                {submittingWithdraw
+                  ? getText('Soumisyon...', 'Envoi...', 'Submitting...')
+                  : getText('Konfime retrè', 'Confirmer retrait', 'Confirm withdrawal')
+                }
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* Card Details Modal */}
         <Dialog open={showCardDetails} onOpenChange={setShowCardDetails}>
           <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto">
@@ -839,6 +1081,92 @@ export default function VirtualCard() {
                 <Button onClick={() => setShowCardDetails(false)} className="w-full" variant="outline">
                   {getText('Fèmen', 'Fermer', 'Close')}
                 </Button>
+
+              {/* Controls */}
+              {selectedCard?.provider === 'strowallet' ? (
+                <div className="border-t pt-4 space-y-3">
+                  <h4 className="font-semibold text-stone-900 dark:text-white">
+                    {getText('Jesyon Kat', 'Gestion Carte', 'Card Management')}
+                  </h4>
+
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-300">
+                    {getText(
+                      'Atansyon: Depi premye echèk peman, kat la ka auto-freeze pou pwoteje w (pou evite rive 3 echèk). Verifye balans ou + adrès bòdwo, epi debloke lè ou pare.',
+                      'Attention: dès le premier échec, la carte peut être auto-freeze pour vous protéger (éviter 3 échecs). Vérifiez solde + adresse, puis débloquez.',
+                      'Warning: after the first failure, the card may auto-freeze to protect you (avoid reaching 3 failures). Check balance/billing, then unlock.'
+                    )}
+                    {typeof selectedCard.failed_payment_count === 'number' ? (
+                      <div className="mt-2 font-semibold">
+                        {getText('Echèk: ', 'Échecs: ', 'Fails: ')}{selectedCard.failed_payment_count}/3
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label>{getText('Limit depans (USD)', 'Limite dépenses (USD)', 'Spending limit (USD)')}</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={spendingLimit}
+                        onChange={(e) => setSpendingLimit(e.target.value)}
+                        className="mt-2"
+                      />
+                    </div>
+                    <div>
+                      <Label>{getText('Peryòd', 'Période', 'Period')}</Label>
+                      <Select value={spendingPeriod} onValueChange={setSpendingPeriod}>
+                        <SelectTrigger className="mt-2">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="daily">{getText('Chak jou', 'Quotidien', 'Daily')}</SelectItem>
+                          <SelectItem value="monthly">{getText('Chak mwa', 'Mensuel', 'Monthly')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      onClick={() => updateControls({ spending_limit_usd: parseFloat(spendingLimit), spending_limit_period: spendingPeriod })}
+                      disabled={updatingControls || !spendingLimit || Number(spendingLimit) <= 0}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      {getText('Sove limit', 'Enregistrer limite', 'Save limit')}
+                    </Button>
+                    {selectedCard?.card_status === 'locked' ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => updateControls({ lock: false })}
+                        disabled={updatingControls || (selectedCard.failed_payment_count >= 3)}
+                        className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                      >
+                        {getText('Debloke', 'Débloquer', 'Unlock')}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        onClick={() => updateControls({ lock: true })}
+                        disabled={updatingControls}
+                        className="border-red-300 text-red-700 hover:bg-red-50"
+                      >
+                        {getText('Bloke kat la', 'Bloquer la carte', 'Lock card')}
+                      </Button>
+                    )}
+                  </div>
+
+                  {(selectedCard.failed_payment_count >= 3) ? (
+                    <div className="text-xs text-red-600">
+                      {getText(
+                        'Kat la bloke apre 3 echèk. Kontakte sipò pou debloke.',
+                        'Carte bloquée après 3 échecs. Contactez le support pour débloquer.',
+                        'Card locked after 3 failures. Contact support to unlock.'
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               </div>
             )}
           </DialogContent>
