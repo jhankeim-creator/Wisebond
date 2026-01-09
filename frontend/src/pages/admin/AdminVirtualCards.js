@@ -72,6 +72,9 @@ export default function AdminVirtualCards() {
   const [purging, setPurging] = useState(false);
   const [purgeDays, setPurgeDays] = useState(30);
   const [purgeProvider, setPurgeProvider] = useState('all');
+  const [stwDiag, setStwDiag] = useState(null);
+  const [testingStrowallet, setTestingStrowallet] = useState(false);
+  const [showDiagModal, setShowDiagModal] = useState(false);
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -183,6 +186,28 @@ export default function AdminVirtualCards() {
       toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
     } finally {
       setSavingCardSettings(false);
+    }
+  };
+
+  const testStrowallet = async () => {
+    setTestingStrowallet(true);
+    try {
+      const res = await axios.get(`${API}/admin/strowallet/diagnostics`);
+      setStwDiag(res.data);
+      setShowDiagModal(true);
+      const p0 = res.data?.probes?.[0];
+      const cls = p0?.classification;
+      if (cls === 'auth_error') {
+        toast.error(getText('Kle Strowallet yo pa bon (401/403).', 'Clés Strowallet invalides (401/403).', 'Strowallet keys invalid (401/403).'));
+      } else if (cls === 'wrong_path_or_base_url') {
+        toast.error(getText('Base URL oswa path la pa bon (404).', 'Base URL ou endpoint incorrect (404).', 'Base URL or endpoint incorrect (404).'));
+      } else if (cls) {
+        toast.success(getText('Dyagnostik pare.', 'Diagnostic prêt.', 'Diagnostics ready.'));
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè dyagnostik', 'Erreur diagnostic', 'Diagnostics error'));
+    } finally {
+      setTestingStrowallet(false);
     }
   };
 
@@ -626,6 +651,25 @@ export default function AdminVirtualCards() {
                       </div>
                     </div>
                   </details>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={testStrowallet}
+                      disabled={testingStrowallet}
+                      className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                    >
+                      {testingStrowallet ? getText('Ap teste...', 'Test...', 'Testing...') : getText('Teste Strowallet', 'Tester Strowallet', 'Test Strowallet')}
+                    </Button>
+                    <p className="text-xs text-stone-500 self-center">
+                      {getText(
+                        'Sa ap montre si kle yo ok (401/403), path/base ok (404), oswa payload manke (400/422).',
+                        'Indique si clés OK (401/403), endpoint OK (404), ou payload manquant (400/422).',
+                        'Shows if keys are OK (401/403), endpoint OK (404), or payload missing (400/422).'
+                      )}
+                    </p>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -735,6 +779,30 @@ export default function AdminVirtualCards() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Diagnostics modal */}
+        <Dialog open={showDiagModal} onOpenChange={setShowDiagModal}>
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{getText('Dyagnostik Strowallet', 'Diagnostic Strowallet', 'Strowallet Diagnostics')}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-xs text-stone-500">
+                {getText(
+                  'Nòt: rapò sa a pa montre kle yo; li montre sèlman status code + repons Strowallet la.',
+                  'Note: ce rapport ne montre pas les clés; seulement status code + réponse.',
+                  'Note: this report does not show keys; only status codes + responses.'
+                )}
+              </p>
+              <pre className="text-xs whitespace-pre-wrap bg-stone-50 dark:bg-stone-900 border rounded-lg p-3 overflow-x-auto">
+                {stwDiag ? JSON.stringify(stwDiag, null, 2) : ''}
+              </pre>
+              <Button variant="outline" onClick={() => setShowDiagModal(false)}>
+                {getText('Fèmen', 'Fermer', 'Close')}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

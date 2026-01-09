@@ -1572,7 +1572,7 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
 
         # Virtual Cards (Strowallet)
         "strowallet_enabled": False,
-        "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", ""),
+        "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", "") or "https://strowallet.com",
         "strowallet_api_key": "",
         "strowallet_api_secret": "",
         "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/card-user",
