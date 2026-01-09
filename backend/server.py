@@ -168,12 +168,18 @@ async def _strowallet_post(settings: Optional[dict], path: str, payload: Dict[st
         # Different Strowallet deployments use different auth schemes; send both.
         "Authorization": f"Bearer {cfg['api_key']}",
         "X-API-Key": cfg["api_key"],
+        "x-api-key": cfg["api_key"],
+        "api-key": cfg["api_key"],
+        "public_key": cfg["api_key"],
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
     # Optional extra secret header (some Strowallet setups require key + secret).
     if cfg.get("api_secret"):
         headers["X-API-Secret"] = cfg["api_secret"]
+        headers["x-api-secret"] = cfg["api_secret"]
+        headers["api-secret"] = cfg["api_secret"]
+        headers["secret_key"] = cfg["api_secret"]
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
         resp = await client.post(url, json=payload, headers=headers)
@@ -3258,6 +3264,7 @@ async def admin_get_topup_orders(
 async def admin_purge_virtual_card_orders(
     days: int = Query(default=30, ge=1, le=3650),
     status: Optional[str] = None,
+    provider: Optional[str] = Query(default=None, description="Filter by provider: 'strowallet' or 'manual'"),
     admin: dict = Depends(get_admin_user),
 ):
     """
@@ -3268,10 +3275,19 @@ async def admin_purge_virtual_card_orders(
     query: Dict[str, Any] = {"created_at": {"$lt": cutoff.isoformat()}}
     if status:
         query["status"] = status
+    if provider:
+        p = str(provider).strip().lower()
+        if p == "strowallet":
+            query["provider"] = "strowallet"
+        elif p == "manual":
+            # manual = anything not issued by Strowallet (including missing provider field)
+            query["provider"] = {"$ne": "strowallet"}
+        else:
+            raise HTTPException(status_code=400, detail="Invalid provider filter. Use 'strowallet' or 'manual'.")
 
     result = await db.virtual_card_orders.delete_many(query)
-    await log_action(admin["user_id"], "virtual_card_orders_purge", {"days": days, "status": status, "deleted": result.deleted_count})
-    return {"deleted": result.deleted_count, "days": days, "status": status}
+    await log_action(admin["user_id"], "virtual_card_orders_purge", {"days": days, "status": status, "provider": provider, "deleted": result.deleted_count})
+    return {"deleted": result.deleted_count, "days": days, "status": status, "provider": provider}
 
 # Admin: Process top-up order
 @api_router.patch("/admin/topup-orders/{order_id}")
