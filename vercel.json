@@ -3,11 +3,11 @@
   "version": 2,
   "framework": null,
   "installCommand": "cd frontend && YARN_PRODUCTION=false yarn install --frozen-lockfile",
-  "buildCommand": "cd frontend && yarn build",
+  "buildCommand": "cd frontend && GENERATE_SOURCEMAP=false yarn build",
   "outputDirectory": "frontend/build",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]

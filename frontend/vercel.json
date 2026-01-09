@@ -1,4 +1,10 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "framework": null,
+  "installCommand": "YARN_PRODUCTION=false yarn install --frozen-lockfile",
+  "buildCommand": "GENERATE_SOURCEMAP=false yarn build",
+  "outputDirectory": "build",
   "rewrites": [
     {
       "source": "/((?!api/).*)",
