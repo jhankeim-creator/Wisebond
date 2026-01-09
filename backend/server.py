@@ -5407,6 +5407,32 @@ async def admin_strowallet_diagnostics(admin: dict = Depends(get_admin_user)):
 
     return {"summary": summary, "probes": probes}
 
+
+@api_router.post("/admin/strowallet/apply-default-endpoints")
+async def admin_strowallet_apply_default_endpoints(admin: dict = Depends(get_admin_user)):
+    """
+    Force-set canonical Strowallet bitvcard endpoints in settings.
+    This helps recover from typos like 'card-userrd-user' or duplicated path segments.
+    """
+    defaults = {
+        "strowallet_base_url": "https://strowallet.com",
+        "strowallet_create_user_path": "/api/bitvcard/card-user",
+        "strowallet_create_card_path": "/api/bitvcard/create-card/",
+        "strowallet_fund_card_path": "/api/bitvcard/fund-card/",
+        "strowallet_fetch_card_detail_path": "/api/bitvcard/fetch-card-detail/",
+        "strowallet_card_transactions_path": "/api/bitvcard/card-transactions/",
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    await db.settings.update_one(
+        {"setting_id": "main"},
+        {"$set": defaults},
+        upsert=True,
+    )
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    return {"message": "Default Strowallet endpoints applied", "settings": settings}
+
 # Public endpoint for chat settings (no auth required)
 @api_router.get("/public/chat-settings")
 async def get_public_chat_settings():
