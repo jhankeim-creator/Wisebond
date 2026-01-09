@@ -109,6 +109,7 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
         brand_name = "KAYICOM"
 
     # Endpoint paths can vary by Strowallet plan; allow overrides.
+    create_user_path = ((settings or {}).get("strowallet_create_user_path") or os.environ.get("STROWALLET_CREATE_USER_PATH") or "/api/bitvcard/create-user/").strip()
     create_path = ((settings or {}).get("strowallet_create_card_path") or os.environ.get("STROWALLET_CREATE_CARD_PATH") or "/api/virtualcards/create-card").strip()
     fund_path = ((settings or {}).get("strowallet_fund_card_path") or os.environ.get("STROWALLET_FUND_CARD_PATH") or "/api/virtualcards/fund-card").strip()
     withdraw_path = ((settings or {}).get("strowallet_withdraw_card_path") or os.environ.get("STROWALLET_WITHDRAW_CARD_PATH") or "/api/virtualcards/withdraw-card").strip()
@@ -117,6 +118,7 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
     unfreeze_path = ((settings or {}).get("strowallet_unfreeze_card_path") or os.environ.get("STROWALLET_UNFREEZE_CARD_PATH") or "").strip()
 
     base_url = base_url.rstrip("/")
+    create_user_path = create_user_path if create_user_path.startswith("/") else f"/{create_user_path}"
     create_path = create_path if create_path.startswith("/") else f"/{create_path}"
     fund_path = fund_path if fund_path.startswith("/") else f"/{fund_path}"
     withdraw_path = withdraw_path if withdraw_path.startswith("/") else f"/{withdraw_path}"
@@ -131,6 +133,7 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
         "base_url": base_url,
         "api_key": api_key,
         "api_secret": api_secret,
+        "create_user_path": create_user_path,
         "create_path": create_path,
         "fund_path": fund_path,
         "withdraw_path": withdraw_path,
@@ -400,6 +403,7 @@ class AdminSettingsUpdate(BaseModel):
     strowallet_base_url: Optional[str] = None
     strowallet_api_key: Optional[str] = None
     strowallet_api_secret: Optional[str] = None
+    strowallet_create_user_path: Optional[str] = None
     strowallet_create_card_path: Optional[str] = None
     strowallet_fund_card_path: Optional[str] = None
     strowallet_withdraw_card_path: Optional[str] = None
@@ -2962,6 +2966,35 @@ async def admin_process_card_order(
 
             cfg = _strowallet_config(settings)
 
+            # Some Strowallet APIs require creating a user/customer first (ex: /api/bitvcard/create-user/).
+            # We store the returned customer/user id on our user record to reuse it.
+            stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
+            if not stw_customer_id and cfg.get("create_user_path"):
+                create_user_payload: Dict[str, Any] = {
+                    "email": user.get("email"),
+                    "full_name": user.get("full_name"),
+                    "name": user.get("full_name"),
+                    "phone": user.get("phone"),
+                    "reference": user.get("user_id"),
+                    "customer_reference": user.get("user_id"),
+                }
+                create_user_payload = {k: v for k, v in create_user_payload.items() if v not in (None, "")}
+                stw_user_resp = await _strowallet_post(settings, cfg["create_user_path"], create_user_payload)
+                stw_customer_id = _extract_first(
+                    stw_user_resp,
+                    "data.customer_id",
+                    "data.user_id",
+                    "customer_id",
+                    "user_id",
+                    "data.id",
+                    "id",
+                )
+                if stw_customer_id:
+                    await db.users.update_one(
+                        {"user_id": user["user_id"]},
+                        {"$set": {"strowallet_customer_id": stw_customer_id}},
+                    )
+
             create_payload: Dict[str, Any] = {
                 # Common fields across many Strowallet deployments (best-effort).
                 "email": order.get("card_email") or user.get("email"),
@@ -2972,6 +3005,10 @@ async def admin_process_card_order(
                 "reference": order_id,
                 "customer_reference": user.get("user_id"),
             }
+            if stw_customer_id:
+                # Try common keys used by Strowallet deployments
+                create_payload["customer_id"] = stw_customer_id
+                create_payload["user_id"] = stw_customer_id
 
             # Remove empty values to avoid API rejections.
             create_payload = {k: v for k, v in create_payload.items() if v not in (None, "")}
@@ -5081,6 +5118,7 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
             "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", ""),
             "strowallet_api_key": "",
             "strowallet_api_secret": "",
+            "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/create-user/",
             "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", ""),
             "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", ""),
             "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", ""),
