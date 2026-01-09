@@ -49,6 +49,7 @@ import AdminAgentSettings from "@/pages/admin/AdminAgentSettings";
 import AdminAgentDeposits from "@/pages/admin/AdminAgentDeposits";
 import AdminAgentCommissionWithdrawals from "@/pages/admin/AdminAgentCommissionWithdrawals";
 import AdminPaymentGateway from "@/pages/admin/AdminPaymentGateway";
+import AdminWebhookEvents from "@/pages/admin/AdminWebhookEvents";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -131,6 +132,7 @@ function AppRoutes() {
       <Route path="/admin/virtual-cards" element={<ProtectedRoute adminOnly><AdminVirtualCards /></ProtectedRoute>} />
       <Route path="/admin/topup" element={<ProtectedRoute adminOnly><AdminTopUp /></ProtectedRoute>} />
       <Route path="/admin/logs" element={<ProtectedRoute adminOnly><AdminLogs /></ProtectedRoute>} />
+      <Route path="/admin/webhook-events" element={<ProtectedRoute adminOnly><AdminWebhookEvents /></ProtectedRoute>} />
       <Route path="/admin/team" element={<ProtectedRoute adminOnly><AdminTeam /></ProtectedRoute>} />
       <Route path="/admin/agent-settings" element={<ProtectedRoute adminOnly><AdminAgentSettings /></ProtectedRoute>} />
       <Route path="/admin/agent-deposits" element={<ProtectedRoute adminOnly><AdminAgentDeposits /></ProtectedRoute>} />
