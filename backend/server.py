@@ -111,30 +111,45 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
 
     # Endpoint paths can vary by Strowallet plan; allow overrides.
     # Defaults tuned for Strowallet bitvcard endpoints.
-    create_user_path = ((settings or {}).get("strowallet_create_user_path") or os.environ.get("STROWALLET_CREATE_USER_PATH") or "/api/bitvcard/card-user").strip()
-    create_path = ((settings or {}).get("strowallet_create_card_path") or os.environ.get("STROWALLET_CREATE_CARD_PATH") or "/api/bitvcard/create-card/").strip()
-    fund_path = ((settings or {}).get("strowallet_fund_card_path") or os.environ.get("STROWALLET_FUND_CARD_PATH") or "/api/bitvcard/fund-card/").strip()
-    withdraw_path = ((settings or {}).get("strowallet_withdraw_card_path") or os.environ.get("STROWALLET_WITHDRAW_CARD_PATH") or "").strip()
-    fetch_detail_path = ((settings or {}).get("strowallet_fetch_card_detail_path") or os.environ.get("STROWALLET_FETCH_CARD_DETAIL_PATH") or "/api/bitvcard/fetch-card-detail/").strip()
-    card_tx_path = ((settings or {}).get("strowallet_card_transactions_path") or os.environ.get("STROWALLET_CARD_TRANSACTIONS_PATH") or "/api/bitvcard/card-transactions/").strip()
-    set_limit_path = ((settings or {}).get("strowallet_set_limit_path") or os.environ.get("STROWALLET_SET_LIMIT_PATH") or "").strip()
-    freeze_path = ((settings or {}).get("strowallet_freeze_card_path") or os.environ.get("STROWALLET_FREEZE_CARD_PATH") or "").strip()
-    unfreeze_path = ((settings or {}).get("strowallet_unfreeze_card_path") or os.environ.get("STROWALLET_UNFREEZE_CARD_PATH") or "").strip()
+    create_user_path = _normalize_strowallet_path(
+        (settings or {}).get("strowallet_create_user_path") or os.environ.get("STROWALLET_CREATE_USER_PATH"),
+        "/api/bitvcard/card-user",
+    )
+    create_path = _normalize_strowallet_path(
+        (settings or {}).get("strowallet_create_card_path") or os.environ.get("STROWALLET_CREATE_CARD_PATH"),
+        "/api/bitvcard/create-card/",
+    )
+    fund_path = _normalize_strowallet_path(
+        (settings or {}).get("strowallet_fund_card_path") or os.environ.get("STROWALLET_FUND_CARD_PATH"),
+        "/api/bitvcard/fund-card/",
+    )
+    withdraw_path = _normalize_strowallet_path(
+        (settings or {}).get("strowallet_withdraw_card_path") or os.environ.get("STROWALLET_WITHDRAW_CARD_PATH"),
+        "",
+    )
+    fetch_detail_path = _normalize_strowallet_path(
+        (settings or {}).get("strowallet_fetch_card_detail_path") or os.environ.get("STROWALLET_FETCH_CARD_DETAIL_PATH"),
+        "/api/bitvcard/fetch-card-detail/",
+    )
+    card_tx_path = _normalize_strowallet_path(
+        (settings or {}).get("strowallet_card_transactions_path") or os.environ.get("STROWALLET_CARD_TRANSACTIONS_PATH"),
+        "/api/bitvcard/card-transactions/",
+    )
+    set_limit_path = _normalize_strowallet_path(
+        (settings or {}).get("strowallet_set_limit_path") or os.environ.get("STROWALLET_SET_LIMIT_PATH"),
+        "",
+    )
+    freeze_path = _normalize_strowallet_path(
+        (settings or {}).get("strowallet_freeze_card_path") or os.environ.get("STROWALLET_FREEZE_CARD_PATH"),
+        "",
+    )
+    unfreeze_path = _normalize_strowallet_path(
+        (settings or {}).get("strowallet_unfreeze_card_path") or os.environ.get("STROWALLET_UNFREEZE_CARD_PATH"),
+        "",
+    )
 
     base_url = base_url.rstrip("/")
-    create_user_path = create_user_path if create_user_path.startswith("/") else f"/{create_user_path}"
-    create_path = create_path if create_path.startswith("/") else f"/{create_path}"
-    fund_path = fund_path if fund_path.startswith("/") else f"/{fund_path}"
-    if withdraw_path:
-        withdraw_path = withdraw_path if withdraw_path.startswith("/") else f"/{withdraw_path}"
-    fetch_detail_path = fetch_detail_path if fetch_detail_path.startswith("/") else f"/{fetch_detail_path}"
-    card_tx_path = card_tx_path if card_tx_path.startswith("/") else f"/{card_tx_path}"
-    if set_limit_path:
-        set_limit_path = set_limit_path if set_limit_path.startswith("/") else f"/{set_limit_path}"
-    if freeze_path:
-        freeze_path = freeze_path if freeze_path.startswith("/") else f"/{freeze_path}"
-    if unfreeze_path:
-        unfreeze_path = unfreeze_path if unfreeze_path.startswith("/") else f"/{unfreeze_path}"
+    # (paths already normalized)
 
     return {
         "base_url": base_url,
@@ -183,6 +198,63 @@ def _with_aliases(payload: Dict[str, Any], key: str, *aliases: str) -> Dict[str,
             payload[a] = v
     return payload
 
+def _normalize_strowallet_path(raw: Optional[str], default: str) -> str:
+    """
+    Normalize an endpoint path.
+    Accepts a path ("/api/...") or full URL ("https://.../api/...") and returns a clean path.
+    """
+    import re
+    from urllib.parse import urlparse
+
+    v = (raw or "").strip()
+    if not v:
+        v = (default or "").strip()
+    if not v:
+        return ""
+
+    if v.startswith("http://") or v.startswith("https://"):
+        try:
+            v = urlparse(v).path or ""
+        except Exception:
+            pass
+
+    # If host got embedded into the path, strip it.
+    if "strowallet.com" in v:
+        idx = v.find("strowallet.com")
+        tail = v[idx + len("strowallet.com") :]
+        if tail.startswith("/"):
+            v = tail
+
+    v = v.strip()
+    if not v:
+        return ""
+    if not v.startswith("/"):
+        v = f"/{v}"
+
+    # Collapse duplicate slashes
+    v = re.sub(r"/{2,}", "/", v)
+    return v
+
+def _ensure_strowallet_auth_payload(payload: Dict[str, Any], cfg: Dict[str, str]) -> Dict[str, Any]:
+    """
+    Some Strowallet endpoints require auth keys inside the JSON body (e.g. `public_key`).
+    Add common auth fields if missing (do not overwrite user-provided values).
+    """
+    if not isinstance(payload, dict):
+        return payload
+    api_key = (cfg.get("api_key") or "").strip()
+    api_secret = (cfg.get("api_secret") or "").strip()
+
+    if api_key:
+        payload.setdefault("public_key", api_key)
+        payload.setdefault("api_key", api_key)
+        payload.setdefault("key", api_key)
+    if api_secret:
+        payload.setdefault("secret_key", api_secret)
+        payload.setdefault("api_secret", api_secret)
+        payload.setdefault("secret", api_secret)
+    return payload
+
 async def _strowallet_post(settings: Optional[dict], path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     cfg = _strowallet_config(settings)
     if not cfg["base_url"] or not cfg["api_key"]:
@@ -205,6 +277,9 @@ async def _strowallet_post(settings: Optional[dict], path: str, payload: Dict[st
         headers["x-api-secret"] = cfg["api_secret"]
         headers["api-secret"] = cfg["api_secret"]
         headers["secret_key"] = cfg["api_secret"]
+
+    # Also include auth keys in JSON body (many Strowallet endpoints require `public_key` field).
+    payload = _ensure_strowallet_auth_payload(payload or {}, cfg)
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
         resp = await client.post(url, json=payload, headers=headers)
@@ -5291,15 +5366,22 @@ async def admin_strowallet_diagnostics(admin: dict = Depends(get_admin_user)):
         return {"summary": summary, "probes": [], "note": "Strowallet is disabled in settings."}
 
     probes = []
-    # Probe create-user/customer endpoint with empty payload (should return 400/422 if reachable+authed; 401/403 if auth; 404 if path)
+    # Probe with auth-only payload to avoid creating resources, but still validate auth mechanism.
+    auth_only: Dict[str, Any] = {}
+    if cfg.get("api_key"):
+        auth_only["public_key"] = cfg["api_key"]
+    if cfg.get("api_secret"):
+        auth_only["secret_key"] = cfg["api_secret"]
+
+    # Probe create-user/customer endpoint (should return 400/422 if reachable+authed; 401/403 if auth; 404 if path)
     if cfg.get("create_user_path"):
-        probes.append({"name": "create_user_probe", "result": await _strowallet_probe(settings, cfg["create_user_path"], {})})
-    # Probe create-card endpoint with empty payload
+        probes.append({"name": "create_user_probe", "result": await _strowallet_probe(settings, cfg["create_user_path"], dict(auth_only))})
+    # Probe create-card endpoint with auth-only payload
     if cfg.get("create_path"):
-        probes.append({"name": "create_card_probe", "result": await _strowallet_probe(settings, cfg["create_path"], {})})
+        probes.append({"name": "create_card_probe", "result": await _strowallet_probe(settings, cfg["create_path"], dict(auth_only))})
     # Probe fetch detail with dummy card_id (should fail validation but confirms path/auth)
     if cfg.get("fetch_detail_path"):
-        probes.append({"name": "fetch_detail_probe", "result": await _strowallet_probe(settings, cfg["fetch_detail_path"], {"card_id": "TEST"})})
+        probes.append({"name": "fetch_detail_probe", "result": await _strowallet_probe(settings, cfg["fetch_detail_path"], {"card_id": "TEST", **auth_only})})
 
     # Interpret common failures for admin readability
     def classify(status_code: Optional[int]) -> str:
@@ -5309,6 +5391,8 @@ async def admin_strowallet_diagnostics(admin: dict = Depends(get_admin_user)):
             return "auth_error"
         if status_code == 404:
             return "wrong_path_or_base_url"
+        if status_code == 405:
+            return "method_not_allowed (check endpoint path)"
         if status_code in (400, 422):
             return "reachable_but_bad_payload (usually OK for auth/path)"
         if 200 <= status_code < 300:
