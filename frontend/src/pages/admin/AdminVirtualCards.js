@@ -23,6 +23,8 @@ const MASTERCARD_LOGO = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3d
 export default function AdminVirtualCards() {
   const { language } = useLanguage();
   const [activeTab, setActiveTab] = useState('orders');
+  const [strowalletEnabled, setStrowalletEnabled] = useState(false);
+  const [autoIssueStrowallet, setAutoIssueStrowallet] = useState(true);
   
   // Orders state
   const [orders, setOrders] = useState([]);
@@ -116,6 +118,16 @@ export default function AdminVirtualCards() {
   useEffect(() => {
     (async () => {
       try {
+        // Admin settings: detect if Strowallet automation is enabled.
+        // This controls whether "Auto-issue via Strowallet" is offered in card orders.
+        try {
+          const s = await axios.get(`${API}/admin/settings`);
+          setStrowalletEnabled(!!s.data?.settings?.strowallet_enabled);
+        } catch (e) {
+          // If not available, keep false.
+          setStrowalletEnabled(false);
+        }
+
         const res = await axios.get(`${API}/public/app-config`);
         if (res.data?.card_background_image) {
           setDefaultCardBg(res.data.card_background_image);
@@ -249,12 +261,21 @@ export default function AdminVirtualCards() {
   const handleProcessOrder = async (action) => {
     setProcessing(true);
     try {
-      const payload = {
-        action,
-        admin_notes: adminNotes,
-        ...cardDetails,
-        card_last4: cardDetails.card_number ? cardDetails.card_number.slice(-4) : cardDetails.card_last4
-      };
+      const shouldAutoIssue =
+        action === 'approve' &&
+        !!strowalletEnabled &&
+        !!autoIssueStrowallet;
+
+      // If auto-issuing via Strowallet, do NOT send manual card details.
+      // Backend will create the card via Strowallet and populate details automatically.
+      const payload = shouldAutoIssue
+        ? { action, admin_notes: adminNotes }
+        : {
+          action,
+          admin_notes: adminNotes,
+          ...cardDetails,
+          card_last4: cardDetails.card_number ? cardDetails.card_number.slice(-4) : cardDetails.card_last4,
+        };
       
       await axios.patch(`${API}/admin/virtual-card-orders/${selectedOrder.order_id}`, payload);
       toast.success(action === 'approve' 
@@ -317,6 +338,8 @@ export default function AdminVirtualCards() {
   const openOrderModal = (order) => {
     setSelectedOrder(order);
     setAdminNotes(order.admin_notes || '');
+    // Default to auto-issue if Strowallet is enabled and the order isn't already a provider card.
+    setAutoIssueStrowallet(!!strowalletEnabled && (order?.provider !== 'strowallet'));
     setCardDetails({
       card_email: order.card_email || '',
       card_brand: order.card_brand || '',
@@ -555,6 +578,7 @@ export default function AdminVirtualCards() {
                       <tr>
                         <th>Client</th>
                         <th>Email Kat</th>
+                        <th>{getText('Provider', 'Provider', 'Provider')}</th>
                         <th>{getText('Mak', 'Marque', 'Brand')}</th>
                         <th>{getText('Frè', 'Frais', 'Fee')}</th>
                         <th>Date</th>
@@ -564,14 +588,21 @@ export default function AdminVirtualCards() {
                     </thead>
                     <tbody>
                       {ordersLoading ? (
-                        <tr><td colSpan="7" className="text-center py-8">{getText('Chajman...', 'Chargement...', 'Loading...')}</td></tr>
+                        <tr><td colSpan="8" className="text-center py-8">{getText('Chajman...', 'Chargement...', 'Loading...')}</td></tr>
                       ) : orders.length === 0 ? (
-                        <tr><td colSpan="7" className="text-center py-8">{getText('Pa gen komand', 'Aucune commande', 'No orders')}</td></tr>
+                        <tr><td colSpan="8" className="text-center py-8">{getText('Pa gen komand', 'Aucune commande', 'No orders')}</td></tr>
                       ) : (
                         orders.map((order) => (
                           <tr key={order.order_id}>
                             <td className="font-mono text-sm">{order.client_id}</td>
                             <td>{order.card_email}</td>
+                            <td>
+                              {order.provider === 'strowallet' ? (
+                                <Badge className="bg-purple-100 text-purple-700">Strowallet</Badge>
+                              ) : (
+                                <Badge className="bg-stone-100 text-stone-700">{getText('Manyèl', 'Manuel', 'Manual')}</Badge>
+                              )}
+                            </td>
                             <td>
                               <div className="flex items-center gap-2">
                                 {order.card_type && (
@@ -740,8 +771,37 @@ export default function AdminVirtualCards() {
                       </p>
                     </div>
 
+                    {/* Strowallet auto-issue option */}
+                    {strowalletEnabled && (
+                      <div className="border rounded-xl p-4 bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="font-semibold text-purple-800 dark:text-purple-200">
+                              {getText('Auto-issue via Strowallet', 'Auto-émission via Strowallet', 'Auto-issue via Strowallet')}
+                            </p>
+                            <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+                              {getText(
+                                'Si ou aktive sa, ou PA bezwen antre nimewo kat/CVV; sistèm nan ap kreye kat la otomatikman.',
+                                'Si activé, vous n’avez PAS besoin de saisir le numéro/CVV; le système créera la carte automatiquement.',
+                                'If enabled, you do NOT need to enter card number/CVV; the system will create the card automatically.'
+                              )}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant={autoIssueStrowallet ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setAutoIssueStrowallet((v) => !v)}
+                            className={autoIssueStrowallet ? 'bg-purple-600 hover:bg-purple-700' : ''}
+                          >
+                            {autoIssueStrowallet ? getText('Aktive', 'Activé', 'Enabled') : getText('Dezaktive', 'Désactivé', 'Disabled')}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Card Details Form */}
-                    <div className="border rounded-xl p-4 space-y-4">
+                    <div className={`border rounded-xl p-4 space-y-4 ${strowalletEnabled && autoIssueStrowallet ? 'opacity-50 pointer-events-none' : ''}`}>
                       <h4 className="font-semibold flex items-center gap-2">
                         <CreditCard size={18} />
                         {getText('Enfòmasyon Kat la', 'Informations de la Carte', 'Card Information')}

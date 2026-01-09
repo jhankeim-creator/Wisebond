@@ -689,20 +689,12 @@ export default function AdminSettings() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <Label>{getText('Base URL (opsyonèl)', 'Base URL (optionnel)', 'Base URL (optional)')}</Label>
-                <Input
-                  placeholder="https://..."
-                  value={settings.strowallet_base_url || ''}
-                  onChange={(e) => setSettings({ ...settings, strowallet_base_url: e.target.value })}
-                  className="mt-1 font-mono text-sm"
-                />
-              </div>
+            {/* Simple config: just keys (recommended) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="flex items-center gap-2">
                   <Key size={14} />
-                  {getText('API Key (opsyonèl)', 'API Key (optionnel)', 'API Key (optional)')}
+                  {getText('API Key', 'API Key', 'API Key')}
                 </Label>
                 <Input
                   type="password"
@@ -715,7 +707,7 @@ export default function AdminSettings() {
               <div>
                 <Label className="flex items-center gap-2">
                   <Shield size={14} />
-                  {getText('API Secret (opsyonèl)', 'API Secret (optionnel)', 'API Secret (optional)')}
+                  {getText('API Secret', 'API Secret', 'API Secret')}
                 </Label>
                 <Input
                   type="password"
@@ -727,35 +719,53 @@ export default function AdminSettings() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <Label>{getText('Create path', 'Create path', 'Create path')}</Label>
-                <Input
-                  placeholder="/api/virtualcards/create-card"
-                  value={settings.strowallet_create_card_path || ''}
-                  onChange={(e) => setSettings({ ...settings, strowallet_create_card_path: e.target.value })}
-                  className="mt-1 font-mono text-sm"
-                />
+            {/* Advanced config (optional) */}
+            <details className="rounded-lg border border-stone-200 dark:border-stone-700 p-3">
+              <summary className="cursor-pointer text-sm font-medium">
+                {getText('Avanse (Base URL & endpoints)', 'Avancé (Base URL & endpoints)', 'Advanced (Base URL & endpoints)')}
+              </summary>
+              <div className="mt-3 space-y-4">
+                <div>
+                  <Label>{getText('Base URL (si ou bezwen)', 'Base URL (si besoin)', 'Base URL (if needed)')}</Label>
+                  <Input
+                    placeholder="https://strowallet.com"
+                    value={settings.strowallet_base_url || ''}
+                    onChange={(e) => setSettings({ ...settings, strowallet_base_url: e.target.value })}
+                    className="mt-1 font-mono text-sm"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <Label>{getText('Create path', 'Create path', 'Create path')}</Label>
+                    <Input
+                      placeholder="/api/virtualcards/create-card"
+                      value={settings.strowallet_create_card_path || ''}
+                      onChange={(e) => setSettings({ ...settings, strowallet_create_card_path: e.target.value })}
+                      className="mt-1 font-mono text-sm"
+                    />
+                  </div>
+                  <div>
+                    <Label>{getText('Fund path', 'Fund path', 'Fund path')}</Label>
+                    <Input
+                      placeholder="/api/virtualcards/fund-card"
+                      value={settings.strowallet_fund_card_path || ''}
+                      onChange={(e) => setSettings({ ...settings, strowallet_fund_card_path: e.target.value })}
+                      className="mt-1 font-mono text-sm"
+                    />
+                  </div>
+                  <div>
+                    <Label>{getText('Withdraw path', 'Withdraw path', 'Withdraw path')}</Label>
+                    <Input
+                      placeholder="/api/virtualcards/withdraw-card"
+                      value={settings.strowallet_withdraw_card_path || ''}
+                      onChange={(e) => setSettings({ ...settings, strowallet_withdraw_card_path: e.target.value })}
+                      className="mt-1 font-mono text-sm"
+                    />
+                  </div>
+                </div>
               </div>
-              <div>
-                <Label>{getText('Fund path', 'Fund path', 'Fund path')}</Label>
-                <Input
-                  placeholder="/api/virtualcards/fund-card"
-                  value={settings.strowallet_fund_card_path || ''}
-                  onChange={(e) => setSettings({ ...settings, strowallet_fund_card_path: e.target.value })}
-                  className="mt-1 font-mono text-sm"
-                />
-              </div>
-              <div>
-                <Label>{getText('Withdraw path', 'Withdraw path', 'Withdraw path')}</Label>
-                <Input
-                  placeholder="/api/virtualcards/withdraw-card"
-                  value={settings.strowallet_withdraw_card_path || ''}
-                  onChange={(e) => setSettings({ ...settings, strowallet_withdraw_card_path: e.target.value })}
-                  className="mt-1 font-mono text-sm"
-                />
-              </div>
-            </div>
+            </details>
           </CardContent>
         )}
       </Card>
