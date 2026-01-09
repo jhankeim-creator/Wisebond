@@ -65,6 +65,7 @@ export default function AdminSettings() {
     strowallet_enabled: false,
     strowallet_base_url: '',
     strowallet_api_key: '',
+    strowallet_api_secret: '',
     strowallet_create_card_path: '',
     strowallet_fund_card_path: '',
     strowallet_withdraw_card_path: '',
@@ -170,7 +171,7 @@ export default function AdminSettings() {
         'whatsapp_enabled', 'whatsapp_number', 'callmebot_api_key',
         'telegram_enabled', 'telegram_bot_token', 'telegram_chat_id',
         'plisio_enabled', 'plisio_api_key', 'plisio_secret_key',
-        'strowallet_enabled', 'strowallet_base_url', 'strowallet_api_key',
+        'strowallet_enabled', 'strowallet_base_url', 'strowallet_api_key', 'strowallet_api_secret',
         'strowallet_create_card_path', 'strowallet_fund_card_path', 'strowallet_withdraw_card_path',
         'strowallet_brand_name',
         'card_order_fee_htg', 'affiliate_reward_htg', 'affiliate_cards_required',
@@ -688,7 +689,7 @@ export default function AdminSettings() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <Label>{getText('Base URL (opsyonèl)', 'Base URL (optionnel)', 'Base URL (optional)')}</Label>
                 <Input
@@ -708,6 +709,19 @@ export default function AdminSettings() {
                   placeholder="••••••••"
                   value={settings.strowallet_api_key || ''}
                   onChange={(e) => setSettings({ ...settings, strowallet_api_key: e.target.value })}
+                  className="mt-1 font-mono text-sm"
+                />
+              </div>
+              <div>
+                <Label className="flex items-center gap-2">
+                  <Shield size={14} />
+                  {getText('API Secret (opsyonèl)', 'API Secret (optionnel)', 'API Secret (optional)')}
+                </Label>
+                <Input
+                  type="password"
+                  placeholder="••••••••"
+                  value={settings.strowallet_api_secret || ''}
+                  onChange={(e) => setSettings({ ...settings, strowallet_api_secret: e.target.value })}
                   className="mt-1 font-mono text-sm"
                 />
               </div>

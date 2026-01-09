@@ -103,6 +103,7 @@ def _virtual_cards_enabled(settings: Optional[dict]) -> bool:
 def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
     base_url = ((settings or {}).get("strowallet_base_url") or os.environ.get("STROWALLET_BASE_URL") or "").strip()
     api_key = ((settings or {}).get("strowallet_api_key") or os.environ.get("STROWALLET_API_KEY") or "").strip()
+    api_secret = ((settings or {}).get("strowallet_api_secret") or os.environ.get("STROWALLET_API_SECRET") or "").strip()
     brand_name = ((settings or {}).get("strowallet_brand_name") or os.environ.get("STROWALLET_BRAND_NAME") or "").strip()
     if not brand_name:
         brand_name = "KAYICOM"
@@ -129,6 +130,7 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
     return {
         "base_url": base_url,
         "api_key": api_key,
+        "api_secret": api_secret,
         "create_path": create_path,
         "fund_path": fund_path,
         "withdraw_path": withdraw_path,
@@ -169,6 +171,9 @@ async def _strowallet_post(settings: Optional[dict], path: str, payload: Dict[st
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
+    # Optional extra secret header (some Strowallet setups require key + secret).
+    if cfg.get("api_secret"):
+        headers["X-API-Secret"] = cfg["api_secret"]
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
         resp = await client.post(url, json=payload, headers=headers)
@@ -388,6 +393,7 @@ class AdminSettingsUpdate(BaseModel):
     strowallet_enabled: Optional[bool] = None
     strowallet_base_url: Optional[str] = None
     strowallet_api_key: Optional[str] = None
+    strowallet_api_secret: Optional[str] = None
     strowallet_create_card_path: Optional[str] = None
     strowallet_fund_card_path: Optional[str] = None
     strowallet_withdraw_card_path: Optional[str] = None
@@ -4414,7 +4420,13 @@ async def admin_get_kyc_submissions(
         query["status"] = status
     
     submissions = await db.kyc.find(query, {"_id": 0}).sort("submitted_at", -1).limit(limit).to_list(limit)
-    return {"submissions": submissions}
+    stats = {
+        "pending": await db.kyc.count_documents({"status": "pending"}),
+        "approved": await db.kyc.count_documents({"status": "approved"}),
+        "rejected": await db.kyc.count_documents({"status": "rejected"}),
+        "total": await db.kyc.count_documents({}),
+    }
+    return {"submissions": submissions, "stats": stats}
 
 @api_router.get("/admin/kyc/{kyc_id}")
 async def admin_get_kyc(
@@ -5043,6 +5055,7 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
             "strowallet_enabled": False,
             "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", ""),
             "strowallet_api_key": "",
+            "strowallet_api_secret": "",
             "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", ""),
             "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", ""),
             "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", ""),

@@ -7,7 +7,7 @@ import os
 import logging
 import asyncio
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
 import bcrypt
@@ -184,12 +184,61 @@ class WithdrawalLimitUpdate(BaseModel):
     waiting_hours: int
 
 class AdminSettingsUpdate(BaseModel):
+    """
+    Admin-configurable settings.
+    Keep this aligned with `frontend/src/pages/admin/AdminSettings.js` allowedKeys.
+    """
+
+    class Config:
+        extra = "ignore"
+
+    # Email (Resend)
+    resend_enabled: Optional[bool] = None
     resend_api_key: Optional[str] = None
     sender_email: Optional[str] = None
-    crisp_website_id: Optional[str] = None
-    whatsapp_number: Optional[str] = None
+
+    # Live Chat (Crisp)
     crisp_enabled: Optional[bool] = None
+    crisp_website_id: Optional[str] = None
+
+    # WhatsApp (CallMeBot)
     whatsapp_enabled: Optional[bool] = None
+    whatsapp_number: Optional[str] = None
+    callmebot_api_key: Optional[str] = None
+
+    # Telegram
+    telegram_enabled: Optional[bool] = None
+    telegram_bot_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+
+    # USDT (Plisio)
+    plisio_enabled: Optional[bool] = None
+    plisio_api_key: Optional[str] = None
+    plisio_secret_key: Optional[str] = None
+
+    # Virtual Cards (Strowallet)
+    strowallet_enabled: Optional[bool] = None
+    strowallet_base_url: Optional[str] = None
+    strowallet_api_key: Optional[str] = None
+    strowallet_api_secret: Optional[str] = None
+    strowallet_create_card_path: Optional[str] = None
+    strowallet_fund_card_path: Optional[str] = None
+    strowallet_withdraw_card_path: Optional[str] = None
+    strowallet_brand_name: Optional[str] = None
+
+    # Fees & Affiliate
+    card_order_fee_htg: Optional[int] = None
+    affiliate_reward_htg: Optional[int] = None
+    affiliate_cards_required: Optional[int] = None
+    card_background_image: Optional[str] = None
+    topup_fee_tiers: Optional[List[Dict[str, Any]]] = None
+
+    # Announcement bar
+    announcement_enabled: Optional[bool] = None
+    announcement_text_ht: Optional[str] = None
+    announcement_text_fr: Optional[str] = None
+    announcement_text_en: Optional[str] = None
+    announcement_link: Optional[str] = None
 
 class BulkEmailRequest(BaseModel):
     subject: str
@@ -1222,7 +1271,28 @@ async def admin_get_kyc_submissions(
         query["status"] = status
     
     submissions = await db.kyc.find(query, {"_id": 0}).sort("submitted_at", -1).limit(limit).to_list(limit)
-    return {"submissions": submissions}
+    stats = {
+        "pending": await db.kyc.count_documents({"status": "pending"}),
+        "approved": await db.kyc.count_documents({"status": "approved"}),
+        "rejected": await db.kyc.count_documents({"status": "rejected"}),
+        "total": await db.kyc.count_documents({}),
+    }
+    return {"submissions": submissions, "stats": stats}
+
+@api_router.get("/admin/kyc/{kyc_id}")
+async def admin_get_kyc(
+    kyc_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Get a single KYC submission by id.
+    Required by `frontend/src/pages/admin/AdminKYC.js` (View action).
+    """
+    db = get_db()
+    kyc = await db.kyc.find_one({"kyc_id": kyc_id}, {"_id": 0})
+    if not kyc:
+        raise HTTPException(status_code=404, detail="KYC submission not found")
+    return {"kyc": kyc}
 
 @api_router.patch("/admin/kyc/{kyc_id}")
 async def admin_review_kyc(
@@ -1465,13 +1535,53 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
     if not settings:
         settings = {
             "setting_id": "main",
+            # Email (Resend)
             "resend_enabled": False,
             "resend_api_key": "",
             "sender_email": "",
+
+            # Live Chat (Crisp)
             "crisp_enabled": False,
             "crisp_website_id": "",
+
+            # WhatsApp (CallMeBot)
             "whatsapp_enabled": False,
-            "whatsapp_number": ""
+            "whatsapp_number": "",
+            "callmebot_api_key": "",
+
+            # Telegram
+            "telegram_enabled": False,
+            "telegram_bot_token": "",
+            "telegram_chat_id": "",
+
+            # USDT (Plisio)
+            "plisio_enabled": False,
+            "plisio_api_key": "",
+            "plisio_secret_key": "",
+
+            # Virtual Cards (Strowallet)
+            "strowallet_enabled": False,
+            "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", ""),
+            "strowallet_api_key": "",
+            "strowallet_api_secret": "",
+            "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", ""),
+            "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", ""),
+            "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", ""),
+            "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", "") or "KAYICOM",
+
+            # Fees & Affiliate
+            "card_order_fee_htg": 500,
+            "affiliate_reward_htg": 2000,
+            "affiliate_cards_required": 5,
+            "card_background_image": None,
+            "topup_fee_tiers": [],
+
+            # Announcement bar
+            "announcement_enabled": False,
+            "announcement_text_ht": "",
+            "announcement_text_fr": "",
+            "announcement_text_en": "",
+            "announcement_link": ""
         }
     return {"settings": settings}
 
