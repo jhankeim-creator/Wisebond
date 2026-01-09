@@ -1270,7 +1270,16 @@ async def admin_get_kyc_submissions(
     if status:
         query["status"] = status
     
-    submissions = await db.kyc.find(query, {"_id": 0}).sort("submitted_at", -1).limit(limit).to_list(limit)
+    # List view should be lightweight: exclude large base64 images (available via /admin/kyc/{kyc_id}).
+    submissions = await db.kyc.find(
+        query,
+        {
+            "_id": 0,
+            "id_front_image": 0,
+            "id_back_image": 0,
+            "selfie_with_id": 0,
+        },
+    ).sort("submitted_at", -1).limit(limit).to_list(limit)
     stats = {
         "pending": await db.kyc.count_documents({"status": "pending"}),
         "approved": await db.kyc.count_documents({"status": "approved"}),
