@@ -140,6 +140,10 @@ export default function AdminVirtualCards() {
           strowallet_card_transactions_path: settings.strowallet_card_transactions_path || '',
           strowallet_mode: settings.strowallet_mode || 'live',
           strowallet_create_card_amount_usd: settings.strowallet_create_card_amount_usd ?? 5,
+          strowallet_freeze_unfreeze_path: settings.strowallet_freeze_unfreeze_path || '',
+          strowallet_full_card_history_path: settings.strowallet_full_card_history_path || '',
+          strowallet_withdraw_status_path: settings.strowallet_withdraw_status_path || '',
+          strowallet_upgrade_limit_path: settings.strowallet_upgrade_limit_path || '',
           card_order_fee_htg: typeof settings.card_order_fee_htg === 'number' ? settings.card_order_fee_htg : 500,
           card_background_image: settings.card_background_image || null,
         });
@@ -182,6 +186,10 @@ export default function AdminVirtualCards() {
         strowallet_create_card_amount_usd: Number.isFinite(Number(cardSettings.strowallet_create_card_amount_usd))
           ? Number(cardSettings.strowallet_create_card_amount_usd)
           : 5,
+        strowallet_freeze_unfreeze_path: cardSettings.strowallet_freeze_unfreeze_path || null,
+        strowallet_full_card_history_path: cardSettings.strowallet_full_card_history_path || null,
+        strowallet_withdraw_status_path: cardSettings.strowallet_withdraw_status_path || null,
+        strowallet_upgrade_limit_path: cardSettings.strowallet_upgrade_limit_path || null,
         card_order_fee_htg: Number.isFinite(Number(cardSettings.card_order_fee_htg)) ? Number(cardSettings.card_order_fee_htg) : 500,
         card_background_image: defaultCardBg || null,
       };
@@ -210,6 +218,10 @@ export default function AdminVirtualCards() {
         strowallet_card_transactions_path: s.strowallet_card_transactions_path || '/api/bitvcard/card-transactions/',
         strowallet_mode: s.strowallet_mode || 'live',
         strowallet_create_card_amount_usd: s.strowallet_create_card_amount_usd ?? 5,
+        strowallet_freeze_unfreeze_path: s.strowallet_freeze_unfreeze_path || '',
+        strowallet_full_card_history_path: s.strowallet_full_card_history_path || '',
+        strowallet_withdraw_status_path: s.strowallet_withdraw_status_path || '',
+        strowallet_upgrade_limit_path: s.strowallet_upgrade_limit_path || '',
       }));
       toast.success(getText('Default endpoints mete!', 'Endpoints par défaut appliqués!', 'Default endpoints applied!'));
     } catch (e) {
@@ -734,6 +746,42 @@ export default function AdminVirtualCards() {
                             onChange={(e) => setCardSettings({ ...cardSettings, strowallet_card_transactions_path: e.target.value })}
                             className="mt-1 font-mono text-sm"
                             placeholder="/api/bitvcard/card-transactions/"
+                          />
+                        </div>
+                        <div>
+                          <Label>Freeze/Unfreeze (single endpoint)</Label>
+                          <Input
+                            value={cardSettings.strowallet_freeze_unfreeze_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_freeze_unfreeze_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/freezeunfreeze/ (if provided)"
+                          />
+                        </div>
+                        <div>
+                          <Label>Full card history</Label>
+                          <Input
+                            value={cardSettings.strowallet_full_card_history_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_full_card_history_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/full-card-history/ (if provided)"
+                          />
+                        </div>
+                        <div>
+                          <Label>Withdraw status</Label>
+                          <Input
+                            value={cardSettings.strowallet_withdraw_status_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_withdraw_status_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/withdraw-status/ (if provided)"
+                          />
+                        </div>
+                        <div>
+                          <Label>Upgrade card limit</Label>
+                          <Input
+                            value={cardSettings.strowallet_upgrade_limit_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_upgrade_limit_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/upgrade-card-limit/ (if provided)"
                           />
                         </div>
                       </div>
