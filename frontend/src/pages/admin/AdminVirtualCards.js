@@ -527,13 +527,15 @@ export default function AdminVirtualCards() {
           </Card>
         </div>
 
-        {/* Add Card Button */}
-        <div className="flex justify-end">
-          <Button onClick={() => setShowAddCardModal(true)} className="bg-emerald-500 hover:bg-emerald-600">
-            <Plus size={18} className="mr-2" />
-            {getText('Ajoute Kat Manyèl', 'Ajouter Carte Manuellement', 'Add Card Manually')}
-          </Button>
-        </div>
+        {/* Add Card Button (manual-only, hidden when Strowallet automation is enabled) */}
+        {!strowalletEnabled && (
+          <div className="flex justify-end">
+            <Button onClick={() => setShowAddCardModal(true)} className="bg-emerald-500 hover:bg-emerald-600">
+              <Plus size={18} className="mr-2" />
+              {getText('Ajoute Kat Manyèl', 'Ajouter Carte Manuellement', 'Add Card Manually')}
+            </Button>
+          </div>
+        )}
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
