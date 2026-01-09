@@ -22,6 +22,9 @@ export default function AdminKYC() {
   const [page, setPage] = useState(1);
   const [stats, setStats] = useState(null);
   const [meta, setMeta] = useState(null);
+  const [imageStorage, setImageStorage] = useState(null);
+  const [migrating, setMigrating] = useState(false);
+  const [migrationReport, setMigrationReport] = useState(null);
   const [selectedKyc, setSelectedKyc] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
@@ -61,6 +64,40 @@ export default function AdminKYC() {
   useEffect(() => {
     fetchSubmissions();
   }, [fetchSubmissions]);
+
+  const fetchImageStorageStatus = useCallback(async () => {
+    try {
+      const resp = await axios.get(`${API}/admin/kyc/image-storage-status`);
+      setImageStorage(resp.data || null);
+    } catch (e) {
+      // Not fatal for KYC workflow.
+      setImageStorage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchImageStorageStatus();
+  }, [fetchImageStorageStatus]);
+
+  const runMigration = async ({ dryRun }) => {
+    setMigrating(true);
+    try {
+      const resp = await axios.post(`${API}/admin/kyc/migrate-images?dry_run=${dryRun ? 'true' : 'false'}&limit=25&status=all`);
+      setMigrationReport(resp.data || null);
+      if (dryRun) {
+        toast.success(getText('Dry-run fini. Gade rapò a.', 'Dry-run terminé. Voir le rapport.', 'Dry-run completed. See report.'));
+      } else {
+        toast.success(getText('Migrasyon fèt. Refresh KYC.', 'Migration faite. Rafraîchissez KYC.', 'Migration done. Refresh KYC.'));
+        fetchSubmissions();
+      }
+    } catch (e) {
+      const msg = e.response?.data?.detail || e.response?.data?.message || getText('Erè migrasyon', 'Erreur migration', 'Migration error');
+      toast.error(msg);
+    } finally {
+      setMigrating(false);
+      fetchImageStorageStatus();
+    }
+  };
 
   const viewKyc = async (kycId) => {
     try {
@@ -113,6 +150,73 @@ export default function AdminKYC() {
   return (
     <AdminLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
       <div className="space-y-6" data-testid="admin-kyc">
+
+        {/* KYC Image Storage / Migration */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{getText('KYC Foto (Migrasyon)', 'Photos KYC (Migration)', 'KYC Photos (Migration)')}</CardTitle>
+            <CardDescription>
+              {getText(
+                'Sa ede w retire ansyen base64 yo (ki konn fè KYC kraze) epi mete yo kòm URL Cloudinary.',
+                'Permet de convertir les anciennes images base64 (qui causent des erreurs) en URLs Cloudinary.',
+                'Convert legacy base64 images (that can cause errors) into Cloudinary URLs.'
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="text-sm text-stone-600">
+                <p>
+                  <span className="font-medium">{getText('Cloudinary:', 'Cloudinary:', 'Cloudinary:')}</span>{' '}
+                  {imageStorage
+                    ? (imageStorage.cloudinary_configured
+                        ? getText('Pare (OK)', 'Prêt (OK)', 'Ready (OK)')
+                        : getText('Pa configure', 'Non configuré', 'Not configured'))
+                    : getText('Enfo pa disponib', 'Info indisponible', 'Info unavailable')}
+                  {imageStorage?.source ? ` • ${imageStorage.source}` : ''}
+                </p>
+                {imageStorage?.cloudinary_folder && (
+                  <p className="text-xs text-stone-500">Folder: <span className="font-mono">{imageStorage.cloudinary_folder}</span></p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => runMigration({ dryRun: true })}
+                  disabled={migrating}
+                >
+                  <RefreshCw size={16} className={`mr-2 ${migrating ? 'animate-spin' : ''}`} />
+                  {getText('Dry-run', 'Dry-run', 'Dry-run')}
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-[#EA580C] hover:bg-[#EA580C]/90"
+                  onClick={() => runMigration({ dryRun: false })}
+                  disabled={migrating}
+                >
+                  <RefreshCw size={16} className={`mr-2 ${migrating ? 'animate-spin' : ''}`} />
+                  {getText('Migrate 25', 'Migrer 25', 'Migrate 25')}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchImageStorageStatus}
+                  disabled={migrating}
+                >
+                  {getText('Refresh', 'Rafraîchir', 'Refresh')}
+                </Button>
+              </div>
+            </div>
+
+            {migrationReport && (
+              <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3 text-xs">
+                <p className="font-medium mb-1">{getText('Rapò', 'Rapport', 'Report')}</p>
+                <pre className="whitespace-pre-wrap break-words max-h-40 overflow-auto">{JSON.stringify(migrationReport, null, 2)}</pre>
+              </div>
+            )}
+          </CardContent>
+        </Card>
         
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

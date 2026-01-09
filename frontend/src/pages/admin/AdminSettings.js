@@ -89,7 +89,14 @@ export default function AdminSettings() {
     announcement_text_ht: '',
     announcement_text_fr: '',
     announcement_text_en: '',
-    announcement_link: ''
+    announcement_link: '',
+
+    // KYC Image Storage (recommended)
+    cloudinary_cloud_name: '',
+    cloudinary_api_key: '',
+    cloudinary_api_secret: '',
+    cloudinary_folder: 'kayicom/kyc',
+    kyc_max_image_bytes: 5242880
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -181,6 +188,7 @@ export default function AdminSettings() {
         'card_background_image',
         'topup_fee_tiers',
         'announcement_enabled', 'announcement_text_ht', 'announcement_text_fr', 'announcement_text_en', 'announcement_link',
+        'cloudinary_cloud_name', 'cloudinary_api_key', 'cloudinary_api_secret', 'cloudinary_folder', 'kyc_max_image_bytes',
       ]);
       const filteredPayload = Object.fromEntries(
         Object.entries(payload).filter(([k]) => allowedKeys.has(k))
@@ -1051,6 +1059,93 @@ export default function AdminSettings() {
               )}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* KYC Image Storage */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+              <CreditCard size={20} className="text-emerald-600" />
+            </div>
+            <div>
+              <CardTitle className="text-base">{getText('KYC Foto (Cloudinary)', 'Photos KYC (Cloudinary)', 'KYC Photos (Cloudinary)')}</CardTitle>
+              <CardDescription className="text-sm">
+                {getText(
+                  'Rekòmande: sove foto yo kòm URL pou KYC pa kraze ni ralanti.',
+                  'Recommandé: stocker les photos en URL pour éviter les lenteurs/erreurs.',
+                  'Recommended: store photos as URLs to avoid slowdowns/errors.'
+                )}
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4 border-t pt-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label>Cloud name</Label>
+              <Input
+                value={settings.cloudinary_cloud_name || ''}
+                onChange={(e) => setSettings({ ...settings, cloudinary_cloud_name: e.target.value })}
+                className="mt-1 font-mono text-sm"
+                placeholder="ex: kayicom"
+              />
+            </div>
+            <div>
+              <Label>Folder</Label>
+              <Input
+                value={settings.cloudinary_folder || 'kayicom/kyc'}
+                onChange={(e) => setSettings({ ...settings, cloudinary_folder: e.target.value })}
+                className="mt-1 font-mono text-sm"
+                placeholder="kayicom/kyc"
+              />
+            </div>
+            <div>
+              <Label>API key</Label>
+              <Input
+                type="password"
+                value={settings.cloudinary_api_key || ''}
+                onChange={(e) => setSettings({ ...settings, cloudinary_api_key: e.target.value })}
+                className="mt-1 font-mono text-sm"
+                placeholder="********"
+              />
+            </div>
+            <div>
+              <Label>API secret</Label>
+              <Input
+                type="password"
+                value={settings.cloudinary_api_secret || ''}
+                onChange={(e) => setSettings({ ...settings, cloudinary_api_secret: e.target.value })}
+                className="mt-1 font-mono text-sm"
+                placeholder="********"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label>{getText('Max gwosè foto (bytes)', 'Taille max photo (bytes)', 'Max image size (bytes)')}</Label>
+              <Input
+                type="number"
+                value={settings.kyc_max_image_bytes ?? 5242880}
+                onChange={(e) => setSettings({ ...settings, kyc_max_image_bytes: parseInt(e.target.value || '0', 10) || 5242880 })}
+                className="mt-1 font-mono text-sm"
+              />
+              <p className="text-xs text-stone-500 mt-1">
+                {getText(
+                  'Default: 5242880 (5MB).',
+                  'Par défaut: 5242880 (5MB).',
+                  'Default: 5242880 (5MB).'
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3 text-xs text-stone-600 dark:text-stone-300">
+            {getText(
+              'Apre ou mete kle yo, klike “Anrejistre paramèt yo”. Apre sa, ale nan Admin → KYC pou migrate ansyen foto yo.',
+              'Après avoir rempli les clés, cliquez “Enregistrer”. Ensuite, allez dans Admin → KYC pour migrer les anciennes photos.',
+              'After entering keys, click “Save settings”. Then go to Admin → KYC to migrate old photos.'
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
