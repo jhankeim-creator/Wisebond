@@ -10,11 +10,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Check, X, Eye, RefreshCw, CreditCard, Upload, Wallet, Plus, Search, Trash2, Save } from 'lucide-react';
-
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 // Visa and Mastercard logos
 const VISA_LOGO = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0ODAgMjAwIj48cGF0aCBmaWxsPSIjMUE1RjdBIiBkPSJNMTcxLjcgNjUuNmwtNDEuMyA2OS40aDI1LjdsNi4xLTE1LjRoMjkuNGw2LjEgMTUuNGgyNS43bC00MS4zLTY5LjRoLTEwLjR6bTMuNCAyMC4zbDkuNiAyMy4xaC0xOS4zbDkuNy0yMy4xem01Ni4yLTIwLjNsLTE1LjggNDEuNy03LTQxLjdoLTI0LjZsMjAuNiA2OS40aDI0LjZsMjkuOS02OS40aC0yNy43em02NS4yIDBsLTE1LjggNDEuNy03LTQxLjdoLTI0LjZsMjAuNiA2OS40aDI0LjZsMjkuOS02OS40aC0yNy43em03MS41IDBoLTQ0LjZ2NjkuNGgyNS43di0yMy45aDIwLjFjMTkuOCAwIDMyLjEtMTEgMzIuMS0yMi44IDAtMTEuNy0xMi4zLTIyLjctMzMuMy0yMi43em0tMi41IDE4LjdjNy44IDAgMTEuNiAzLjQgMTEuNiA3LjQgMCAzLjktMy44IDcuNS0xMS42IDcuNWgtMTYuNHYtMTUuMWgxNi40eiIvPjwvc3ZnPg==';
@@ -167,6 +166,34 @@ export default function AdminVirtualCards() {
         `${res.data?.deleted || 0} kat efase.`,
         `${res.data?.deleted || 0} cartes supprimées.`,
         `Deleted ${res.data?.deleted || 0} cards.`
+      ));
+      fetchOrders();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    } finally {
+      setPurging(false);
+    }
+  };
+
+  const purgeAllManualApproved = async () => {
+    // Convenience: old manual cards may be "recent", so 30-day purge won't remove them.
+    // 3650 days is the backend max and effectively means "all history".
+    setPurgeProvider('manual');
+    setPurgeDays(3650);
+    const ok = window.confirm(getText(
+      'Ou prè pou efase TOUT kat MANYÈL apwouve yo (tout dat)? Sa PA ka retounen.',
+      'Supprimer TOUTES les cartes MANUELLES approuvées (toutes dates) ? Action irréversible.',
+      'Delete ALL approved MANUAL cards (all dates)? This cannot be undone.'
+    ));
+    if (!ok) return;
+
+    setPurging(true);
+    try {
+      const res = await axios.post(`${API}/admin/virtual-card-orders/purge?days=3650&status=approved&provider=manual`);
+      toast.success(getText(
+        `${res.data?.deleted || 0} kat manyèl efase.`,
+        `${res.data?.deleted || 0} cartes manuelles supprimées.`,
+        `Deleted ${res.data?.deleted || 0} manual cards.`
       ));
       fetchOrders();
     } catch (e) {
@@ -493,6 +520,11 @@ export default function AdminVirtualCards() {
                 <Button variant="destructive" onClick={purgeOldOrders} disabled={purging}>
                   <Trash2 size={16} className="mr-2" />
                   {purging ? getText('Ap efase...', 'Suppression...', 'Deleting...') : getText('Efase ansyen kat yo', 'Supprimer', 'Delete old cards')}
+                </Button>
+
+                <Button variant="outline" onClick={purgeAllManualApproved} disabled={purging} className="border-red-200 text-red-700 hover:bg-red-50">
+                  <Trash2 size={16} className="mr-2" />
+                  {getText('Netwaye TOUT kat manyèl', 'Nettoyer TOUTES cartes manuelles', 'Clean ALL manual cards')}
                 </Button>
               </div>
             </div>

@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import axios from 'axios';
+import { API_BASE as API } from '@/lib/utils';
 import { 
   Upload, 
   Check, 
@@ -34,8 +35,6 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import QRScanner from '@/components/QRScanner';
-
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AgentDeposit() {
   const { language } = useLanguage();

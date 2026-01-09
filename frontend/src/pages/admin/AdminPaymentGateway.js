@@ -9,11 +9,10 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Plus, RefreshCw, Save, Trash2, Edit2, ArrowDownCircle, ArrowUpCircle, Wand2, Upload, X } from 'lucide-react';
-
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 const FIELD_TYPES = [
   { value: 'text', label: 'Text' },

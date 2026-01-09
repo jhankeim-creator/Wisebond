@@ -5,11 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Check, X, Eye, RefreshCw, Phone } from 'lucide-react';
-
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminTopUp() {
   const [orders, setOrders] = useState([]);

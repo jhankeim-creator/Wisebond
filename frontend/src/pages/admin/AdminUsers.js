@@ -6,12 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Search, Eye, Ban, DollarSign, RefreshCw, UserX, CheckCircle, Edit, Save } from 'lucide-react';
 import { Label } from '@/components/ui/label';
-
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminUsers() {
   const { getText } = useLanguage();

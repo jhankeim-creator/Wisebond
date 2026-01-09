@@ -6,10 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { API_BASE as API } from '@/lib/utils';
 import axios from 'axios';
 import { RefreshCw, Filter, Eye } from 'lucide-react';
-
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminLogs() {
   const { getText } = useLanguage();
