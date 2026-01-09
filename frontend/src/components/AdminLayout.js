@@ -56,7 +56,7 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/agent-deposits', icon: UserPlus, label: getText('Depo Ajan', 'Dépôts Agent', 'Agent Deposits') },
     { path: '/admin/agent-commission-withdrawals', icon: Wallet, label: getText('Retrè Komisyon Ajan', 'Retraits Commission', 'Agent Payouts') },
     { path: '/admin/agent-settings', icon: UserPlus, label: getText('Paramèt Ajan', 'Paramètres Agent', 'Agent Settings') },
-    { path: '/admin/virtual-cards', icon: CreditCard, label: getText('Komand Kat', 'Commandes Cartes', 'Card Orders') },
+    { path: '/admin/virtual-cards', icon: CreditCard, label: getText('Kat Vityèl', 'Cartes Virtuelles', 'Virtual Cards') },
     { path: '/admin/topup', icon: Phone, label: getText('Komand Minit', 'Commandes Minutes', 'Minute Orders') },
     { path: '/admin/rates', icon: RefreshCw, label: getText('To chanj', 'Taux de change', 'Exchange Rates') },
     { path: '/admin/fees', icon: DollarSign, label: getText('Frè', 'Frais', 'Fees') },

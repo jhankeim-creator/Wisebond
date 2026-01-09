@@ -2810,8 +2810,25 @@ async def admin_get_card_orders(
     query = {}
     if status:
         query["status"] = status
-    
+
     orders = await db.virtual_card_orders.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+
+    # Enrich with basic user info for admin UX (so admin can see who placed the order)
+    user_ids = list({o.get("user_id") for o in orders if o.get("user_id")})
+    users_by_id: Dict[str, Dict[str, Any]] = {}
+    if user_ids:
+        users = await db.users.find(
+            {"user_id": {"$in": user_ids}},
+            {"_id": 0, "user_id": 1, "full_name": 1, "email": 1},
+        ).to_list(len(user_ids))
+        users_by_id = {u["user_id"]: u for u in users if u.get("user_id")}
+
+    for o in orders:
+        u = users_by_id.get(o.get("user_id"))
+        if u:
+            o["user_full_name"] = u.get("full_name")
+            o["user_email"] = u.get("email")
+
     return {"orders": orders}
 
 # Admin: Delete a single virtual card order (dangerous)

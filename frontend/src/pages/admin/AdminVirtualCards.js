@@ -24,6 +24,8 @@ export default function AdminVirtualCards() {
   const [activeTab, setActiveTab] = useState('orders');
   const [strowalletEnabled, setStrowalletEnabled] = useState(false);
   const [autoIssueStrowallet, setAutoIssueStrowallet] = useState(true);
+  const [cardSettings, setCardSettings] = useState(null);
+  const [savingCardSettings, setSavingCardSettings] = useState(false);
   
   // Orders state
   const [orders, setOrders] = useState([]);
@@ -118,20 +120,25 @@ export default function AdminVirtualCards() {
   useEffect(() => {
     (async () => {
       try {
-        // Admin settings: detect if Strowallet automation is enabled.
-        // This controls whether "Auto-issue via Strowallet" is offered in card orders.
-        try {
-          const s = await axios.get(`${API}/admin/settings`);
-          setStrowalletEnabled(!!s.data?.settings?.strowallet_enabled);
-        } catch (e) {
-          // If not available, keep false.
-          setStrowalletEnabled(false);
-        }
-
-        const res = await axios.get(`${API}/public/app-config`);
-        if (res.data?.card_background_image) {
-          setDefaultCardBg(res.data.card_background_image);
-        }
+        const s = await axios.get(`${API}/admin/settings`);
+        const settings = s.data?.settings || {};
+        setStrowalletEnabled(!!settings.strowallet_enabled);
+        setCardSettings({
+          strowallet_enabled: !!settings.strowallet_enabled,
+          strowallet_brand_name: settings.strowallet_brand_name || 'KAYICOM',
+          strowallet_api_key: settings.strowallet_api_key || '',
+          strowallet_api_secret: settings.strowallet_api_secret || '',
+          strowallet_base_url: settings.strowallet_base_url || '',
+          strowallet_create_user_path: settings.strowallet_create_user_path || '',
+          strowallet_create_card_path: settings.strowallet_create_card_path || '',
+          strowallet_fund_card_path: settings.strowallet_fund_card_path || '',
+          strowallet_withdraw_card_path: settings.strowallet_withdraw_card_path || '',
+          strowallet_fetch_card_detail_path: settings.strowallet_fetch_card_detail_path || '',
+          strowallet_card_transactions_path: settings.strowallet_card_transactions_path || '',
+          card_order_fee_htg: typeof settings.card_order_fee_htg === 'number' ? settings.card_order_fee_htg : 500,
+          card_background_image: settings.card_background_image || null,
+        });
+        if (settings.card_background_image) setDefaultCardBg(settings.card_background_image);
       } catch (e) {
         // ignore
       }
@@ -147,6 +154,35 @@ export default function AdminVirtualCards() {
       toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
     } finally {
       setSavingDefaultBg(false);
+    }
+  };
+
+  const saveCardSettings = async () => {
+    if (!cardSettings) return;
+    setSavingCardSettings(true);
+    try {
+      const payload = {
+        strowallet_enabled: !!cardSettings.strowallet_enabled,
+        strowallet_brand_name: cardSettings.strowallet_brand_name || 'KAYICOM',
+        strowallet_api_key: cardSettings.strowallet_api_key || null,
+        strowallet_api_secret: cardSettings.strowallet_api_secret || null,
+        strowallet_base_url: cardSettings.strowallet_base_url || null,
+        strowallet_create_user_path: cardSettings.strowallet_create_user_path || null,
+        strowallet_create_card_path: cardSettings.strowallet_create_card_path || null,
+        strowallet_fund_card_path: cardSettings.strowallet_fund_card_path || null,
+        strowallet_withdraw_card_path: cardSettings.strowallet_withdraw_card_path || null,
+        strowallet_fetch_card_detail_path: cardSettings.strowallet_fetch_card_detail_path || null,
+        strowallet_card_transactions_path: cardSettings.strowallet_card_transactions_path || null,
+        card_order_fee_htg: Number.isFinite(Number(cardSettings.card_order_fee_htg)) ? Number(cardSettings.card_order_fee_htg) : 500,
+        card_background_image: defaultCardBg || null,
+      };
+      await axios.put(`${API}/admin/settings`, payload);
+      setStrowalletEnabled(!!cardSettings.strowallet_enabled);
+      toast.success(getText('Paramèt kat yo sove!', 'Paramètres cartes enregistrés!', 'Card settings saved!'));
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    } finally {
+      setSavingCardSettings(false);
     }
   };
 
@@ -450,7 +486,169 @@ export default function AdminVirtualCards() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Strowallet configuration (moved here for clarity) */}
+            <div className="border rounded-xl p-4 bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-semibold text-purple-800 dark:text-purple-200">
+                    {getText('Kat Vityèl (Strowallet)', 'Cartes Virtuelles (Strowallet)', 'Virtual Cards (Strowallet)')}
+                  </p>
+                  <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+                    {getText(
+                      'Se isit la ou mete kle yo ak aktive otomatik kreyasyon kat la.',
+                      'Configurez ici les clés et l’activation auto-émission.',
+                      'Configure keys here and enable auto-issuing.'
+                    )}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant={cardSettings?.strowallet_enabled ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCardSettings((s) => (s ? { ...s, strowallet_enabled: !s.strowallet_enabled } : s))}
+                  className={cardSettings?.strowallet_enabled ? 'bg-purple-600 hover:bg-purple-700' : ''}
+                >
+                  {cardSettings?.strowallet_enabled ? getText('Aktive', 'Activé', 'Enabled') : getText('Dezaktive', 'Désactivé', 'Disabled')}
+                </Button>
+              </div>
+
+              {cardSettings?.strowallet_enabled ? (
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <Label>{getText('Non mak (branding)', 'Nom de marque (branding)', 'Brand name (branding)')}</Label>
+                    <Input
+                      value={cardSettings.strowallet_brand_name || ''}
+                      onChange={(e) => setCardSettings({ ...cardSettings, strowallet_brand_name: e.target.value })}
+                      className="mt-1"
+                      placeholder="KAYICOM"
+                    />
+                    <p className="text-xs text-stone-500 mt-1">
+                      {getText(
+                        'Sa se non ki ap parèt sou kat la nan app la.',
+                        'Nom affiché sur la carte dans l’app.',
+                        'Name shown on the card in the app.'
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label>API Key</Label>
+                      <Input
+                        type="password"
+                        value={cardSettings.strowallet_api_key || ''}
+                        onChange={(e) => setCardSettings({ ...cardSettings, strowallet_api_key: e.target.value })}
+                        className="mt-1 font-mono text-sm"
+                        placeholder="••••••••"
+                      />
+                    </div>
+                    <div>
+                      <Label>API Secret</Label>
+                      <Input
+                        type="password"
+                        value={cardSettings.strowallet_api_secret || ''}
+                        onChange={(e) => setCardSettings({ ...cardSettings, strowallet_api_secret: e.target.value })}
+                        className="mt-1 font-mono text-sm"
+                        placeholder="••••••••"
+                      />
+                    </div>
+                  </div>
+
+                  <details className="rounded-lg border border-purple-200 dark:border-purple-800 p-3 bg-white/60 dark:bg-stone-900/20">
+                    <summary className="cursor-pointer text-sm font-medium">
+                      {getText('Avanse (Base URL & endpoints)', 'Avancé (Base URL & endpoints)', 'Advanced (Base URL & endpoints)')}
+                    </summary>
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <Label>Base URL</Label>
+                        <Input
+                          value={cardSettings.strowallet_base_url || ''}
+                          onChange={(e) => setCardSettings({ ...cardSettings, strowallet_base_url: e.target.value })}
+                          className="mt-1 font-mono text-sm"
+                          placeholder="https://strowallet.com"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div>
+                          <Label>Create card customer</Label>
+                          <Input
+                            value={cardSettings.strowallet_create_user_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_create_user_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/card-user"
+                          />
+                        </div>
+                        <div>
+                          <Label>Create card</Label>
+                          <Input
+                            value={cardSettings.strowallet_create_card_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_create_card_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/create-card/"
+                          />
+                        </div>
+                        <div>
+                          <Label>Fund card</Label>
+                          <Input
+                            value={cardSettings.strowallet_fund_card_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_fund_card_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/fund-card/"
+                          />
+                        </div>
+                        <div>
+                          <Label>Withdraw (optional)</Label>
+                          <Input
+                            value={cardSettings.strowallet_withdraw_card_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_withdraw_card_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/withdraw-card/"
+                          />
+                        </div>
+                        <div>
+                          <Label>Fetch card detail</Label>
+                          <Input
+                            value={cardSettings.strowallet_fetch_card_detail_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_fetch_card_detail_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/fetch-card-detail/"
+                          />
+                        </div>
+                        <div>
+                          <Label>Card transactions</Label>
+                          <Input
+                            value={cardSettings.strowallet_card_transactions_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_card_transactions_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/card-transactions/"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              ) : null}
+            </div>
+
             <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{getText('Frè komand kat (HTG)', 'Frais commande carte (HTG)', 'Card order fee (HTG)')}</Label>
+                <Input
+                  type="number"
+                  value={cardSettings?.card_order_fee_htg ?? 500}
+                  onChange={(e) => setCardSettings((s) => (s ? { ...s, card_order_fee_htg: parseInt(e.target.value || '500') } : s))}
+                  className="w-48"
+                  min="0"
+                />
+                <p className="text-xs text-stone-500">
+                  {getText(
+                    'Sa se frè kliyan an peye lè li komande yon kat.',
+                    'Frais payé par le client lors de la commande.',
+                    'Fee paid by the client when ordering a card.'
+                  )}
+                </p>
+              </div>
+
               <div className="space-y-2">
                 <Label>{getText('Imaj fon kat pa defo', 'Image de fond par défaut', 'Default card background')}</Label>
                 <input
@@ -527,6 +725,13 @@ export default function AdminVirtualCards() {
                   {getText('Netwaye TOUT kat manyèl', 'Nettoyer TOUTES cartes manuelles', 'Clean ALL manual cards')}
                 </Button>
               </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button onClick={saveCardSettings} disabled={savingCardSettings} className="bg-purple-600 hover:bg-purple-700 text-white">
+                <Save size={16} className="mr-2" />
+                {savingCardSettings ? getText('Ap sove...', 'Sauvegarde...', 'Saving...') : getText('Sove paramèt kat yo', 'Enregistrer paramètres', 'Save card settings')}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -641,7 +846,17 @@ export default function AdminVirtualCards() {
                       ) : (
                         orders.map((order) => (
                           <tr key={order.order_id}>
-                            <td className="font-mono text-sm">{order.client_id}</td>
+                            <td>
+                              <div className="min-w-[180px]">
+                                <div className="font-semibold text-stone-900 dark:text-white">
+                                  {order.user_full_name || order.client_id}
+                                </div>
+                                {order.user_email ? (
+                                  <div className="text-xs text-stone-500 break-all">{order.user_email}</div>
+                                ) : null}
+                                <div className="text-xs font-mono text-stone-500">{order.client_id}</div>
+                              </div>
+                            </td>
                             <td>{order.card_email}</td>
                             <td>
                               {order.provider === 'strowallet' ? (

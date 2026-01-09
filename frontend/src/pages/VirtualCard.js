@@ -1000,7 +1000,9 @@ export default function VirtualCard() {
                     <div className="flex justify-between items-end">
                       <div>
                         <p className="text-white/60 text-xs uppercase mb-1">{getText('Pòtè Kat', 'Titulaire', 'Card Holder')}</p>
-                        <p className="font-medium tracking-wide">{selectedCard.card_holder_name || 'N/A'}</p>
+                        <p className="font-medium tracking-wide">
+                          {selectedCard.card_holder_name || (user?.full_name ? String(user.full_name).toUpperCase() : 'N/A')}
+                        </p>
                       </div>
                       <div className="text-right">
                         <p className="text-white/60 text-xs uppercase mb-1">{getText('Ekspire', 'Expire', 'Expires')}</p>

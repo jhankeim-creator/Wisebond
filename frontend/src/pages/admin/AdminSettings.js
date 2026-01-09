@@ -640,164 +640,30 @@ export default function AdminSettings() {
 
   const DepositMethodsTab = () => (
     <div className="space-y-4">
-      {/* Strowallet (White-label cards) */}
+      {/* NOTE: Strowallet / Virtual Cards configuration moved to Admin → Virtual Cards */}
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                <CreditCard size={20} className="text-purple-600" />
-              </div>
-              <div>
-                <CardTitle className="text-base">Strowallet (White-label Cards)</CardTitle>
-                <CardDescription className="text-sm">
-                  {getText(
-                    'Aktive otomatik kreasyon/top-up/retrè kat (pi bon pou pwodiksyon).',
-                    'Activer l’automatisation création/recharge/retrait (plutôt en production).',
-                    'Enable automated card create/topup/withdraw (best for production).'
-                  )}
-                </CardDescription>
-              </div>
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+              <CreditCard size={20} className="text-purple-600" />
             </div>
-            <Switch
-              checked={!!settings.strowallet_enabled}
-              onCheckedChange={(checked) => setSettings({ ...settings, strowallet_enabled: checked })}
-            />
+            <div>
+              <CardTitle className="text-base">{getText('Kat Vityèl (Strowallet)', 'Cartes Virtuelles (Strowallet)', 'Virtual Cards (Strowallet)')}</CardTitle>
+              <CardDescription className="text-sm">
+                {getText(
+                  'Paramèt kat yo deplase nan Admin → Kat Vityèl pou li pi klè.',
+                  'Les paramètres cartes ont été déplacés vers Admin → Cartes Virtuelles.',
+                  'Card settings were moved to Admin → Virtual Cards for clarity.'
+                )}
+              </CardDescription>
+            </div>
           </div>
         </CardHeader>
-        {settings.strowallet_enabled && (
-          <CardContent className="space-y-4 border-t pt-4">
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
-              {getText(
-                'Rekòmande: kenbe API Key yo nan ENV an pwodiksyon; isit la se opsyonèl.',
-                'Recommandé: gardez les clés API dans les variables d’environnement en production; ici c’est optionnel.',
-                'Recommended: keep API keys in ENV in production; UI fields here are optional.'
-              )}
-            </div>
-
-            <div>
-              <Label>{getText('Non mak (branding)', 'Nom de marque (branding)', 'Brand name (branding)')}</Label>
-              <Input
-                placeholder="KAYICOM"
-                value={settings.strowallet_brand_name || ''}
-                onChange={(e) => setSettings({ ...settings, strowallet_brand_name: e.target.value })}
-                className="mt-1"
-              />
-              <p className="text-xs text-stone-500 mt-1">
-                {getText(
-                  'Sa se non ki ap parèt sou kat la nan app la (white-label).',
-                  'C’est le nom affiché sur la carte dans l’app (white-label).',
-                  'This name is shown on the card in the app (white-label).'
-                )}
-              </p>
-            </div>
-
-            {/* Simple config: just keys (recommended) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <Label className="flex items-center gap-2">
-                  <Key size={14} />
-                  {getText('API Key', 'API Key', 'API Key')}
-                </Label>
-                <Input
-                  type="password"
-                  placeholder="••••••••"
-                  value={settings.strowallet_api_key || ''}
-                  onChange={(e) => setSettings({ ...settings, strowallet_api_key: e.target.value })}
-                  className="mt-1 font-mono text-sm"
-                />
-              </div>
-              <div>
-                <Label className="flex items-center gap-2">
-                  <Shield size={14} />
-                  {getText('API Secret', 'API Secret', 'API Secret')}
-                </Label>
-                <Input
-                  type="password"
-                  placeholder="••••••••"
-                  value={settings.strowallet_api_secret || ''}
-                  onChange={(e) => setSettings({ ...settings, strowallet_api_secret: e.target.value })}
-                  className="mt-1 font-mono text-sm"
-                />
-              </div>
-            </div>
-
-            {/* Advanced config (optional) */}
-            <details className="rounded-lg border border-stone-200 dark:border-stone-700 p-3">
-              <summary className="cursor-pointer text-sm font-medium">
-                {getText('Avanse (Base URL & endpoints)', 'Avancé (Base URL & endpoints)', 'Advanced (Base URL & endpoints)')}
-              </summary>
-              <div className="mt-3 space-y-4">
-                <div>
-                  <Label>{getText('Base URL (si ou bezwen)', 'Base URL (si besoin)', 'Base URL (if needed)')}</Label>
-                  <Input
-                    placeholder="https://strowallet.com"
-                    value={settings.strowallet_base_url || ''}
-                    onChange={(e) => setSettings({ ...settings, strowallet_base_url: e.target.value })}
-                    className="mt-1 font-mono text-sm"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <Label>{getText('Create user path', 'Create user path', 'Create user path')}</Label>
-                    <Input
-                      placeholder="/api/bitvcard/card-user"
-                      value={settings.strowallet_create_user_path || ''}
-                      onChange={(e) => setSettings({ ...settings, strowallet_create_user_path: e.target.value })}
-                      className="mt-1 font-mono text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label>{getText('Create path', 'Create path', 'Create path')}</Label>
-                    <Input
-                      placeholder="/api/bitvcard/create-card/"
-                      value={settings.strowallet_create_card_path || ''}
-                      onChange={(e) => setSettings({ ...settings, strowallet_create_card_path: e.target.value })}
-                      className="mt-1 font-mono text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label>{getText('Fund path', 'Fund path', 'Fund path')}</Label>
-                    <Input
-                      placeholder="/api/bitvcard/fund-card/"
-                      value={settings.strowallet_fund_card_path || ''}
-                      onChange={(e) => setSettings({ ...settings, strowallet_fund_card_path: e.target.value })}
-                      className="mt-1 font-mono text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label>{getText('Withdraw path', 'Withdraw path', 'Withdraw path')}</Label>
-                    <Input
-                      placeholder="/api/bitvcard/withdraw-card/ (si disponib)"
-                      value={settings.strowallet_withdraw_card_path || ''}
-                      onChange={(e) => setSettings({ ...settings, strowallet_withdraw_card_path: e.target.value })}
-                      className="mt-1 font-mono text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label>{getText('Fetch card detail path', 'Fetch card detail path', 'Fetch card detail path')}</Label>
-                    <Input
-                      placeholder="/api/bitvcard/fetch-card-detail/"
-                      value={settings.strowallet_fetch_card_detail_path || ''}
-                      onChange={(e) => setSettings({ ...settings, strowallet_fetch_card_detail_path: e.target.value })}
-                      className="mt-1 font-mono text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label>{getText('Card transactions path', 'Card transactions path', 'Card transactions path')}</Label>
-                    <Input
-                      placeholder="/api/bitvcard/card-transactions/"
-                      value={settings.strowallet_card_transactions_path || ''}
-                      onChange={(e) => setSettings({ ...settings, strowallet_card_transactions_path: e.target.value })}
-                      className="mt-1 font-mono text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-            </details>
-          </CardContent>
-        )}
+        <CardContent className="text-sm">
+          <a href="/admin/virtual-cards" className="text-[#EA580C] hover:underline">
+            {getText('Ale nan Kat Vityèl →', 'Aller à Cartes Virtuelles →', 'Go to Virtual Cards →')}
+          </a>
+        </CardContent>
       </Card>
 
       <Card>
