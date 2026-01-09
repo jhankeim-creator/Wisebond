@@ -5930,6 +5930,50 @@ async def strowallet_webhook(request: Request):
 
     return {"ok": True}
 
+
+async def _generic_account_webhook(provider: str, request: Request):
+    """
+    Generic webhook receiver for external account providers referenced by Strowallet UI.
+    We store payloads for audit/debugging. Provider is stored for filtering.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {"raw": (await request.body()).decode("utf-8", "replace")}
+
+    try:
+        await db.webhook_events.insert_one({
+            "event_id": str(uuid.uuid4()),
+            "provider": provider,
+            "received_at": datetime.now(timezone.utc).isoformat(),
+            "headers": {k.lower(): v for k, v in request.headers.items()},
+            "payload": body,
+        })
+    except Exception as e:
+        logger.warning(f"Failed to store {provider} webhook event: {e}")
+
+    return {"ok": True}
+
+
+@api_router.post("/webhooks/amucha")
+async def amucha_account_webhook(request: Request):
+    return await _generic_account_webhook("amucha", request)
+
+
+@api_router.post("/webhooks/bankly")
+async def bankly_account_webhook(request: Request):
+    return await _generic_account_webhook("bankly", request)
+
+
+@api_router.post("/webhooks/paga")
+async def paga_account_webhook(request: Request):
+    return await _generic_account_webhook("paga", request)
+
+
+@api_router.post("/webhooks/safe-haven")
+async def safe_haven_account_webhook(request: Request):
+    return await _generic_account_webhook("safe-haven", request)
+
 @app.get("/")
 async def health_check():
     return {"status": "online", "message": "Wisebond Backend API"}
