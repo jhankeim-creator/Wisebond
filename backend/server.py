@@ -3312,7 +3312,16 @@ async def admin_get_card_orders(
     if status and status != "all":
         query["status"] = status
 
-    orders = await db.virtual_card_orders.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    # Keep list response lightweight to avoid admin UI freezes (exclude heavy/sensitive fields).
+    orders = await db.virtual_card_orders.find(
+        query,
+        {
+            "_id": 0,
+            "card_image": 0,  # can be large base64
+            "card_number": 0,  # sensitive
+            "card_cvv": 0,  # sensitive
+        },
+    ).sort("created_at", -1).limit(limit).to_list(limit)
 
     # Enrich with basic user info for admin UX (so admin can see who placed the order)
     user_ids = list({o.get("user_id") for o in orders if o.get("user_id")})

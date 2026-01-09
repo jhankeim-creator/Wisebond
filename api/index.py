@@ -2005,7 +2005,15 @@ async def admin_get_card_orders(
     if status and status != "all":
         query["status"] = status
     
-    orders = await db.virtual_card_orders.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    orders = await db.virtual_card_orders.find(
+        query,
+        {
+            "_id": 0,
+            "card_image": 0,
+            "card_number": 0,
+            "card_cvv": 0,
+        },
+    ).sort("created_at", -1).limit(limit).to_list(limit)
     return {"orders": orders}
 
 @api_router.patch("/admin/virtual-card-orders/{order_id}")
