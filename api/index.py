@@ -1639,7 +1639,7 @@ async def admin_migrate_kyc_images(
     }
 
 
-@api_router.get("/admin/kyc/image-storage-status")
+@api_router.get("/admin/kyc-image-storage-status")
 async def admin_kyc_image_storage_status(admin: dict = Depends(get_admin_user)):
     db = get_db()
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
