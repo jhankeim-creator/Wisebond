@@ -4869,17 +4869,24 @@ async def admin_get_kyc_submissions(
     admin: dict = Depends(get_admin_user)
 ):
     query = {}
-    if status:
+    # Frontend uses `all` as a sentinel for "no status filter".
+    if status and status != "all":
         query["status"] = status
     
-    # List view should be lightweight: exclude large base64 images (available via /admin/kyc/{kyc_id}).
+    # List view must be lightweight and stable: only include fields the admin table needs.
+    # (Older records may contain large base64 blobs under different keys; projecting-in avoids 500s.)
     submissions = await db.kyc.find(
         query,
         {
             "_id": 0,
-            "id_front_image": 0,
-            "id_back_image": 0,
-            "selfie_with_id": 0,
+            "kyc_id": 1,
+            "user_id": 1,
+            "client_id": 1,
+            "full_name": 1,
+            "nationality": 1,
+            "id_type": 1,
+            "submitted_at": 1,
+            "status": 1,
         },
     ).sort("submitted_at", -1).limit(limit).to_list(limit)
     stats = {
