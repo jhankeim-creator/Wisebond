@@ -6429,6 +6429,9 @@ async def admin_strowallet_diagnostics(admin: dict = Depends(get_admin_user)):
                     msg = str(msg_val or body.get("error") or "").lower()
                     if "validation" in msg:
                         cls = "reachable_but_bad_payload (usually OK for auth/path)"
+                    elif "not found" in msg:
+                        # Expected for probes that use dummy identifiers (e.g. fetch-card-detail with TEST id).
+                        cls = "reachable_but_bad_payload (usually OK for auth/path)"
                     elif "invalid public key" in msg or "invalid key" in msg or "unauthorized" in msg:
                         cls = "auth_error"
                     else:
