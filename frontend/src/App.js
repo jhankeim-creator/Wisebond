@@ -51,10 +51,11 @@ import AdminAgentCommissionWithdrawals from "@/pages/admin/AdminAgentCommissionW
 import AdminPaymentGateway from "@/pages/admin/AdminPaymentGateway";
 import AdminWebhookEvents from "@/pages/admin/AdminWebhookEvents";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { isRoleAllowed } from "@/lib/adminRbac";
 
 // Protected Route Component
-const ProtectedRoute = ({ children, adminOnly = false }) => {
-  const { isAuthenticated, isAdmin, loading } = useAuth();
+const ProtectedRoute = ({ children, adminOnly = false, requiredRoles = null }) => {
+  const { isAuthenticated, isAdmin, loading, adminRole } = useAuth();
   
   if (loading) {
     return (
@@ -70,6 +71,12 @@ const ProtectedRoute = ({ children, adminOnly = false }) => {
   
   if (adminOnly && !isAdmin) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  if (adminOnly && isAdmin && Array.isArray(requiredRoles) && requiredRoles.length > 0) {
+    if (!isRoleAllowed(adminRole, requiredRoles)) {
+      return <Navigate to="/admin" replace />;
+    }
   }
   
   return children;
@@ -121,24 +128,24 @@ function AppRoutes() {
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
       
       {/* Admin Routes */}
-      <Route path="/admin" element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />
-      <Route path="/admin/users" element={<ProtectedRoute adminOnly><AdminUsers /></ProtectedRoute>} />
-      <Route path="/admin/kyc" element={<ProtectedRoute adminOnly><AdminKYC /></ProtectedRoute>} />
-      <Route path="/admin/deposits" element={<ProtectedRoute adminOnly><AdminDeposits /></ProtectedRoute>} />
-      <Route path="/admin/withdrawals" element={<ProtectedRoute adminOnly><AdminWithdrawals /></ProtectedRoute>} />
-      <Route path="/admin/rates" element={<ProtectedRoute adminOnly><AdminRates /></ProtectedRoute>} />
-      <Route path="/admin/fees" element={<ProtectedRoute adminOnly><AdminFees /></ProtectedRoute>} />
-      <Route path="/admin/settings" element={<ProtectedRoute adminOnly><AdminSettings /></ProtectedRoute>} />
-      <Route path="/admin/bulk-email" element={<ProtectedRoute adminOnly><AdminBulkEmail /></ProtectedRoute>} />
-      <Route path="/admin/virtual-cards" element={<ProtectedRoute adminOnly><AdminVirtualCards /></ProtectedRoute>} />
-      <Route path="/admin/topup" element={<ProtectedRoute adminOnly><AdminTopUp /></ProtectedRoute>} />
-      <Route path="/admin/logs" element={<ProtectedRoute adminOnly><AdminLogs /></ProtectedRoute>} />
-      <Route path="/admin/webhook-events" element={<ProtectedRoute adminOnly><AdminWebhookEvents /></ProtectedRoute>} />
-      <Route path="/admin/team" element={<ProtectedRoute adminOnly><AdminTeam /></ProtectedRoute>} />
-      <Route path="/admin/agent-settings" element={<ProtectedRoute adminOnly><AdminAgentSettings /></ProtectedRoute>} />
-      <Route path="/admin/agent-deposits" element={<ProtectedRoute adminOnly><AdminAgentDeposits /></ProtectedRoute>} />
-      <Route path="/admin/agent-commission-withdrawals" element={<ProtectedRoute adminOnly><AdminAgentCommissionWithdrawals /></ProtectedRoute>} />
-      <Route path="/admin/payment-gateway" element={<ProtectedRoute adminOnly><AdminPaymentGateway /></ProtectedRoute>} />
+      <Route path="/admin" element={<ProtectedRoute adminOnly requiredRoles={['support','finance','manager','admin','superadmin']}><AdminDashboard /></ProtectedRoute>} />
+      <Route path="/admin/users" element={<ProtectedRoute adminOnly requiredRoles={['support','manager','admin','superadmin']}><AdminUsers /></ProtectedRoute>} />
+      <Route path="/admin/kyc" element={<ProtectedRoute adminOnly requiredRoles={['support','manager','admin','superadmin']}><AdminKYC /></ProtectedRoute>} />
+      <Route path="/admin/deposits" element={<ProtectedRoute adminOnly requiredRoles={['finance','manager','admin','superadmin']}><AdminDeposits /></ProtectedRoute>} />
+      <Route path="/admin/withdrawals" element={<ProtectedRoute adminOnly requiredRoles={['finance','manager','admin','superadmin']}><AdminWithdrawals /></ProtectedRoute>} />
+      <Route path="/admin/rates" element={<ProtectedRoute adminOnly requiredRoles={['finance','admin','superadmin']}><AdminRates /></ProtectedRoute>} />
+      <Route path="/admin/fees" element={<ProtectedRoute adminOnly requiredRoles={['finance','admin','superadmin']}><AdminFees /></ProtectedRoute>} />
+      <Route path="/admin/settings" element={<ProtectedRoute adminOnly requiredRoles={['superadmin']}><AdminSettings /></ProtectedRoute>} />
+      <Route path="/admin/bulk-email" element={<ProtectedRoute adminOnly requiredRoles={['manager','admin','superadmin']}><AdminBulkEmail /></ProtectedRoute>} />
+      <Route path="/admin/virtual-cards" element={<ProtectedRoute adminOnly requiredRoles={['support','finance','manager','admin','superadmin']}><AdminVirtualCards /></ProtectedRoute>} />
+      <Route path="/admin/topup" element={<ProtectedRoute adminOnly requiredRoles={['support','finance','manager','admin','superadmin']}><AdminTopUp /></ProtectedRoute>} />
+      <Route path="/admin/logs" element={<ProtectedRoute adminOnly requiredRoles={['manager','admin','superadmin']}><AdminLogs /></ProtectedRoute>} />
+      <Route path="/admin/webhook-events" element={<ProtectedRoute adminOnly requiredRoles={['manager','admin','superadmin']}><AdminWebhookEvents /></ProtectedRoute>} />
+      <Route path="/admin/team" element={<ProtectedRoute adminOnly requiredRoles={['superadmin']}><AdminTeam /></ProtectedRoute>} />
+      <Route path="/admin/agent-settings" element={<ProtectedRoute adminOnly requiredRoles={['manager','finance','admin','superadmin']}><AdminAgentSettings /></ProtectedRoute>} />
+      <Route path="/admin/agent-deposits" element={<ProtectedRoute adminOnly requiredRoles={['manager','finance','admin','superadmin']}><AdminAgentDeposits /></ProtectedRoute>} />
+      <Route path="/admin/agent-commission-withdrawals" element={<ProtectedRoute adminOnly requiredRoles={['manager','finance','admin','superadmin']}><AdminAgentCommissionWithdrawals /></ProtectedRoute>} />
+      <Route path="/admin/payment-gateway" element={<ProtectedRoute adminOnly requiredRoles={['finance','manager','admin','superadmin']}><AdminPaymentGateway /></ProtectedRoute>} />
       
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
