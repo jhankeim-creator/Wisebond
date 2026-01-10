@@ -2206,38 +2206,37 @@ async def startup():
     await db.withdrawals.create_index([("user_id", 1), ("status", 1)])
     await db.kyc.create_index("user_id", unique=True)
     
-    # Create default admin if not exists, or update existing admin email
-    admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
-    if not admin:
-        admin_doc = {
-            "user_id": str(uuid.uuid4()),
-            "client_id": "KCADMIN001",
-            "email": "kayicom509@gmail.com",
-            "password_hash": hash_password("Admin123!"),
-            "full_name": "System Admin",
-            "phone": "+509 0000 0000",
-            "language": "fr",
-            "kyc_status": "approved",
-            "wallet_htg": 0.0,
-            "wallet_usd": 0.0,
-            "affiliate_code": "ADMINCODE",
-            "affiliate_earnings": 0.0,
-            "referred_by": None,
-            "is_active": True,
-            "is_admin": True,
-            "two_factor_enabled": False,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db.users.insert_one(admin_doc)
-        logger.info("Default admin created: kayicom509@gmail.com / Admin123!")
-    else:
-        # Update admin email if it's the old one
-        if admin.get("email") == "admin@kayicom.com":
-            await db.users.update_one(
-                {"user_id": admin["user_id"]},
-                {"$set": {"email": "kayicom509@gmail.com"}}
-            )
-            logger.info("Admin email updated from admin@kayicom.com to kayicom509@gmail.com")
+    # Optional: create a first admin via env (disabled by default).
+    # SECURITY: never ship hardcoded default credentials.
+    if os.environ.get("CREATE_DEFAULT_ADMIN", "").strip().lower() in ("1", "true", "yes", "on"):
+        existing_admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
+        if not existing_admin:
+            email = (os.environ.get("DEFAULT_ADMIN_EMAIL") or "").strip().lower()
+            password = (os.environ.get("DEFAULT_ADMIN_PASSWORD") or "").strip()
+            if not email or not password:
+                logger.warning("CREATE_DEFAULT_ADMIN is true but DEFAULT_ADMIN_EMAIL/DEFAULT_ADMIN_PASSWORD not set; skipping admin creation")
+            else:
+                admin_doc = {
+                    "user_id": str(uuid.uuid4()),
+                    "client_id": "KCADMIN001",
+                    "email": email,
+                    "password_hash": hash_password(password),
+                    "full_name": "System Admin",
+                    "phone": "+509 0000 0000",
+                    "language": "fr",
+                    "kyc_status": "approved",
+                    "wallet_htg": 0.0,
+                    "wallet_usd": 0.0,
+                    "affiliate_code": generate_affiliate_code(),
+                    "affiliate_earnings": 0.0,
+                    "referred_by": None,
+                    "is_active": True,
+                    "is_admin": True,
+                    "two_factor_enabled": False,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await db.users.insert_one(admin_doc)
+                logger.info("Default admin created via DEFAULT_ADMIN_EMAIL (password not logged)")
     
     # Create default exchange rates
     rates = await db.exchange_rates.find_one({"rate_id": "main"}, {"_id": 0})

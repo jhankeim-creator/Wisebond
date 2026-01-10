@@ -28,7 +28,8 @@ import {
   MapPin,
   Plus,
   ArrowRight,
-  ArrowDown
+  ArrowDown,
+  RefreshCw
 } from 'lucide-react';
 
 // Card logos
@@ -57,8 +58,6 @@ export default function VirtualCard() {
   const [cardEmail, setCardEmail] = useState('');
   const [cardFee, setCardFee] = useState(500);
   const [defaultCardBg, setDefaultCardBg] = useState(null);
-  const [showCVV, setShowCVV] = useState(false);
-  const [showFullNumber, setShowFullNumber] = useState(false);
   
   // Top up state
   const [topUpAmount, setTopUpAmount] = useState('');
@@ -265,8 +264,6 @@ export default function VirtualCard() {
 
   const viewCardDetails = (order) => {
     setSelectedCard(order);
-    setShowCVV(false);
-    setShowFullNumber(false);
     setTxData(null);
     setSpendingLimit(order?.spending_limit_usd != null ? String(order.spending_limit_usd) : '');
     setSpendingPeriod(order?.spending_limit_period || 'monthly');
@@ -311,12 +308,9 @@ export default function VirtualCard() {
     toast.success(getText(`${label} kopye!`, `${label} copié!`, `${label} copied!`));
   };
 
-  const formatCardNumber = (number, show = false) => {
-    if (!number) return '•••• •••• •••• ••••';
-    if (show) {
-      return number.replace(/(.{4})/g, '$1 ').trim();
-    }
-    return `•••• •••• •••• ${number.slice(-4)}`;
+  const formatCardNumber = (last4) => {
+    if (!last4) return '•••• •••• •••• ••••';
+    return `•••• •••• •••• ${String(last4).slice(-4)}`;
   };
 
   const topUpFee = calculateTopUpFee();
@@ -1051,29 +1045,16 @@ export default function VirtualCard() {
                     <div className="mb-6">
                       <div className="flex items-start gap-2">
                         <span className="font-mono text-lg sm:text-xl tracking-wider break-all">
-                          {formatCardNumber(selectedCard.card_number, showFullNumber)}
+                          {formatCardNumber(selectedCard.card_last4)}
                         </span>
-                        {selectedCard.card_number && (
-                          <>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0 text-white/80 hover:text-white hover:bg-white/20"
-                              onClick={() => setShowFullNumber(!showFullNumber)}
-                            >
-                              {showFullNumber ? <EyeOff size={14} /> : <Eye size={14} />}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-6 w-6 p-0 text-white/80 hover:text-white hover:bg-white/20"
-                              onClick={() => copyToClipboard(selectedCard.card_number, getText('Nimewo', 'Numéro', 'Number'))}
-                            >
-                              <Copy size={14} />
-                            </Button>
-                          </>
-                        )}
                       </div>
+                      <p className="text-xs text-white/70 mt-2">
+                        {getText(
+                          'Pou sekirite w, app la pa montre nimewo kat konplè oswa CVV. Tcheke email ou / kontakte sipò si ou bezwen detay yo.',
+                          'Pour votre sécurité, l’app n’affiche pas le numéro complet ni le CVV. Vérifiez votre email / contactez le support si besoin.',
+                          'For your security, the app does not show the full card number or CVV. Check your email / contact support if needed.'
+                        )}
+                      </p>
                     </div>
                     
                     <div className="flex justify-between items-end">
@@ -1090,27 +1071,6 @@ export default function VirtualCard() {
                     </div>
                   </div>
                 </div>
-
-                {selectedCard.card_cvv && (
-                  <div className="bg-stone-100 dark:bg-stone-800 rounded-xl p-4">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-stone-500 text-sm">{getText('Kòd Sekirite', 'Code de Sécurité', 'Security Code')} (CVV)</p>
-                        <p className="font-mono font-bold text-lg text-stone-900 dark:text-white">
-                          {showCVV ? selectedCard.card_cvv : '•••'}
-                        </p>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setShowCVV(!showCVV)}>
-                          {showCVV ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => copyToClipboard(selectedCard.card_cvv, 'CVV')}>
-                          <Copy size={16} />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
                 {(selectedCard.billing_address || selectedCard.billing_city || selectedCard.billing_country) && (
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
