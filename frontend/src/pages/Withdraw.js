@@ -21,6 +21,7 @@ export default function Withdraw() {
   const [currency, setCurrency] = useState('HTG');
   const [paymentMethodId, setPaymentMethodId] = useState('');
   const [methods, setMethods] = useState([]);
+  const [cardFees, setCardFees] = useState([]);
   const [fieldValues, setFieldValues] = useState({});
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,9 +46,22 @@ export default function Withdraw() {
     }
   }, []);
 
+  const fetchCardFees = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API}/withdrawals/fees`);
+      setCardFees(res.data?.card_fees || []);
+    } catch (e) {
+      setCardFees([]);
+    }
+  }, []);
+
   useEffect(() => {
     fetchMethods(currency);
   }, [currency, fetchMethods]);
+
+  useEffect(() => {
+    fetchCardFees();
+  }, [fetchCardFees]);
 
   useEffect(() => {
     // reset method + fields when currency changes
@@ -65,9 +79,15 @@ export default function Withdraw() {
   const calcFee = useMemo(() => {
     const amt = parseFloat(amount || '0');
     if (!selectedMethod || !amt || amt <= 0) return 0;
+    if (selectedMethod.use_card_fee_tiers && currency === 'USD') {
+      const range = (cardFees || []).find((f) => amt >= f.min_amount && amt <= f.max_amount);
+      if (!range) return 0;
+      if (range.is_percentage) return amt * (Number(range.fee || 0) / 100);
+      return Number(range.fee || 0);
+    }
     if (selectedMethod.fee_type === 'percentage') return amt * (Number(selectedMethod.fee_value || 0) / 100);
     return Number(selectedMethod.fee_value || 0);
-  }, [amount, selectedMethod]);
+  }, [amount, selectedMethod, cardFees, currency]);
 
   const totalAmount = useMemo(() => {
     const amt = parseFloat(amount || '0');
