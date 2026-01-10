@@ -468,6 +468,10 @@ export default function AdminKYC() {
               <div className="space-y-6">
                 {/* Personal Info */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2 bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('Imèl', 'Email', 'Email')}</p>
+                    <p className="font-semibold break-all">{selectedKyc.user_email || '—'}</p>
+                  </div>
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
                     <p className="text-xs text-stone-500">{getText('Non Konplè', 'Nom Complet', 'Full Name')}</p>
                     <p className="font-semibold">{selectedKyc.full_name}</p>
@@ -483,6 +487,18 @@ export default function AdminKYC() {
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
                     <p className="text-xs text-stone-500">{getText('Tip ID', 'Type ID', 'ID Type')}</p>
                     <p className="font-semibold capitalize">{selectedKyc.id_type?.replace('_', ' ')}</p>
+                  </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('Nimewo ID', 'Numéro ID', 'ID Number')}</p>
+                    <p className="font-semibold">{selectedKyc.id_number || '—'}</p>
+                  </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('Telefòn', 'Téléphone', 'Phone')}</p>
+                    <p className="font-semibold">{selectedKyc.phone_number || '—'}</p>
+                  </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('WhatsApp', 'WhatsApp', 'WhatsApp')}</p>
+                    <p className="font-semibold">{selectedKyc.whatsapp_number || '—'}</p>
                   </div>
                   <div className="sm:col-span-2 bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
                     <p className="text-xs text-stone-500">{getText('Adrès', 'Adresse', 'Address')}</p>
