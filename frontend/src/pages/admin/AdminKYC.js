@@ -30,6 +30,7 @@ export default function AdminKYC() {
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [reopenReason, setReopenReason] = useState('');
   const [processing, setProcessing] = useState(false);
 
   const getText = useCallback((ht, fr, en) => {
@@ -129,6 +130,33 @@ export default function AdminKYC() {
       fetchSubmissions();
     } catch (error) {
       toast.error(getText('Erè pandan tretman', 'Erreur lors du traitement', 'Error processing'));
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleReopen = async () => {
+    if (!selectedKyc?.kyc_id) return;
+    const ok = window.confirm(
+      getText(
+        'Ou vle re-ouvri KYC sa a pou kliyan an ka resoumet li?',
+        'Voulez-vous rouvrir ce KYC pour que le client puisse le resoumettre ?',
+        'Re-open this KYC so the user can resubmit?'
+      )
+    );
+    if (!ok) return;
+
+    setProcessing(true);
+    try {
+      await axios.post(`${API}/admin/kyc/${selectedKyc.kyc_id}/reopen`, { reason: reopenReason || null });
+      toast.success(getText('KYC re-ouvri (pending).', 'KYC rouvert (pending).', 'KYC reopened (pending).'));
+      setShowModal(false);
+      setRejectReason('');
+      setReopenReason('');
+      fetchSubmissions();
+    } catch (e) {
+      const msg = e.response?.data?.detail || getText('Erè pandan tretman', 'Erreur lors du traitement', 'Error processing');
+      toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg));
     } finally {
       setProcessing(false);
     }
@@ -638,6 +666,47 @@ export default function AdminKYC() {
                       </Button>
                     </div>
                   </>
+                )}
+
+                {/* Re-open approved/rejected so user can resubmit */}
+                {selectedKyc.status !== 'pending' && (
+                  <div className="space-y-3 border-t pt-4">
+                    <div>
+                      <Label className="text-sm">
+                        {getText(
+                          'Nòt (opsyonèl): poukisa w ap re-ouvri KYC a?',
+                          'Note (optionnel) : pourquoi rouvrir le KYC ?',
+                          'Note (optional): why re-open this KYC?'
+                        )}
+                      </Label>
+                      <Textarea
+                        placeholder={getText(
+                          'Eg: Dokiman te mal; kliyan an dwe voye nouvo foto...',
+                          'Ex: Document incorrect; le client doit renvoyer de nouvelles photos...',
+                          'Ex: Wrong document; user must upload new photos...'
+                        )}
+                        value={reopenReason}
+                        onChange={(e) => setReopenReason(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleReopen}
+                      disabled={processing}
+                      variant="outline"
+                      className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
+                    >
+                      <RefreshCw size={18} className="mr-2" />
+                      {getText('Re-ouvri KYC (Fè li refè)', 'Rouvrir KYC (à refaire)', 'Re-open KYC (redo)')}
+                    </Button>
+                    <p className="text-xs text-stone-500">
+                      {getText(
+                        'Sa ap mete KYC a tounen "An Atant" epi kliyan an ap kapab resoumet KYC.',
+                        'Cela remet le KYC en "En attente" et le client pourra le resoumettre.',
+                        'This sets KYC back to pending so the user can resubmit.'
+                      )}
+                    </p>
+                  </div>
                 )}
 
                 {/* Show rejection reason if rejected */}
