@@ -615,6 +615,7 @@ class KYCSubmit(BaseModel):
     date_of_birth: str
     full_address: str
     city: Optional[str] = None
+    state: Optional[str] = None  # state/department/province
     country: Optional[str] = "Haiti"
     nationality: str
     phone_number: str
@@ -2460,6 +2461,7 @@ async def submit_kyc(request: KYCSubmit, current_user: dict = Depends(get_curren
         "date_of_birth": request.date_of_birth,
         "full_address": request.full_address,
         "city": request.city,
+        "state": request.state,
         "country": request.country,
         "nationality": request.nationality,
         "phone_number": request.phone_number,
@@ -5088,6 +5090,9 @@ async def admin_get_kyc_submissions(
             "full_name": 1,
             "date_of_birth": 1,
             "full_address": 1,
+            "city": 1,
+            "state": 1,
+            "country": 1,
             "nationality": 1,
             "id_type": 1,
             "phone_number": 1,

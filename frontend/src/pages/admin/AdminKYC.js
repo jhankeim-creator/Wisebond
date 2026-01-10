@@ -139,6 +139,12 @@ export default function AdminKYC() {
     setShowImageModal(true);
   };
 
+  const formatLocation = (kyc) => {
+    if (!kyc) return '—';
+    const parts = [kyc.city, kyc.state, kyc.country].filter(Boolean).map(String);
+    return parts.length ? parts.join(', ') : '—';
+  };
+
   // Stats
   const pendingCount = stats?.pending ?? submissions.filter(s => s.status === 'pending').length;
   const approvedCount = stats?.approved ?? submissions.filter(s => s.status === 'approved').length;
@@ -384,7 +390,10 @@ export default function AdminKYC() {
                           <td className="text-sm break-all">{kyc.user_email || '—'}</td>
                           <td className="font-medium">{kyc.full_name}</td>
                           <td className="text-sm">{kyc.date_of_birth || '—'}</td>
-                          <td className="text-sm max-w-[220px] truncate" title={kyc.full_address || ''}>{kyc.full_address || '—'}</td>
+                          <td className="text-sm max-w-[280px]">
+                            <div className="truncate" title={kyc.full_address || ''}>{kyc.full_address || '—'}</div>
+                            <div className="text-xs text-stone-500 truncate" title={formatLocation(kyc)}>{formatLocation(kyc)}</div>
+                          </td>
                           <td>{kyc.nationality}</td>
                           <td className="capitalize">{kyc.id_type?.replace('_', ' ')}</td>
                           <td className="text-sm">{new Date(kyc.submitted_at).toLocaleDateString()}</td>
@@ -478,6 +487,18 @@ export default function AdminKYC() {
                   <div className="sm:col-span-2 bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
                     <p className="text-xs text-stone-500">{getText('Adrès', 'Adresse', 'Address')}</p>
                     <p className="font-semibold">{selectedKyc.full_address}</p>
+                  </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('Vil', 'Ville', 'City')}</p>
+                    <p className="font-semibold">{selectedKyc.city || '—'}</p>
+                  </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('Eta / Depatman', 'État / Département', 'State / Department')}</p>
+                    <p className="font-semibold">{selectedKyc.state || '—'}</p>
+                  </div>
+                  <div className="sm:col-span-2 bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('Peyi', 'Pays', 'Country')}</p>
+                    <p className="font-semibold">{selectedKyc.country || '—'}</p>
                   </div>
                 </div>
 
