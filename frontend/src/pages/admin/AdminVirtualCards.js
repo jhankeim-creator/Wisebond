@@ -51,16 +51,14 @@ export default function AdminVirtualCards() {
   const [foundClient, setFoundClient] = useState(null);
   const [searchingClient, setSearchingClient] = useState(false);
   
-  // Card details for manual entry
+  // Card details for manual entry (SECURITY: do not store PAN/CVV)
   const [cardDetails, setCardDetails] = useState({
     card_email: '', // Email for the card
     card_brand: '',
     card_type: 'visa',
     card_holder_name: '',
-    card_number: '',
     card_last4: '',
     card_expiry: '',
-    card_cvv: '',
     billing_address: '',
     billing_city: '',
     billing_country: '',
@@ -355,7 +353,7 @@ export default function AdminVirtualCards() {
         client_id: foundClient.client_id,
         card_email: cardDetails.card_email,
         ...cardDetails,
-        card_last4: cardDetails.card_number ? cardDetails.card_number.slice(-4) : cardDetails.card_last4
+        card_last4: cardDetails.card_last4
       };
       
       await axios.post(`${API}/admin/virtual-card-orders/create-manual`, payload);
@@ -378,10 +376,8 @@ export default function AdminVirtualCards() {
       card_brand: '',
       card_type: 'visa',
       card_holder_name: '',
-      card_number: '',
       card_last4: '',
       card_expiry: '',
-      card_cvv: '',
       billing_address: '',
       billing_city: '',
       billing_country: '',
@@ -407,7 +403,7 @@ export default function AdminVirtualCards() {
           action,
           admin_notes: adminNotes,
           ...cardDetails,
-          card_last4: cardDetails.card_number ? cardDetails.card_number.slice(-4) : cardDetails.card_last4,
+          card_last4: cardDetails.card_last4,
         };
       
       await axios.patch(`${API}/admin/virtual-card-orders/${selectedOrder.order_id}`, payload);
@@ -456,10 +452,8 @@ export default function AdminVirtualCards() {
       card_brand: '',
       card_type: 'visa',
       card_holder_name: '',
-      card_number: '',
       card_last4: '',
       card_expiry: '',
-      card_cvv: '',
       billing_address: '',
       billing_city: '',
       billing_country: '',
@@ -478,10 +472,8 @@ export default function AdminVirtualCards() {
       card_brand: order.card_brand || '',
       card_type: order.card_type || 'visa',
       card_holder_name: order.card_holder_name || '',
-      card_number: order.card_number || '',
       card_last4: order.card_last4 || '',
       card_expiry: order.card_expiry || '',
-      card_cvv: order.card_cvv || '',
       billing_address: order.billing_address || '',
       billing_city: order.billing_city || '',
       billing_country: order.billing_country || '',
@@ -1310,18 +1302,24 @@ export default function AdminVirtualCards() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <Label>{getText('Nimewo Kat', 'Numéro Carte', 'Card Number')}</Label>
-                          <Input value={cardDetails.card_number} onChange={(e) => setCardDetails({...cardDetails, card_number: e.target.value})} className="mt-1 font-mono" maxLength={19} />
+                          <Label>{getText('Dènye 4 chif', '4 derniers chiffres', 'Last 4 digits')}</Label>
+                          <Input
+                            value={cardDetails.card_last4}
+                            onChange={(e) => setCardDetails({ ...cardDetails, card_last4: e.target.value })}
+                            className="mt-1 font-mono"
+                            maxLength={4}
+                            placeholder="1234"
+                          />
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
-                            <Input placeholder="MM/YY" value={cardDetails.card_expiry} onChange={(e) => setCardDetails({...cardDetails, card_expiry: e.target.value})} className="mt-1" maxLength={5} />
-                          </div>
-                          <div>
-                            <Label>CVV</Label>
-                            <Input value={cardDetails.card_cvv} onChange={(e) => setCardDetails({...cardDetails, card_cvv: e.target.value})} className="mt-1" maxLength={4} type="password" />
-                          </div>
+                        <div>
+                          <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
+                          <Input
+                            placeholder="MM/YY"
+                            value={cardDetails.card_expiry}
+                            onChange={(e) => setCardDetails({ ...cardDetails, card_expiry: e.target.value })}
+                            className="mt-1"
+                            maxLength={5}
+                          />
                         </div>
                       </div>
 
@@ -1405,18 +1403,24 @@ export default function AdminVirtualCards() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <Label>{getText('Nimewo Kat', 'Numéro Carte', 'Card Number')}</Label>
-                          <Input value={cardDetails.card_number} onChange={(e) => setCardDetails({ ...cardDetails, card_number: e.target.value })} className="mt-1 font-mono" maxLength={19} />
+                          <Label>{getText('Dènye 4 chif', '4 derniers chiffres', 'Last 4 digits')}</Label>
+                          <Input
+                            value={cardDetails.card_last4}
+                            onChange={(e) => setCardDetails({ ...cardDetails, card_last4: e.target.value })}
+                            className="mt-1 font-mono"
+                            maxLength={4}
+                            placeholder="1234"
+                          />
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
-                            <Input placeholder="MM/YY" value={cardDetails.card_expiry} onChange={(e) => setCardDetails({ ...cardDetails, card_expiry: e.target.value })} className="mt-1" maxLength={5} />
-                          </div>
-                          <div>
-                            <Label>CVV</Label>
-                            <Input value={cardDetails.card_cvv} onChange={(e) => setCardDetails({ ...cardDetails, card_cvv: e.target.value })} className="mt-1" maxLength={4} type="password" />
-                          </div>
+                        <div>
+                          <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
+                          <Input
+                            placeholder="MM/YY"
+                            value={cardDetails.card_expiry}
+                            onChange={(e) => setCardDetails({ ...cardDetails, card_expiry: e.target.value })}
+                            className="mt-1"
+                            maxLength={5}
+                          />
                         </div>
                       </div>
 
@@ -1647,18 +1651,24 @@ export default function AdminVirtualCards() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>{getText('Nimewo Kat', 'Numéro Carte', 'Card Number')}</Label>
-                    <Input value={cardDetails.card_number} onChange={(e) => setCardDetails({...cardDetails, card_number: e.target.value})} className="mt-1 font-mono" maxLength={19} />
+                    <Label>{getText('Dènye 4 chif', '4 derniers chiffres', 'Last 4 digits')}</Label>
+                    <Input
+                      value={cardDetails.card_last4}
+                      onChange={(e) => setCardDetails({ ...cardDetails, card_last4: e.target.value })}
+                      className="mt-1 font-mono"
+                      maxLength={4}
+                      placeholder="1234"
+                    />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
-                      <Input placeholder="MM/YY" value={cardDetails.card_expiry} onChange={(e) => setCardDetails({...cardDetails, card_expiry: e.target.value})} className="mt-1" maxLength={5} />
-                    </div>
-                    <div>
-                      <Label>CVV</Label>
-                      <Input value={cardDetails.card_cvv} onChange={(e) => setCardDetails({...cardDetails, card_cvv: e.target.value})} className="mt-1" maxLength={4} type="password" />
-                    </div>
+                  <div>
+                    <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
+                    <Input
+                      placeholder="MM/YY"
+                      value={cardDetails.card_expiry}
+                      onChange={(e) => setCardDetails({ ...cardDetails, card_expiry: e.target.value })}
+                      className="mt-1"
+                      maxLength={5}
+                    />
                   </div>
                 </div>
 
