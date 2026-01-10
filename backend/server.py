@@ -960,6 +960,7 @@ def _rbac_is_allowed(*, role: str, path: str) -> bool:
             "/api/admin/card-fees",
             "/api/admin/withdrawal-limits",
             "/api/admin/payment-gateway",
+            "/api/admin/settings",
             "/api/admin/virtual-card-orders",
             "/api/admin/card-topups",
             "/api/admin/topup-orders",
@@ -983,7 +984,6 @@ def _rbac_is_allowed(*, role: str, path: str) -> bool:
 
     # Explicitly blocked paths for non-superadmin roles.
     blocked_prefixes = [
-        "/api/admin/settings",
         "/api/admin/team",
         # Maintenance endpoints: superadmin only
         "/api/admin/purge-old-records",

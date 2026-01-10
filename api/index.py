@@ -539,6 +539,7 @@ def _rbac_is_allowed(*, role: str, path: str) -> bool:
             "/api/admin/card-fees",
             "/api/admin/withdrawal-limits",
             "/api/admin/payment-gateway",
+            "/api/admin/settings",
             "/api/admin/virtual-card-orders",
             "/api/admin/card-topups",
             "/api/admin/topup-orders",
@@ -561,7 +562,6 @@ def _rbac_is_allowed(*, role: str, path: str) -> bool:
     }
 
     blocked_prefixes = [
-        "/api/admin/settings",
         "/api/admin/team",
         "/api/admin/purge-old-records",
     ]
@@ -2181,20 +2181,131 @@ async def admin_get_card_orders(
             "card_cvv": 0,
         },
     ).sort("created_at", -1).limit(limit).to_list(limit)
+    # Enrich with basic user info (name/email) for admin UX
+    user_ids = list({o.get("user_id") for o in orders if o.get("user_id")})
+    if user_ids:
+        users = await db.users.find(
+            {"user_id": {"$in": user_ids}},
+            {"_id": 0, "user_id": 1, "full_name": 1, "email": 1},
+        ).to_list(len(user_ids))
+        users_by_id = {u["user_id"]: u for u in users if u.get("user_id")}
+        for o in orders:
+            u = users_by_id.get(o.get("user_id"))
+            if u:
+                o["user_full_name"] = u.get("full_name")
+                o["user_email"] = u.get("email")
     return {"orders": orders}
+
+class CardDetailsPayload(BaseModel):
+    action: Optional[str] = None  # approve or reject
+    admin_notes: Optional[str] = None
+    card_brand: Optional[str] = None
+    card_type: Optional[str] = None  # visa/mastercard
+    card_holder_name: Optional[str] = None
+    card_last4: Optional[str] = None
+    card_expiry: Optional[str] = None
+    billing_address: Optional[str] = None
+    billing_city: Optional[str] = None
+    billing_country: Optional[str] = None
+    billing_zip: Optional[str] = None
+    card_image: Optional[str] = None
+
+
+class ManualCardCreate(BaseModel):
+    user_id: str
+    client_id: str
+    card_email: str
+    card_brand: Optional[str] = None
+    card_type: Optional[str] = "visa"
+    card_holder_name: Optional[str] = None
+    card_last4: Optional[str] = None
+    card_expiry: Optional[str] = None
+    billing_address: Optional[str] = None
+    billing_city: Optional[str] = None
+    billing_country: Optional[str] = None
+    billing_zip: Optional[str] = None
+    card_image: Optional[str] = None
+
+
+@api_router.post("/admin/virtual-card-orders/create-manual")
+async def admin_create_card_manually(
+    payload: ManualCardCreate,
+    admin: dict = Depends(get_admin_user),
+):
+    db = get_db()
+    user = await db.users.find_one({"user_id": payload.user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    default_card_bg = settings.get("card_background_image") if settings else None
+    card_image = payload.card_image or default_card_bg
+
+    order = {
+        "order_id": str(uuid.uuid4()),
+        "user_id": payload.user_id,
+        "client_id": payload.client_id,
+        "card_email": payload.card_email.lower(),
+        "card_brand": payload.card_brand,
+        "card_type": payload.card_type,
+        "card_holder_name": payload.card_holder_name,
+        "card_last4": payload.card_last4,
+        "card_expiry": payload.card_expiry,
+        "billing_address": payload.billing_address,
+        "billing_city": payload.billing_city,
+        "billing_country": payload.billing_country,
+        "billing_zip": payload.billing_zip,
+        "card_image": card_image,
+        "provider": "manual",
+        "fee": 0,
+        "status": "approved",
+        "card_status": "active",
+        "failed_payment_count": 0,
+        "admin_notes": "Created manually by admin",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_by": admin["user_id"],
+    }
+
+    await db.virtual_card_orders.insert_one(order)
+
+    if user.get("email"):
+        subject = "KAYICOM - Virtual Card Created"
+        content = f"""
+        <h2>Virtual Card Created</h2>
+        <p>Hello {user.get('full_name', 'User')},</p>
+        <p>Your virtual card has been created successfully by our admin team.</p>
+        <p><strong>Card Email:</strong> {payload.card_email}</p>
+        <p><strong>Brand:</strong> {payload.card_brand or 'N/A'}</p>
+        <p><strong>Type:</strong> {payload.card_type or 'N/A'}</p>
+        <p><strong>Last 4:</strong> {payload.card_last4 or 'N/A'}</p>
+        <p><strong>Expiry:</strong> {payload.card_expiry or 'N/A'}</p>
+        <p style="font-size:12px;color:#6b7280;">Security: we do not display or store the full card number or CVV in the app.</p>
+        <p>Order ID: <code>{order['order_id']}</code></p>
+        """
+        await send_email(user["email"], subject, content)
+
+    await log_action(admin["user_id"], "card_manual_create", {"order_id": order["order_id"], "user_id": payload.user_id})
+    if "_id" in order:
+        del order["_id"]
+    return {"order": order, "message": "Card created successfully"}
+
 
 @api_router.patch("/admin/virtual-card-orders/{order_id}")
 async def admin_process_card_order(
     order_id: str,
-    action: str,
-    admin_notes: Optional[str] = None,
-    admin: dict = Depends(get_admin_user)
+    payload: CardDetailsPayload,
+    admin: dict = Depends(get_admin_user),
 ):
     db = get_db()
     order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
+    action = payload.action
+    if not action:
+        raise HTTPException(status_code=400, detail="Action required")
+
     if order["status"] != "pending":
         raise HTTPException(status_code=400, detail="Order already processed")
     
@@ -2202,53 +2313,246 @@ async def admin_process_card_order(
         raise HTTPException(status_code=400, detail="Invalid action")
     
     new_status = "approved" if action == "approve" else "rejected"
-    
-    await db.virtual_card_orders.update_one(
-        {"order_id": order_id},
-        {"$set": {
-            "status": new_status,
-            "admin_notes": admin_notes,
-            "processed_at": datetime.now(timezone.utc).isoformat(),
-            "processed_by": admin["user_id"]
-        }}
-    )
-    
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    default_card_bg = settings.get("card_background_image") if settings else None
+
+    update_doc: Dict[str, Any] = {
+        "status": new_status,
+        "admin_notes": payload.admin_notes,
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_by": admin["user_id"],
+    }
+
     if action == "approve":
-        await db.users.update_one(
-            {"user_id": order["user_id"]},
-            {"$inc": {"wallet_usd": CARD_BONUS_USD}}
-        )
-        
-        await db.transactions.insert_one({
-            "transaction_id": str(uuid.uuid4()),
-            "user_id": order["user_id"],
-            "type": "card_bonus",
-            "amount": CARD_BONUS_USD,
-            "currency": "USD",
-            "status": "completed",
-            "description": "Virtual card approval bonus",
-            "created_at": datetime.now(timezone.utc).isoformat()
+        # Save non-sensitive card details (no PAN/CVV)
+        update_doc.update({
+            "provider": order.get("provider") or "manual",
+            "card_status": order.get("card_status") or "active",
         })
+        for k in [
+            "card_brand",
+            "card_type",
+            "card_holder_name",
+            "card_last4",
+            "card_expiry",
+            "billing_address",
+            "billing_city",
+            "billing_country",
+            "billing_zip",
+        ]:
+            v = getattr(payload, k)
+            if v not in (None, ""):
+                update_doc[k] = v
+        if payload.card_image:
+            update_doc["card_image"] = payload.card_image
+        elif not order.get("card_image") and default_card_bg:
+            update_doc["card_image"] = default_card_bg
+
+    await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": update_doc})
+
+    user = await db.users.find_one({"user_id": order.get("user_id")}, {"_id": 0})
+    if action == "reject":
+        # Refund fee (use fee on order if present)
+        refund_fee = float(order.get("fee", CARD_FEE_HTG) or 0)
+        if refund_fee > 0:
+            await db.users.update_one({"user_id": order["user_id"]}, {"$inc": {"wallet_htg": refund_fee}})
+            await db.transactions.insert_one({
+                "transaction_id": str(uuid.uuid4()),
+                "user_id": order["user_id"],
+                "type": "card_order_refund",
+                "amount": refund_fee,
+                "currency": "HTG",
+                "status": "completed",
+                "description": "Virtual card order refund (rejected)",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+        if user and user.get("email"):
+            subject = "KAYICOM - Virtual Card Order Rejected"
+            content = f"""
+            <h2>Virtual Card Order Rejected</h2>
+            <p>Hello {user.get('full_name','User')},</p>
+            <p>Your virtual card order has been rejected.</p>
+            <p><strong>Order ID:</strong> <code>{order_id}</code></p>
+            {'<p><strong>Reason:</strong> ' + str(payload.admin_notes) + '</p>' if payload.admin_notes else ''}
+            """
+            await send_email(user["email"], subject, content)
     else:
-        await db.users.update_one(
-            {"user_id": order["user_id"]},
-            {"$inc": {"wallet_htg": CARD_FEE_HTG}}
-        )
-        
-        await db.transactions.insert_one({
-            "transaction_id": str(uuid.uuid4()),
-            "user_id": order["user_id"],
-            "type": "card_order_refund",
-            "amount": CARD_FEE_HTG,
-            "currency": "HTG",
-            "status": "completed",
-            "description": "Virtual card order refund (rejected)",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
-    
+        if user and user.get("email"):
+            subject = "KAYICOM - Virtual Card Approved"
+            content = f"""
+            <h2>Virtual Card Approved</h2>
+            <p>Hello {user.get('full_name','User')},</p>
+            <p>Your virtual card request has been approved.</p>
+            <p><strong>Card Email:</strong> {order.get('card_email','')}</p>
+            <p><strong>Brand:</strong> {update_doc.get('card_brand') or order.get('card_brand') or 'N/A'}</p>
+            <p><strong>Type:</strong> {update_doc.get('card_type') or order.get('card_type') or 'N/A'}</p>
+            <p><strong>Last 4:</strong> {update_doc.get('card_last4') or order.get('card_last4') or 'N/A'}</p>
+            <p><strong>Expiry:</strong> {update_doc.get('card_expiry') or order.get('card_expiry') or 'N/A'}</p>
+            <p style="font-size:12px;color:#6b7280;">Security: the app does not display or store the full card number or CVV.</p>
+            <p><strong>Order ID:</strong> <code>{order_id}</code></p>
+            """
+            await send_email(user["email"], subject, content)
+
     await log_action(admin["user_id"], "card_order_process", {"order_id": order_id, "action": action})
-    
     return {"message": f"Card order {action}d successfully"}
+
+
+@api_router.patch("/admin/virtual-card-orders/{order_id}/details")
+async def admin_update_card_details(
+    order_id: str,
+    payload: CardDetailsPayload,
+    admin: dict = Depends(get_admin_user),
+):
+    db = get_db()
+    order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    default_card_bg = settings.get("card_background_image") if settings else None
+
+    update_doc: Dict[str, Any] = {}
+    for k in [
+        "card_brand",
+        "card_type",
+        "card_holder_name",
+        "card_last4",
+        "card_expiry",
+        "billing_address",
+        "billing_city",
+        "billing_country",
+        "billing_zip",
+    ]:
+        v = getattr(payload, k)
+        if v not in (None, ""):
+            update_doc[k] = v
+    if payload.card_image:
+        update_doc["card_image"] = payload.card_image
+    elif not order.get("card_image") and default_card_bg:
+        update_doc["card_image"] = default_card_bg
+    if payload.admin_notes is not None:
+        update_doc["admin_notes"] = payload.admin_notes
+
+    if update_doc:
+        await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": update_doc})
+        await log_action(admin["user_id"], "virtual_card_order_update_details", {"order_id": order_id, "fields": list(update_doc.keys())})
+
+    return {"message": "Card details updated"}
+
+
+@api_router.delete("/admin/virtual-card-orders/{order_id}")
+async def admin_delete_virtual_card_order(
+    order_id: str,
+    admin: dict = Depends(get_admin_user),
+):
+    db = get_db()
+    order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    result = await db.virtual_card_orders.delete_one({"order_id": order_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+    await log_action(admin["user_id"], "virtual_card_order_delete", {"order_id": order_id, "user_id": order.get("user_id"), "status": order.get("status")})
+    return {"message": "Order deleted", "order_id": order_id}
+
+
+@api_router.post("/admin/virtual-card-orders/purge")
+async def admin_purge_virtual_card_orders(
+    days: int = 30,
+    status: str = "approved",
+    provider: Optional[str] = None,
+    admin: dict = Depends(get_admin_user),
+):
+    """
+    Delete old virtual card orders (typically approved). Irreversible.
+    Mirrors the admin UI cleanup action.
+    """
+    db = get_db()
+    days = int(days)
+    if days < 1:
+        raise HTTPException(status_code=400, detail="days must be >= 1")
+    if days > 3650:
+        days = 3650
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    q: Dict[str, Any] = {"status": status, "created_at": {"$lt": cutoff.isoformat()}}
+    if provider and provider != "all":
+        q["provider"] = provider
+
+    res = await db.virtual_card_orders.delete_many(q)
+    await log_action(admin["user_id"], "virtual_card_order_purge", {"days": days, "status": status, "provider": provider, "deleted": res.deleted_count})
+    return {"deleted": res.deleted_count}
+
+
+@api_router.get("/admin/card-topups")
+async def admin_get_card_topups(
+    status: Optional[str] = None,
+    limit: int = Query(default=50, le=200),
+    admin: dict = Depends(get_admin_user),
+):
+    db = get_db()
+    query: Dict[str, Any] = {}
+    if status and status != "all":
+        query["status"] = status
+    deposits = await db.virtual_card_deposits.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"deposits": deposits}
+
+
+class CardTopUpProcessPayload(BaseModel):
+    action: str  # approve or reject
+    admin_notes: Optional[str] = None
+    delivery_info: Optional[str] = None
+
+
+@api_router.patch("/admin/card-topups/{deposit_id}")
+async def admin_process_card_topup(
+    deposit_id: str,
+    payload: CardTopUpProcessPayload,
+    admin: dict = Depends(get_admin_user),
+):
+    db = get_db()
+    deposit = await db.virtual_card_deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Top-up request not found")
+    if deposit.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Top-up already processed")
+    if payload.action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    new_status = "approved" if payload.action == "approve" else "rejected"
+    update_doc = {
+        "status": new_status,
+        "admin_notes": payload.admin_notes,
+        "delivery_info": payload.delivery_info,
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_by": admin["user_id"],
+    }
+    await db.virtual_card_deposits.update_one({"deposit_id": deposit_id}, {"$set": update_doc})
+
+    await db.transactions.update_one(
+        {"reference_id": deposit_id},
+        {"$set": {"status": "completed" if payload.action == "approve" else "refunded"}},
+    )
+
+    if payload.action == "reject":
+        refund_amount = float(deposit.get("total_amount", deposit.get("amount", 0)) or 0)
+        if refund_amount > 0:
+            await db.users.update_one({"user_id": deposit["user_id"]}, {"$inc": {"wallet_usd": refund_amount}})
+            await db.transactions.insert_one({
+                "transaction_id": str(uuid.uuid4()),
+                "user_id": deposit["user_id"],
+                "type": "card_topup_refund",
+                "amount": refund_amount,
+                "currency": "USD",
+                "status": "completed",
+                "description": "Card top-up refund (rejected)",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+    await log_action(admin["user_id"], "card_topup_process", {"deposit_id": deposit_id, "action": payload.action})
+    return {"message": f"Top-up {payload.action}d successfully"}
 
 @api_router.get("/admin/topup-orders")
 async def admin_get_topup_orders(
