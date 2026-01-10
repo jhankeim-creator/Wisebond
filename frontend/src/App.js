@@ -50,6 +50,7 @@ import AdminAgentDeposits from "@/pages/admin/AdminAgentDeposits";
 import AdminAgentCommissionWithdrawals from "@/pages/admin/AdminAgentCommissionWithdrawals";
 import AdminPaymentGateway from "@/pages/admin/AdminPaymentGateway";
 import AdminWebhookEvents from "@/pages/admin/AdminWebhookEvents";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 // Protected Route Component
 const ProtectedRoute = ({ children, adminOnly = false }) => {
@@ -114,7 +115,7 @@ function AppRoutes() {
       <Route path="/transactions" element={<ProtectedRoute><Transactions /></ProtectedRoute>} />
       <Route path="/kyc" element={<ProtectedRoute><KYC /></ProtectedRoute>} />
       <Route path="/affiliate" element={<ProtectedRoute><Affiliate /></ProtectedRoute>} />
-      <Route path="/virtual-card" element={<ProtectedRoute><VirtualCard /></ProtectedRoute>} />
+      <Route path="/virtual-card" element={<ProtectedRoute><ErrorBoundary><VirtualCard /></ErrorBoundary></ProtectedRoute>} />
       <Route path="/topup" element={<ProtectedRoute><TopUp /></ProtectedRoute>} />
       <Route path="/agent-deposit" element={<ProtectedRoute><AgentDeposit /></ProtectedRoute>} />
       <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
