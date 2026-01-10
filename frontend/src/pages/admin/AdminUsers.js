@@ -105,6 +105,12 @@ export default function AdminUsers() {
     return getText('Pa soumèt', 'Non soumis', 'Not submitted');
   };
 
+  const formatLocation = (kyc) => {
+    if (!kyc) return '-';
+    const parts = [kyc.city, kyc.state, kyc.country].filter(Boolean).map(String);
+    return parts.length ? parts.join(', ') : '-';
+  };
+
   return (
     <AdminLayout title={getText('Jesyon Kliyan', 'Gestion des clients', 'Client Management')}>
       <div className="space-y-6" data-testid="admin-users">
@@ -317,6 +323,12 @@ export default function AdminUsers() {
                         <p>{selectedUser.user.phone || '-'}</p>
                       </div>
                       <div>
+                        <p className="text-sm text-slate-500">{getText('KYC Estati', 'Statut KYC', 'KYC Status')}</p>
+                        <Badge className={getKycBadge(selectedUser.user.kyc_status)}>
+                          {getKycText(selectedUser.user.kyc_status)}
+                        </Badge>
+                      </div>
+                      <div>
                         <p className="text-sm text-slate-500">{getText('Balans USD', 'Solde USD', 'USD Balance')}</p>
                         <p className="font-semibold text-emerald-600">${selectedUser.user.wallet_usd?.toFixed(2)}</p>
                       </div>
@@ -324,6 +336,45 @@ export default function AdminUsers() {
                         <p className="text-sm text-slate-500">{getText('Balans HTG', 'Solde HTG', 'HTG Balance')}</p>
                         <p className="font-semibold text-blue-600">G {selectedUser.user.wallet_htg?.toLocaleString()}</p>
                       </div>
+                    </div>
+
+                    <div className="border-t pt-4">
+                      <h4 className="font-semibold mb-2">{getText('KYC / Adrès', 'KYC / Adresse', 'KYC / Address')}</h4>
+                      {selectedUser.kyc ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <div className="sm:col-span-2">
+                            <p className="text-sm text-slate-500">{getText('Adrès konplè', 'Adresse complète', 'Full address')}</p>
+                            <p className="font-medium">{selectedUser.kyc.full_address || '-'}</p>
+                            <p className="text-xs text-slate-500 mt-1">{formatLocation(selectedUser.kyc)}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-slate-500">{getText('Dat nesans', 'Date de naissance', 'Date of birth')}</p>
+                            <p className="font-medium">{selectedUser.kyc.date_of_birth || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-slate-500">{getText('Nasyonalite', 'Nationalité', 'Nationality')}</p>
+                            <p className="font-medium">{selectedUser.kyc.nationality || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-slate-500">{getText('Tip ID', 'Type ID', 'ID Type')}</p>
+                            <p className="font-medium capitalize">{selectedUser.kyc.id_type?.replace('_', ' ') || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-slate-500">{getText('Nimewo ID', 'Numéro ID', 'ID Number')}</p>
+                            <p className="font-medium">{selectedUser.kyc.id_number || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-slate-500">{getText('Telefòn (KYC)', 'Téléphone (KYC)', 'Phone (KYC)')}</p>
+                            <p className="font-medium">{selectedUser.kyc.phone_number || '-'}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm text-slate-500">{getText('WhatsApp (KYC)', 'WhatsApp (KYC)', 'WhatsApp (KYC)')}</p>
+                            <p className="font-medium">{selectedUser.kyc.whatsapp_number || '-'}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-slate-500">{getText('KYC pa soumèt', 'KYC non soumis', 'KYC not submitted')}</p>
+                      )}
                     </div>
                     
                     <div className="border-t pt-4">
