@@ -952,7 +952,14 @@ async def _strowallet_issue_card_for_order(
         if stw_customer_id and user.get("user_id"):
             await db.users.update_one(
                 {"user_id": user["user_id"]},
-                {"$set": {"strowallet_customer_id": stw_customer_id}},
+                {"$set": {
+                    "strowallet_customer_id": stw_customer_id,
+                    # Keep a copy of the address used for provider onboarding so we can display it later,
+                    # even if the provider detail endpoint doesn't return billing address.
+                    "strowallet_billing_address": (kyc or {}).get("full_address"),
+                    "strowallet_billing_city": (kyc or {}).get("city"),
+                    "strowallet_billing_country": (kyc or {}).get("country"),
+                }},
             )
 
     create_payload: Dict[str, Any] = {
@@ -1060,6 +1067,24 @@ async def _strowallet_issue_card_for_order(
         update_doc["card_balance"] = float(card_balance)
     if card_currency:
         update_doc["card_currency"] = str(card_currency).upper()
+
+    # Billing address: Strowallet often requires it at create-user time but does not always return it on fetch-detail.
+    # Persist from KYC (if available) so the customer UI can show it.
+    try:
+        if kyc:
+            if not order.get("billing_address") and kyc.get("full_address"):
+                update_doc["billing_address"] = str(kyc.get("full_address"))
+            if not order.get("billing_city") and kyc.get("city"):
+                update_doc["billing_city"] = str(kyc.get("city"))
+            if not order.get("billing_country") and kyc.get("country"):
+                update_doc["billing_country"] = str(kyc.get("country"))
+            # Best-effort zip parse from full_address if present.
+            if not order.get("billing_zip") and kyc.get("full_address"):
+                m_zip = re.search(r"(\d{4,6})(?!.*\d)", str(kyc.get("full_address") or ""))
+                if m_zip:
+                    update_doc["billing_zip"] = m_zip.group(1)
+    except Exception:
+        pass
 
     return update_doc
 
@@ -3755,6 +3780,28 @@ async def virtual_card_detail(
         update_doc["card_balance"] = float(card_balance)
     if card_currency and not order_full.get("card_currency"):
         update_doc["card_currency"] = str(card_currency).upper()
+
+    # Billing address: provider may not return it on fetch-detail.
+    # Backfill from approved KYC (the same data used for provider onboarding).
+    try:
+        if not any(order_full.get(k) for k in ("billing_address", "billing_city", "billing_country", "billing_zip")):
+            kyc = await db.kyc.find_one(
+                {"user_id": current_user["user_id"], "status": "approved"},
+                {"_id": 0, "full_address": 1, "city": 1, "country": 1},
+            )
+            if kyc:
+                if kyc.get("full_address"):
+                    update_doc.setdefault("billing_address", str(kyc.get("full_address")))
+                if kyc.get("city"):
+                    update_doc.setdefault("billing_city", str(kyc.get("city")))
+                if kyc.get("country"):
+                    update_doc.setdefault("billing_country", str(kyc.get("country")))
+                if kyc.get("full_address") and not order_full.get("billing_zip"):
+                    m_zip = re.search(r"(\d{4,6})(?!.*\d)", str(kyc.get("full_address") or ""))
+                    if m_zip:
+                        update_doc.setdefault("billing_zip", m_zip.group(1))
+    except Exception:
+        pass
 
     # Extra provider fields (best-effort) for customer dashboard:
     raw_status = _extract_first(
