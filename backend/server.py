@@ -257,10 +257,11 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
     if not brand_name:
         brand_name = "KAYICOM"
 
-    # Some Strowallet deployments require passing `mode` and an initial `amount` when creating cards.
-    stw_mode = ((settings or {}).get("strowallet_mode") or os.environ.get("STROWALLET_MODE") or "live").strip().lower()
-    if stw_mode not in {"live", "sandbox"}:
-        stw_mode = "live"
+    # Some Strowallet deployments require passing `mode` when creating cards.
+    # Keep the raw value (admin-configurable) so we can support provider-specific enums.
+    stw_mode_raw = (str((settings or {}).get("strowallet_mode") or os.environ.get("STROWALLET_MODE") or "live")).strip()
+    if not stw_mode_raw:
+        stw_mode_raw = "live"
     try:
         stw_amount = float((settings or {}).get("strowallet_create_card_amount_usd") or os.environ.get("STROWALLET_CREATE_CARD_AMOUNT_USD") or 5)
     except Exception:
@@ -335,7 +336,7 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
         "fetch_detail_path": fetch_detail_path,
         "card_tx_path": card_tx_path,
         "brand_name": brand_name,
-        "mode": stw_mode,
+        "mode": stw_mode_raw,
         "create_card_amount_usd": stw_amount,
         "set_limit_path": set_limit_path,
         "freeze_path": freeze_path,
@@ -4165,40 +4166,45 @@ async def admin_process_card_order(
 
             # Some Strowallet deployments validate mode against a different enum.
             # If we see "selected mode is invalid", retry with common alternatives (test/production) and/or omit it.
-            def _mode_candidates(v: str) -> List[Optional[Any]]:
+            def _mode_candidates(v: Any) -> List[Optional[Any]]:
                 """
                 Return mode candidates without accidentally creating sandbox cards in live mode.
                 - If configured mode is live: try live-like variants only.
                 - If configured mode is sandbox: try test-like variants only.
                 - Always allow omitting mode as last resort.
                 """
-                base = (v or "").strip().lower()
+                raw = v if v is not None else ""
+                raw_str = str(raw).strip()
+                kind = raw_str.lower()
                 # Normalize common inputs
-                base = {"sandbox": "sandbox", "test": "sandbox", "live": "live", "prod": "live", "production": "live"}.get(base, base or "live")
-                if base == "sandbox":
-                    candidates: List[Optional[Any]] = ["test", "TEST", "sandbox", "SANDBOX", 0, "0", None]
+                kind = {"sandbox": "sandbox", "test": "sandbox", "live": "live", "prod": "live", "production": "live"}.get(kind, kind or "live")
+
+                # Always try the configured raw value first (as-is) if present.
+                candidates: List[Optional[Any]] = []
+                if raw_str:
+                    candidates.append(raw_str)
+
+                if kind == "sandbox":
+                    candidates += ["test", "Test", "TEST", "sandbox", "Sandbox", "SANDBOX", 0, "0", 1, "1"]
                 else:
-                    # Some Strowallet deployments expect uppercase or numeric mode for live.
-                    candidates = ["live", "LIVE", "production", "PRODUCTION", "prod", "PROD", 1, "1", None]
-                # Deduplicate while preserving order
+                    # Some deployments use casing or numeric enums.
+                    candidates += ["live", "Live", "LIVE", "production", "Production", "PRODUCTION", "prod", "PROD", 1, "1", 0, "0"]
+
+                # Also allow omitting mode entirely
+                candidates.append(None)
+
+                # Deduplicate while preserving order (case-sensitive strings are kept distinct).
                 out: List[Optional[Any]] = []
                 for c in candidates:
-                    key: Any
-                    if isinstance(c, str):
-                        key = c.strip().lower() or None
-                    elif isinstance(c, int):
-                        key = c
-                    else:
-                        key = None
-                    if any((k == key) for k in out):
+                    if c in out:
                         continue
-                    out.append(key)
+                    out.append(c)
                 return out
 
             stw_resp = None
             last_mode_err = None
             modes_tried: List[Any] = []
-            for m in _mode_candidates(str(cfg.get("mode") or create_payload.get("mode") or "")):
+            for m in _mode_candidates(cfg.get("mode") or create_payload.get("mode")):
                 try_payload = dict(create_payload)
                 if m:
                     try_payload["mode"] = m
