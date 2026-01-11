@@ -517,6 +517,13 @@ async def _strowallet_get(settings: Optional[dict], path: str, params: Optional[
     return data
 
 
+def _stw_error_text(detail: Any) -> str:
+    try:
+        return str(detail or "").lower()
+    except Exception:
+        return ""
+
+
 async def _strowallet_create_customer_id(
     *,
     settings: Optional[dict],
@@ -4083,7 +4090,45 @@ async def admin_process_card_order(
             # Remove empty values to avoid API rejections.
             create_payload = {k: v for k, v in create_payload.items() if v not in (None, "")}
 
-            stw_resp = await _strowallet_post(settings, cfg["create_path"], create_payload)
+            # Some Strowallet deployments validate mode against a different enum.
+            # If we see "selected mode is invalid", retry with common alternatives (test/production) and/or omit it.
+            def _mode_candidates(v: str) -> List[Optional[str]]:
+                base = (v or "").strip().lower()
+                mapped = {"sandbox": "test", "live": "live"}.get(base, base or None)
+                candidates: List[Optional[str]] = [mapped]
+                # Common provider values
+                candidates += ["test", "live", "production", "prod", "sandbox"]
+                # Also allow omitting mode entirely
+                candidates += [None]
+                # Deduplicate while preserving order
+                out: List[Optional[str]] = []
+                for c in candidates:
+                    cc = (c.strip().lower() if isinstance(c, str) else None)
+                    key = cc if cc else None
+                    if key in out:
+                        continue
+                    out.append(key)
+                return out
+
+            stw_resp = None
+            last_mode_err = None
+            for m in _mode_candidates(str(create_payload.get("mode") or "")):
+                try_payload = dict(create_payload)
+                if m:
+                    try_payload["mode"] = m
+                else:
+                    try_payload.pop("mode", None)
+                try:
+                    stw_resp = await _strowallet_post(settings, cfg["create_path"], try_payload)
+                    break
+                except HTTPException as e:
+                    txt = _stw_error_text(getattr(e, "detail", ""))
+                    if "mode" in txt and "invalid" in txt:
+                        last_mode_err = getattr(e, "detail", str(e))
+                        continue
+                    raise
+            if stw_resp is None and last_mode_err is not None:
+                raise HTTPException(status_code=502, detail=last_mode_err)
             auto_created = True
 
             provider_card_id = _extract_first(
