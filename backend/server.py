@@ -3743,8 +3743,9 @@ async def update_virtual_card_controls(
     if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
         raise HTTPException(status_code=400, detail="This card cannot be managed automatically")
 
+    # We auto-freeze on first failure to prevent 3-fail hard blocks; do not hard-block unlocks.
     failed_count = int(order.get("failed_payment_count", 0) or 0)
-    is_hard_blocked = failed_count >= 3
+    is_hard_blocked = False
 
     update_doc: Dict[str, Any] = {}
 
@@ -3761,7 +3762,7 @@ async def update_virtual_card_controls(
 
     if payload.lock is not None:
         if payload.lock is False and is_hard_blocked:
-            raise HTTPException(status_code=400, detail="Card is blocked after 3 failed payments. Contact support.")
+            raise HTTPException(status_code=400, detail="Card is blocked. Contact support.")
         update_doc["card_status"] = "locked" if payload.lock else "active"
 
     if not update_doc:
@@ -4131,10 +4132,15 @@ async def strowallet_webhook(request: Request):
     if not order:
         return {"ok": True}
 
-    # Increment failed payment count.
+    # If the card is already locked/frozen, ignore further failed events.
+    # Goal: auto-freeze on first failure to prevent the card reaching a "3 failures" hard-block state.
+    if str(order.get("card_status") or "").lower() == "locked":
+        return {"ok": True, "note": "Card already locked; ignoring failed-payment event"}
+
+    # First failure -> set failed count to 1 and lock/freeze.
     await db.virtual_card_orders.update_one(
         {"order_id": order["order_id"]},
-        {"$inc": {"failed_payment_count": 1}},
+        {"$set": {"failed_payment_count": 1}},
     )
     updated = await db.virtual_card_orders.find_one({"order_id": order["order_id"]}, {"_id": 0})
     failed_count = int((updated or {}).get("failed_payment_count", 0) or 0)
@@ -4142,8 +4148,8 @@ async def strowallet_webhook(request: Request):
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     cfg = _strowallet_config(settings)
 
-    # Auto-freeze on FIRST failed payment to prevent the card being blocked by multiple failures.
-    if failed_count == 1:
+    # Auto-freeze on FIRST failed payment to prevent provider-side hard blocks.
+    if failed_count >= 1:
         await db.virtual_card_orders.update_one(
             {"order_id": order["order_id"]},
             {"$set": {
@@ -4157,17 +4163,6 @@ async def strowallet_webhook(request: Request):
                 await _strowallet_post(settings, cfg["freeze_path"], {"card_id": card_id, "reference": f"autofreeze-1-{order['order_id']}"})
         except Exception as e:
             logger.warning(f"Failed to freeze Strowallet card {card_id} after first failed payment: {e}")
-
-    if failed_count >= 3:
-        # Hard lock (support-only unlock).
-        await db.virtual_card_orders.update_one(
-            {"order_id": order["order_id"]},
-            {"$set": {
-                "card_status": "locked",
-                "locked_reason": "Auto-locked after 3 failed payments",
-                "locked_at": datetime.now(timezone.utc).isoformat(),
-            }}
-        )
 
     await log_action(order.get("user_id") or "system", "strowallet_failed_payment", {"order_id": order["order_id"], "card_id": card_id, "failed_count": failed_count})
     return {"ok": True, "failed_count": failed_count}
@@ -7419,6 +7414,96 @@ async def admin_update_card_details(
         )
     
     return {"message": "Card details updated"}
+
+
+@api_router.post("/admin/virtual-card-orders/{order_id}/auto-issue")
+async def admin_auto_issue_virtual_card_order(
+    order_id: str,
+    admin: dict = Depends(get_admin_user),
+):
+    """
+    Admin recovery tool: issue/sync a Strowallet card for an order that didn't reach the customer dashboard.
+    - If order is pending, we will issue and mark approved.
+    - If order is approved but missing provider details, we will re-issue detail sync best-effort.
+    """
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not _strowallet_enabled(settings):
+        raise HTTPException(status_code=400, detail="Strowallet is disabled")
+
+    order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    user = await db.users.find_one({"user_id": order.get("user_id")}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # If already issued, just refresh provider detail best-effort.
+    if order.get("provider") == "strowallet" and order.get("provider_card_id"):
+        # Reuse the existing customer detail endpoint logic by calling provider directly
+        cfg = _strowallet_config(settings)
+        stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
+        stw_detail = await _strowallet_fetch_detail_with_retry(
+            settings=settings,
+            cfg=cfg,
+            provider_card_id=str(order.get("provider_card_id")),
+            stw_customer_id=stw_customer_id,
+            reference=f"admin-auto-issue-sync-{order_id}",
+            attempts=4,
+        )
+        if stw_detail:
+            # Apply same extraction rules used elsewhere.
+            card_number = _extract_first(stw_detail, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
+            card_expiry = _extract_first(stw_detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
+            card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
+            card_brand = _extract_first(stw_detail, "data.brand", "brand", "data.card.brand")
+            card_type = _extract_first(stw_detail, "data.type", "type", "data.card.type")
+            card_balance = _extract_float_first(
+                stw_detail,
+                "data.balance",
+                "data.available_balance",
+                "data.availableBalance",
+                "balance",
+                "available_balance",
+                "availableBalance",
+                "data.card.balance",
+                "data.card.available_balance",
+                "data.card.availableBalance",
+            )
+            card_currency = _extract_first(stw_detail, "data.currency", "currency", "data.card.currency")
+
+            update_doc: Dict[str, Any] = {"provider_raw": {"detail": stw_detail}}
+            if card_number:
+                card_number_str = str(card_number).replace(" ", "")
+                update_doc["card_last4"] = card_number_str[-4:]
+            if card_expiry:
+                update_doc["card_expiry"] = str(card_expiry)
+            if card_holder_name:
+                update_doc["card_holder_name"] = str(card_holder_name)
+            if cfg.get("brand_name"):
+                update_doc["card_brand"] = cfg["brand_name"]
+            elif card_brand:
+                update_doc["card_brand"] = str(card_brand)
+            if card_type:
+                update_doc["card_type"] = str(card_type).lower()
+            if card_balance is not None:
+                update_doc["card_balance"] = float(card_balance)
+            if card_currency:
+                update_doc["card_currency"] = str(card_currency).upper()
+
+            await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": update_doc})
+
+        updated = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0, "card_number": 0, "card_cvv": 0})
+        await log_action(admin["user_id"], "admin_auto_issue_card_sync", {"order_id": order_id})
+        return {"order": updated, "note": "Synced existing provider card details"}
+
+    # Otherwise, issue it now.
+    issue_update = await _strowallet_issue_card_for_order(settings=settings, order=order, user=user)
+    await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": issue_update})
+    updated = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0, "card_number": 0, "card_cvv": 0})
+
+    await log_action(admin["user_id"], "admin_auto_issue_card", {"order_id": order_id, "provider_card_id": issue_update.get("provider_card_id")})
+    return {"order": updated, "message": "Card issued/synced successfully"}
 
 # Admin: Get all card top-up requests
 @api_router.get("/admin/card-topups")
