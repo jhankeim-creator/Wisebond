@@ -73,6 +73,11 @@
     "build": "craco build",
     "test": "craco test"
   },
+  "engines": {
+    "node": ">=20",
+    "npm": ">=10",
+    "yarn": ">=1.22.22"
+  },
   "browserslist": {
     "production": [
       ">0.2%",
