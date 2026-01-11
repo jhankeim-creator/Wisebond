@@ -4165,7 +4165,7 @@ async def admin_process_card_order(
 
             # Some Strowallet deployments validate mode against a different enum.
             # If we see "selected mode is invalid", retry with common alternatives (test/production) and/or omit it.
-            def _mode_candidates(v: str) -> List[Optional[str]]:
+            def _mode_candidates(v: str) -> List[Optional[Any]]:
                 """
                 Return mode candidates without accidentally creating sandbox cards in live mode.
                 - If configured mode is live: try live-like variants only.
@@ -4176,27 +4176,35 @@ async def admin_process_card_order(
                 # Normalize common inputs
                 base = {"sandbox": "sandbox", "test": "sandbox", "live": "live", "prod": "live", "production": "live"}.get(base, base or "live")
                 if base == "sandbox":
-                    candidates: List[Optional[str]] = ["test", "sandbox", None]
+                    candidates: List[Optional[Any]] = ["test", "TEST", "sandbox", "SANDBOX", 0, "0", None]
                 else:
-                    candidates = ["live", "production", "prod", None]
+                    # Some Strowallet deployments expect uppercase or numeric mode for live.
+                    candidates = ["live", "LIVE", "production", "PRODUCTION", "prod", "PROD", 1, "1", None]
                 # Deduplicate while preserving order
-                out: List[Optional[str]] = []
+                out: List[Optional[Any]] = []
                 for c in candidates:
-                    cc = (c.strip().lower() if isinstance(c, str) else None)
-                    key = cc if cc else None
-                    if key in out:
+                    key: Any
+                    if isinstance(c, str):
+                        key = c.strip().lower() or None
+                    elif isinstance(c, int):
+                        key = c
+                    else:
+                        key = None
+                    if any((k == key) for k in out):
                         continue
                     out.append(key)
                 return out
 
             stw_resp = None
             last_mode_err = None
+            modes_tried: List[Any] = []
             for m in _mode_candidates(str(cfg.get("mode") or create_payload.get("mode") or "")):
                 try_payload = dict(create_payload)
                 if m:
                     try_payload["mode"] = m
                 else:
                     try_payload.pop("mode", None)
+                modes_tried.append(m)
                 try:
                     stw_resp = await _strowallet_post(settings, cfg["create_path"], try_payload)
                     break
@@ -4207,7 +4215,15 @@ async def admin_process_card_order(
                         continue
                     raise
             if stw_resp is None and last_mode_err is not None:
-                raise HTTPException(status_code=502, detail=last_mode_err)
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "message": "Strowallet create-card failed: invalid mode",
+                        "modes_tried": modes_tried,
+                        "last_error": last_mode_err,
+                        "note": "Update Admin → Virtual Cards → Mode, or leave it blank if your plan does not require it.",
+                    },
+                )
             auto_created = True
 
             provider_card_id = _extract_first(
