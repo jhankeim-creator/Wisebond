@@ -1601,7 +1601,7 @@ export default function VirtualCard() {
           </DialogContent>
         </Dialog>
 
-        {/* Transactions Modal (Strowallet) */}
+        {/* Transactions Modal */}
         <Dialog open={showTxModal} onOpenChange={setShowTxModal}>
           <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
@@ -1616,9 +1616,9 @@ export default function VirtualCard() {
               <div className="space-y-3">
                 <p className="text-xs text-stone-500">
                   {getText(
-                    'Nòt: sa montre repons Strowallet la (si IP whitelist la pa fèt, li ka bay 403).',
-                    'Note: affiche la réponse Strowallet (si IP non whitelist, peut retourner 403).',
-                    'Note: shows Strowallet response (may return 403 if IP is not whitelisted).'
+                    'Nòt: sa montre repons sèvis kat la (si IP pa otorize, li ka bay 403).',
+                    'Note: affiche la réponse du service de carte (si IP non autorisée, peut retourner 403).',
+                    'Note: shows the card provider response (may return 403 if server IP is not allowed).'
                   )}
                 </p>
                 {extractTxRows(txData).length ? (
