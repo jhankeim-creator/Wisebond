@@ -838,6 +838,138 @@ async def _strowallet_create_customer_id(
         },
     )
 
+
+async def _strowallet_issue_card_for_order(
+    *,
+    settings: Optional[dict],
+    order: Dict[str, Any],
+    user: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Issue a Strowallet virtual card for a given order + user and return the DB update document.
+    SECURITY: never store full PAN/CVV; only last4/expiry/name/brand/type + provider ids.
+    """
+    if not _strowallet_enabled(settings):
+        raise HTTPException(status_code=400, detail="Strowallet is not enabled")
+
+    cfg = _strowallet_config(settings)
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Ensure (best-effort) provider customer id exists if required by plan.
+    stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
+    if not stw_customer_id and cfg.get("create_user_path"):
+        kyc = await db.kyc.find_one(
+            {"user_id": user.get("user_id"), "status": "approved"},
+            {"_id": 0},
+        )
+        if not kyc:
+            raise HTTPException(status_code=400, detail="User KYC must be approved before creating a Strowallet customer.")
+        stw_customer_id = await _strowallet_create_customer_id(
+            settings=settings,
+            cfg=cfg,
+            user=user,
+            customer_email=(user.get("email") or ""),
+            kyc=kyc,
+        )
+        if stw_customer_id and user.get("user_id"):
+            await db.users.update_one(
+                {"user_id": user["user_id"]},
+                {"$set": {"strowallet_customer_id": stw_customer_id}},
+            )
+
+    create_payload: Dict[str, Any] = {
+        "email": order.get("card_email") or user.get("email"),
+        "card_email": order.get("card_email") or user.get("email"),
+        "customerEmail": order.get("card_email") or user.get("email"),
+        "name_on_card": (user.get("full_name") or "").upper(),
+        "card_type": (order.get("card_type") or "visa"),
+        "amount": str(cfg.get("create_card_amount_usd") or 5),
+        "full_name": user.get("full_name"),
+        "name": user.get("full_name"),
+        "phone": user.get("phone"),
+        "phone_number": user.get("phone"),
+        "reference": order.get("order_id"),
+        "customer_reference": user.get("user_id"),
+    }
+    if stw_customer_id:
+        create_payload["customer_id"] = stw_customer_id
+        create_payload["user_id"] = stw_customer_id
+        create_payload["card_user_id"] = stw_customer_id
+
+    create_payload = _with_aliases(create_payload, "phone", "mobile", "msisdn")
+    create_payload = _with_aliases(create_payload, "customerEmail", "customer_email", "customeremail")
+    create_payload = {k: v for k, v in create_payload.items() if v not in (None, "")}
+
+    stw_resp = await _strowallet_post(settings, cfg["create_path"], create_payload)
+
+    provider_card_id = _extract_first(
+        stw_resp,
+        "data.card.card_id",
+        "data.card_id",
+        "data.cardId",
+        "data.id",
+        "data.card.cardId",
+        "card_id",
+        "id",
+        "data.card.id",
+    )
+
+    # Fetch detail best-effort to populate last4/expiry/etc.
+    stw_detail = None
+    if provider_card_id and cfg.get("fetch_detail_path"):
+        try:
+            detail_payload: Dict[str, Any] = {"card_id": provider_card_id, "reference": f"detail-{order.get('order_id')}"}
+            if stw_customer_id:
+                detail_payload["customer_id"] = stw_customer_id
+                detail_payload["card_user_id"] = stw_customer_id
+            detail_payload = _with_aliases(detail_payload, "card_id", "cardId", "id")
+            stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], detail_payload)
+        except Exception:
+            stw_detail = None
+
+    src = stw_detail or stw_resp
+    card_number = _extract_first(src, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
+    card_expiry = _extract_first(src, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
+    card_type = _extract_first(src, "data.type", "type", "data.card.type")
+    card_holder_name = _extract_first(src, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
+    card_brand = _extract_first(src, "data.brand", "brand", "data.card.brand")
+
+    update_doc: Dict[str, Any] = {
+        "status": "approved",
+        "processed_at": now,
+        "processed_by": "system",
+        "provider": "strowallet",
+        "provider_card_id": str(provider_card_id) if provider_card_id else None,
+        "provider_raw": {"create": stw_resp, "detail": stw_detail} if stw_detail else {"create": stw_resp},
+        "card_status": "active",
+        "failed_payment_count": int(order.get("failed_payment_count", 0) or 0),
+        "spending_limit_usd": float(order.get("spending_limit_usd", 500.0) or 500.0),
+        "spending_limit_period": str(order.get("spending_limit_period", "monthly") or "monthly"),
+    }
+
+    # Branding
+    if cfg.get("brand_name"):
+        update_doc["card_brand"] = cfg["brand_name"]
+    elif card_brand:
+        update_doc["card_brand"] = str(card_brand)
+    else:
+        update_doc["card_brand"] = "Virtual Card"
+
+    if card_type:
+        update_doc["card_type"] = str(card_type).lower()
+    if card_holder_name:
+        update_doc["card_holder_name"] = str(card_holder_name)
+    elif user.get("full_name"):
+        update_doc["card_holder_name"] = str(user["full_name"]).upper()
+
+    if card_number:
+        card_number_str = str(card_number).replace(" ", "")
+        update_doc["card_last4"] = card_number_str[-4:]
+    if card_expiry:
+        update_doc["card_expiry"] = str(card_expiry)
+
+    return update_doc
+
 # ==================== MODELS ====================
 
 class UserCreate(BaseModel):
@@ -3253,7 +3385,7 @@ async def get_card_deposits(current_user: dict = Depends(get_current_user)):
 
 @api_router.post("/virtual-cards/order")
 async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Depends(get_current_user)):
-    """Submit a manual card order request"""
+    """Submit a card order request (auto-issue when Strowallet is enabled)."""
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     if not _virtual_cards_enabled(settings):
         raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
@@ -3309,10 +3441,52 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
     })
     
     await log_action(current_user["user_id"], "card_order", {"order_id": order["order_id"]})
-    
+
+    # AUTO-ISSUE: If Strowallet is enabled, create the card immediately so it appears in the customer dashboard.
+    # If issuance fails for any reason, keep order pending for admin follow-up (do not lose the order).
+    msg = "Card order submitted successfully"
+    try:
+        if _strowallet_enabled(settings):
+            user = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0})
+            if not user:
+                raise HTTPException(status_code=404, detail="User not found")
+            issue_update = await _strowallet_issue_card_for_order(settings=settings, order=order, user=user)
+            await db.virtual_card_orders.update_one({"order_id": order["order_id"]}, {"$set": issue_update})
+            order.update(issue_update)
+            msg = "Card created successfully"
+    except HTTPException as e:
+        # Keep it pending; store a useful note for admin.
+        try:
+            await db.virtual_card_orders.update_one(
+                {"order_id": order["order_id"]},
+                {"$set": {
+                    "status": "pending",
+                    "admin_notes": f"Auto-issue failed; needs admin review. {getattr(e, 'detail', str(e))}",
+                    "processed_at": None,
+                    "processed_by": None,
+                }},
+            )
+        except Exception:
+            pass
+        msg = "Card order submitted successfully (pending provider issuance)"
+    except Exception as e:
+        try:
+            await db.virtual_card_orders.update_one(
+                {"order_id": order["order_id"]},
+                {"$set": {
+                    "status": "pending",
+                    "admin_notes": f"Auto-issue failed; needs admin review. {str(e)}",
+                    "processed_at": None,
+                    "processed_by": None,
+                }},
+            )
+        except Exception:
+            pass
+        msg = "Card order submitted successfully (pending provider issuance)"
+
     if "_id" in order:
         del order["_id"]
-    return {"order": order, "message": "Card order submitted successfully"}
+    return {"order": order, "message": msg}
 
 class CardTopUpRequest(BaseModel):
     order_id: str
