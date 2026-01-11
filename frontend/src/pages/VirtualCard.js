@@ -58,6 +58,8 @@ export default function VirtualCard() {
   const [txLoading, setTxLoading] = useState(false);
   const [txData, setTxData] = useState(null);
   const [refreshingDetails, setRefreshingDetails] = useState(false);
+  // UI-only: customers can toggle mask style (never reveals full PAN/CVV)
+  const [maskStyleByOrderId, setMaskStyleByOrderId] = useState({});
   const [ordering, setOrdering] = useState(false);
   const [cardFee, setCardFee] = useState(500);
   const [defaultCardBg, setDefaultCardBg] = useState(null);
@@ -361,8 +363,19 @@ export default function VirtualCard() {
   };
 
   const formatCardNumber = (last4) => {
+    // Default masked format used across the app (never reveals full PAN).
     if (!last4) return '•••• •••• •••• ••••';
     return `•••• •••• •••• ${String(last4).slice(-4)}`;
+  };
+
+  const formatCardNumberAsterisks = (last4) => {
+    if (!last4) return '**** **** **** ****';
+    return `**** **** **** ${String(last4).slice(-4)}`;
+  };
+
+  const toggleMaskStyle = (orderId) => {
+    if (!orderId) return;
+    setMaskStyleByOrderId((prev) => ({ ...prev, [orderId]: !prev?.[orderId] }));
   };
 
   const topUpFee = calculateTopUpFee();
@@ -597,32 +610,113 @@ export default function VirtualCard() {
                           ) : null}
 
                           <div className="relative z-10 flex flex-col h-full">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-xs text-white/80">{c.card_brand || getText('Kat', 'Carte', 'Card')}</p>
-                                <p className="font-mono text-lg tracking-wider mt-1">{formatCardNumber(c.card_last4)}</p>
-                              </div>
-                              <img
-                                src={c.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO}
-                                alt={c.card_type}
-                                className="h-10 w-auto"
-                              />
+                            {/* Header */}
+                            <div className="flex items-center justify-between">
+                              <span className="text-[15px] font-bold tracking-[3px] text-[#ffd700]">
+                                {String(c.card_brand || 'KAYICOM').toUpperCase()}
+                              </span>
+                              <div className="w-[45px] h-[35px] rounded-md bg-gradient-to-br from-[#f0d060] to-[#b8860b]" />
                             </div>
 
-                            <div className="flex items-end justify-between mt-auto pt-4">
-                              <div className="min-w-0">
-                                <p className="text-[11px] text-white/70 uppercase">{getText('Ekspire', 'Expire', 'Expires')}</p>
-                                <p className="font-mono">{c.card_expiry || 'MM/YY'}</p>
+                            {/* Number row */}
+                            <div className="flex items-center gap-3 mt-10">
+                              <span className="font-mono text-[18px] tracking-[4px]">
+                                {maskStyleByOrderId?.[c.order_id] ? formatCardNumber(c.card_last4) : formatCardNumberAsterisks(c.card_last4)}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => toggleMaskStyle(c.order_id)}
+                                className="h-8 w-8 p-0 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                                aria-label={getText('Chanje afichaj mask la', 'Changer le masquage', 'Toggle mask display')}
+                              >
+                                {maskStyleByOrderId?.[c.order_id] ? <EyeOff size={16} /> : <Eye size={16} />}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => copyToClipboard(
+                                  maskStyleByOrderId?.[c.order_id] ? formatCardNumber(c.card_last4) : formatCardNumberAsterisks(c.card_last4),
+                                  getText('Nimewo kat (mask)', 'Numéro (masqué)', 'Card number (masked)')
+                                )}
+                                className="h-8 w-8 p-0 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                                aria-label={getText('Kopye', 'Copier', 'Copy')}
+                              >
+                                <Copy size={16} />
+                              </Button>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="flex items-end justify-between mt-auto">
+                              <div>
+                                <span className="block text-[10px] uppercase text-white/70 mb-1">
+                                  {getText('Mèt Kat la', 'Titulaire', 'Card holder')}
+                                </span>
+                                <span className="text-[13px] font-medium">
+                                  {String((c.card_holder_name || user?.full_name || 'N/A')).toUpperCase()}
+                                </span>
                               </div>
-                              <div className="text-right">
-                                <p className="text-[11px] text-white/70 uppercase">{getText('Balans', 'Solde', 'Balance')}</p>
-                                <p className="font-semibold">
-                                  {c.card_balance != null ? `${Number(c.card_balance).toFixed(2)} ${c.card_currency || 'USD'}` : '—'}
-                                </p>
+                              <div>
+                                <span className="block text-[10px] uppercase text-white/70 mb-1">
+                                  {getText('Ekspirasyon', 'Expiration', 'Expiry')}
+                                </span>
+                                <span className="text-[13px] font-medium font-mono">{c.card_expiry || 'MM/YY'}</span>
+                              </div>
+                              <div>
+                                <span className="block text-[10px] uppercase text-white/70 mb-1">CVV</span>
+                                <span className="text-[13px] font-medium font-mono">***</span>
+                              </div>
+                              <div className="flex items-center">
+                                {c.card_type === 'mastercard' ? (
+                                  <>
+                                    <div className="w-[28px] h-[28px] rounded-full bg-[#eb001b] opacity-80" />
+                                    <div className="w-[28px] h-[28px] rounded-full bg-[#f79e1b] -ml-3 opacity-80" />
+                                  </>
+                                ) : (
+                                  <span className="text-xs font-bold tracking-widest text-white/80">VISA</span>
+                                )}
                               </div>
                             </div>
                           </div>
                         </div>
+
+                        {/* Billing info (customer-safe) */}
+                        {(c.billing_address || c.billing_city || c.billing_country || c.billing_zip) ? (
+                          <div className="p-3 bg-white dark:bg-stone-900 border-t border-stone-200 dark:border-stone-700">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-stone-900 dark:text-white">
+                                  {getText('Adrès Faktirasyon', 'Adresse de Facturation', 'Billing Address')}
+                                </p>
+                                <p className="text-xs text-stone-600 dark:text-stone-300 mt-2 leading-5">
+                                  {c.billing_address ? (<><strong>{getText('Lari:', 'Rue:', 'Street:')}</strong> {c.billing_address}<br /></>) : null}
+                                  {c.billing_city ? (<><strong>{getText('Vil:', 'Ville:', 'City:')}</strong> {c.billing_city}<br /></>) : null}
+                                  {c.billing_zip ? (<><strong>ZIP:</strong> {c.billing_zip}<br /></>) : null}
+                                  {c.billing_country ? (<><strong>{getText('Peyi:', 'Pays:', 'Country:')}</strong> {c.billing_country}</>) : null}
+                                </p>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="shrink-0"
+                                onClick={() => copyToClipboard(
+                                  [
+                                    c.billing_address,
+                                    c.billing_city,
+                                    c.billing_zip,
+                                    c.billing_country,
+                                  ].filter(Boolean).join(', '),
+                                  getText('Adrès', 'Adresse', 'Address')
+                                )}
+                              >
+                                <Copy size={14} className="mr-2" />
+                                {getText('Kopye', 'Copier', 'Copy')}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
 
                         {/* Action bar (standard pattern: actions below, not on the card) */}
                         <div className="p-3 flex items-center justify-between gap-2">
