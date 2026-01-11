@@ -503,6 +503,9 @@ async def _strowallet_create_customer_id(
     parts = [p for p in full_name.split(" ") if p]
     first_name = parts[0] if parts else full_name
     last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
+    # Strowallet validation typically requires both first + last name.
+    if not last_name and first_name:
+        last_name = first_name
 
     # Map our KYC fields to provider-required schema.
     # Provider-required (from diagnostics): customerEmail, idNumber, idType, firstName, lastName, phoneNumber,
@@ -514,8 +517,31 @@ async def _strowallet_create_customer_id(
     id_number = (kyc.get("id_number") or "").strip()
     id_type = (kyc.get("id_type") or "").strip()
     id_image = (kyc.get("id_front_image") or "").strip()
+    id_back_image = (kyc.get("id_back_image") or "").strip()
     user_photo = (kyc.get("selfie_with_id") or "").strip()
     date_of_birth = (kyc.get("date_of_birth") or "").strip()
+
+    # Best-effort: infer missing city/state from address line.
+    if address_line1 and (not city or not state):
+        addr_parts = [p.strip() for p in re.split(r"[,\\n]", address_line1) if p and p.strip()]
+        if not city and addr_parts:
+            city = addr_parts[-1]
+        if not state and len(addr_parts) >= 2:
+            state = addr_parts[-2]
+
+    # Provide conservative defaults.
+    if not country:
+        country = "Haiti"
+
+    # Normalize idType to common provider values while also sending our raw value as aliases.
+    id_type_norm = str(id_type or "").strip().lower()
+    id_type_provider = {
+        "id_card": "NIN",
+        "national_id": "NIN",
+        "passport": "PASSPORT",
+        "driver_license": "DRIVERS_LICENSE",
+        "drivers_license": "DRIVERS_LICENSE",
+    }.get(id_type_norm, id_type)
 
     # Best-effort: parse house number / zip from full_address if present.
     house_number = ""
@@ -537,13 +563,59 @@ async def _strowallet_create_customer_id(
 
     customer_email_final = (customer_email or user.get("email") or "").strip()
 
-    phone_number = (kyc.get("phone_number") or user.get("phone") or "").strip()
+    phone_number = (kyc.get("phone_number") or kyc.get("whatsapp_number") or user.get("phone") or "").strip()
+
+    # Ensure KYC images are in a provider-friendly form. If Cloudinary is configured, this will
+    # convert inline base64 (data URLs) into stable URLs; otherwise it keeps the original.
+    async def _normalize_kyc_image(value: str, field_name: str) -> str:
+        if not value:
+            return value
+        kyc_id = str(kyc.get("kyc_id") or f"kyc_{user.get('user_id') or 'unknown'}")
+        try:
+            stored = await _kyc_store_image_value(
+                value,
+                user_id=str(user.get("user_id") or ""),
+                kyc_id=kyc_id,
+                field_name=field_name,
+                settings=settings,
+            )
+            new_val = str(stored.get("value") or "")
+            if new_val and new_val != value and kyc.get("kyc_id"):
+                # Best-effort persist so future calls reuse the URL.
+                try:
+                    meta = dict(kyc.get("image_meta") or {})
+                    meta[field_name] = stored.get("meta")
+                    await db.kyc.update_one(
+                        {"kyc_id": kyc["kyc_id"]},
+                        {"$set": {field_name: new_val, "image_meta": meta}},
+                    )
+                    kyc[field_name] = new_val
+                    kyc["image_meta"] = meta
+                except Exception:
+                    pass
+            return new_val or value
+        except Exception:
+            return value
+
+    id_image = await _normalize_kyc_image(id_image, "id_front_image")
+    id_back_image = await _normalize_kyc_image(id_back_image, "id_back_image")
+    user_photo = await _normalize_kyc_image(user_photo, "selfie_with_id")
+
+    # Optional: also include pure base64 without the data-url prefix (some provider deployments expect this).
+    def _data_url_to_b64(val: str) -> Optional[str]:
+        parsed = _parse_image_data_url(val)
+        if not parsed:
+            return None
+        try:
+            return val.split("base64,", 1)[1]
+        except Exception:
+            return None
 
     create_user_payload: Dict[str, Any] = {
         # Required field names (provider schema)
         "customerEmail": customer_email_final,
         "idNumber": id_number,
-        "idType": id_type,
+        "idType": id_type_provider,
         "firstName": first_name,
         "lastName": last_name,
         "phoneNumber": phone_number,
@@ -554,8 +626,31 @@ async def _strowallet_create_customer_id(
         "line1": address_line1,
         "houseNumber": house_number,
         "idImage": id_image,
+        "idBackImage": id_back_image,
         "userPhoto": user_photo,
         "dateOfBirth": date_of_birth,
+        # Common aliases across different Strowallet deployments (best-effort)
+        "email": customer_email_final,
+        "customer_email": customer_email_final,
+        "id_number": id_number,
+        "id_type": id_type,
+        "first_name": first_name,
+        "last_name": last_name,
+        "phone": phone_number,
+        "phone_number": phone_number,
+        "address": address_line1,
+        "full_address": address_line1,
+        "addressLine1": address_line1,
+        "house_number": house_number,
+        "zip_code": zip_code,
+        "dob": date_of_birth,
+        "date_of_birth": date_of_birth,
+        "nationality": (kyc.get("nationality") or "").strip(),
+        "whatsapp_number": (kyc.get("whatsapp_number") or "").strip(),
+        "id_image": id_image,
+        "user_photo": user_photo,
+        "id_image_b64": _data_url_to_b64(id_image) if isinstance(id_image, str) else None,
+        "user_photo_b64": _data_url_to_b64(user_photo) if isinstance(user_photo, str) else None,
         # Helpful traceability (usually ignored by provider)
         "reference": user.get("user_id"),
         "customer_reference": user.get("user_id"),
