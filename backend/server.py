@@ -1094,7 +1094,8 @@ class BalanceAdjustment(BaseModel):
     reason: str
 
 class VirtualCardOrder(BaseModel):
-    card_email: str
+    # Optional for clients: if omitted, we default to the user's account email.
+    card_email: Optional[str] = None
 
 class TopUpOrder(BaseModel):
     country: str
@@ -3187,12 +3188,16 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
         {"$inc": {"wallet_htg": -card_fee_htg}}
     )
     
+    card_email = (request.card_email or current_user.get("email") or "").strip().lower()
+    if not card_email:
+        raise HTTPException(status_code=400, detail="Card email is required (missing user email)")
+
     # Create card order (manual process - admin will approve/reject)
     order = {
         "order_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
         "client_id": current_user["client_id"],
-        "card_email": request.card_email.lower(),
+        "card_email": card_email,
         "fee": card_fee_htg,
         "status": "pending",  # pending, approved, rejected
         "card_status": "pending",  # pending, active, locked

@@ -55,7 +55,6 @@ export default function VirtualCard() {
   const [txLoading, setTxLoading] = useState(false);
   const [txData, setTxData] = useState(null);
   const [ordering, setOrdering] = useState(false);
-  const [cardEmail, setCardEmail] = useState('');
   const [cardFee, setCardFee] = useState(500);
   const [defaultCardBg, setDefaultCardBg] = useState(null);
   
@@ -135,17 +134,22 @@ export default function VirtualCard() {
   }, [fetchData, fetchConfig]);
 
   const orderCard = async () => {
-    if (!cardEmail.trim()) {
-      toast.error(getText('Antre email pou kat la', 'Veuillez entrer un email pour la carte', 'Please enter an email for the card'));
+    const email = String(user?.email || '').trim();
+    if (!email) {
+      toast.error(getText(
+        'Imèl ou pa disponib. Tanpri mete yon imèl nan pwofil ou.',
+        'Votre email est indisponible. Veuillez ajouter un email à votre profil.',
+        'Your email is missing. Please add an email to your profile.'
+      ));
       return;
     }
 
     setOrdering(true);
     try {
-      await axios.post(`${API}/virtual-cards/order`, { card_email: cardEmail });
+      // Card email is taken from the user's account email automatically.
+      await axios.post(`${API}/virtual-cards/order`, {});
       toast.success(getText('Komand kat soumèt siksè!', 'Commande de carte soumise avec succès!', 'Card order submitted successfully!'));
       setShowOrderModal(false);
-      setCardEmail('');
       fetchData();
       refreshUser();
     } catch (error) {
@@ -770,19 +774,14 @@ export default function VirtualCard() {
 
               <div>
                 <Label>{getText('Email pou kat la', 'Email pour la carte', 'Email for the card')}</Label>
-                <Input
-                  type="email"
-                  placeholder="votre@email.com"
-                  value={cardEmail}
-                  onChange={(e) => setCardEmail(e.target.value)}
-                  className="mt-2"
-                  data-testid="card-email-input"
-                />
+                <div className="mt-2 rounded-md border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 px-3 py-2 text-sm">
+                  <span className="font-medium text-stone-900 dark:text-stone-100">{user?.email || '—'}</span>
+                </div>
                 <p className="text-sm text-stone-500 mt-2">
                   {getText(
-                    'Email sa a ap itilize pou voye detay kat la.',
-                    'Cet email sera utilisé pour envoyer les détails de la carte.',
-                    'This email will be used to send card details.'
+                    'Nou pral itilize imèl kont ou pou voye detay kat la.',
+                    'Nous utiliserons l’email de votre compte pour envoyer les détails de la carte.',
+                    'We will use your account email to send card details.'
                   )}
                 </p>
               </div>
@@ -796,7 +795,7 @@ export default function VirtualCard() {
 
               <Button 
                 onClick={orderCard}
-                disabled={ordering || !cardEmail.trim()}
+                disabled={ordering || !String(user?.email || '').trim()}
                 className="w-full btn-primary"
                 data-testid="order-card-submit"
               >
