@@ -4481,9 +4481,15 @@ async def virtual_card_reveal(
 
     await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"card_pin_failed_attempts": 0, "card_pin_locked_until": None}})
 
-    order = await db.virtual_card_orders.find_one({"order_id": order_id, "user_id": user["user_id"], "status": "approved"}, {"_id": 0})
+    # Fetch without status filter so we can return a clearer error.
+    order = await db.virtual_card_orders.find_one(
+        {"order_id": order_id, "user_id": user["user_id"]},
+        {"_id": 0},
+    )
     if not order:
         raise HTTPException(status_code=404, detail="Card not found")
+    if str(order.get("status") or "").lower() != "approved":
+        raise HTTPException(status_code=403, detail="Card is not approved yet")
     if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
         raise HTTPException(status_code=400, detail="Full details are only available for provider-issued cards")
 
@@ -4826,6 +4832,9 @@ class ManualCardCreate(BaseModel):
     user_id: str
     client_id: str
     card_email: str
+    # Optional: link an already-created provider card (e.g. created directly in Strowallet dashboard)
+    # so it appears in-app and supports reveal/transactions.
+    provider_card_id: Optional[str] = None
     card_brand: Optional[str] = None
     card_type: Optional[str] = "visa"
     card_holder_name: Optional[str] = None
@@ -4852,6 +4861,67 @@ async def admin_create_card_manually(
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     default_card_bg = settings.get("card_background_image") if settings else None
     card_image = payload.card_image or default_card_bg
+
+    provider_card_id = (str(payload.provider_card_id).strip() if payload.provider_card_id else "") or None
+    if provider_card_id:
+        # Prevent linking the same provider card to multiple orders/users.
+        existing = await db.virtual_card_orders.find_one(
+            {"provider": "strowallet", "provider_card_id": provider_card_id},
+            {"_id": 0, "order_id": 1, "user_id": 1, "card_email": 1},
+        )
+        if existing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Provider card is already linked (order_id={existing.get('order_id')})",
+            )
+
+    # If a provider card id is provided and Strowallet is enabled, best-effort refresh details so
+    # customer dashboard has last4/expiry/brand/name.
+    provider_detail: Optional[Dict[str, Any]] = None
+    if provider_card_id and _strowallet_enabled(settings):
+        try:
+            cfg = _strowallet_config(settings)
+            stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
+            provider_detail = await _strowallet_fetch_detail_with_retry(
+                settings=settings,
+                cfg=cfg,
+                provider_card_id=str(provider_card_id),
+                stw_customer_id=stw_customer_id,
+                reference=f"admin-link-{provider_card_id}",
+                attempts=4,
+            )
+        except Exception:
+            provider_detail = None
+
+    # Derive best-effort fields from provider detail if admin did not provide them.
+    detail_card_number = _extract_first(
+        provider_detail,
+        "data.card_number",
+        "data.number",
+        "card_number",
+        "number",
+        "data.card.number",
+        "data.card.card_number",
+    )
+    detail_expiry = _extract_first(
+        provider_detail,
+        "data.expiry",
+        "data.expiry_date",
+        "expiry",
+        "expiry_date",
+        "data.card.expiry",
+        "data.card.expiry_date",
+    )
+    detail_holder = _extract_first(
+        provider_detail,
+        "data.name_on_card",
+        "data.card_name",
+        "name_on_card",
+        "card_name",
+        "data.card.name_on_card",
+    )
+    detail_brand = _extract_first(provider_detail, "data.brand", "brand", "data.card.brand")
+    detail_type = _extract_first(provider_detail, "data.type", "type", "data.card.type")
     
     # Create card order directly as approved
     order = {
@@ -4859,12 +4929,15 @@ async def admin_create_card_manually(
         "user_id": payload.user_id,
         "client_id": payload.client_id,
         "card_email": payload.card_email.lower(),
-        "card_brand": payload.card_brand,
-        "card_type": payload.card_type,
-        "card_holder_name": payload.card_holder_name,
+        "provider": "strowallet" if provider_card_id else None,
+        "provider_card_id": provider_card_id,
+        "provider_raw": _redact_sensitive_payload({"linked": True, "detail": provider_detail} if provider_detail else {"linked": True}) if provider_card_id else None,
+        "card_brand": payload.card_brand or (str(detail_brand) if detail_brand else None) or (_strowallet_config(settings).get("brand_name") if (provider_card_id and _strowallet_enabled(settings)) else None),
+        "card_type": (payload.card_type or (str(detail_type).lower() if detail_type else None) or "visa"),
+        "card_holder_name": payload.card_holder_name or (str(detail_holder) if detail_holder else None) or (str(user.get("full_name") or "").upper() if user.get("full_name") else None),
         # SECURITY: store only last4 (never store full PAN / CVV).
-        "card_last4": payload.card_last4,
-        "card_expiry": payload.card_expiry,
+        "card_last4": payload.card_last4 or (str(detail_card_number).replace(" ", "")[-4:] if detail_card_number else None),
+        "card_expiry": payload.card_expiry or (str(detail_expiry) if detail_expiry else None),
         "billing_address": payload.billing_address,
         "billing_city": payload.billing_city,
         "billing_country": payload.billing_country,
