@@ -55,6 +55,7 @@ export default function AdminVirtualCards() {
   // Card details for manual entry (SECURITY: do not store PAN/CVV)
   const [cardDetails, setCardDetails] = useState({
     card_email: '', // Email for the card
+    provider_card_id: '', // Optional Strowallet card_id (links an existing provider card)
     card_brand: '',
     card_type: 'visa',
     card_holder_name: '',
@@ -384,6 +385,7 @@ export default function AdminVirtualCards() {
     setFoundClient(null);
     setCardDetails({
       card_email: '',
+      provider_card_id: '',
       card_brand: '',
       card_type: 'visa',
       card_holder_name: '',
@@ -466,6 +468,7 @@ export default function AdminVirtualCards() {
     setProviderCardId('');
     setCardDetails({
       card_email: '',
+      provider_card_id: '',
       card_brand: '',
       card_type: 'visa',
       card_holder_name: '',
@@ -487,6 +490,7 @@ export default function AdminVirtualCards() {
     setAutoIssueStrowallet(!!strowalletEnabled && (order?.provider !== 'strowallet'));
     setCardDetails({
       card_email: order.card_email || '',
+      provider_card_id: order?.provider_card_id || '',
       card_brand: order.card_brand || '',
       card_type: order.card_type || 'visa',
       card_holder_name: order.card_holder_name || '',
@@ -1650,6 +1654,23 @@ export default function AdminVirtualCards() {
                     type="email"
                   />
                   <p className="text-xs text-stone-500 mt-1">{getText('Email asosye ak kat la', 'Email associé à la carte', 'Email associated with the card')}</p>
+                </div>
+
+                <div>
+                  <Label>{getText('Provider Card ID (Strowallet) - opsyonèl', 'Provider Card ID (Strowallet) - optionnel', 'Provider Card ID (Strowallet) - optional')}</Label>
+                  <Input
+                    placeholder="ex: 123456"
+                    value={cardDetails.provider_card_id}
+                    onChange={(e) => setCardDetails({ ...cardDetails, provider_card_id: e.target.value })}
+                    className="mt-1 font-mono"
+                  />
+                  <p className="text-xs text-stone-500 mt-1">
+                    {getText(
+                      'Si kat la deja kreye sou Strowallet, mete card_id la pou li parèt sou app la.',
+                      'Si la carte existe déjà sur Strowallet, renseignez son card_id pour l’afficher dans l’app.',
+                      'If the card already exists in Strowallet, paste its card_id so it appears in-app.'
+                    )}
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
