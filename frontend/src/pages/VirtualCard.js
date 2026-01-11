@@ -54,6 +54,7 @@ export default function VirtualCard() {
   const [showTxModal, setShowTxModal] = useState(false);
   const [txLoading, setTxLoading] = useState(false);
   const [txData, setTxData] = useState(null);
+  const [refreshingDetails, setRefreshingDetails] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [cardFee, setCardFee] = useState(500);
   const [defaultCardBg, setDefaultCardBg] = useState(null);
@@ -287,6 +288,38 @@ export default function VirtualCard() {
     } finally {
       setTxLoading(false);
     }
+  };
+
+  const refreshCardDetails = async (order) => {
+    if (!order?.order_id) return;
+    setRefreshingDetails(true);
+    try {
+      const resp = await axios.get(`${API}/virtual-cards/${order.order_id}/detail`);
+      const updated = resp.data?.card;
+      if (updated) {
+        setSelectedCard(updated);
+      }
+      // Refresh the list too.
+      fetchData();
+      toast.success(getText('Detay mete ajou!', 'Détails mis à jour!', 'Details refreshed!'));
+    } catch (e) {
+      toast.error(e.response?.data?.detail || e.message || 'Error');
+    } finally {
+      setRefreshingDetails(false);
+    }
+  };
+
+  const extractTxRows = (data) => {
+    // Best-effort extractor for varying provider schemas.
+    const resp = data?.response || data;
+    const rows =
+      resp?.data ||
+      resp?.transactions ||
+      resp?.message?.transactions ||
+      resp?.result?.transactions ||
+      resp?.result ||
+      [];
+    return Array.isArray(rows) ? rows : [];
   };
 
   const updateControls = async (updates) => {
@@ -1013,6 +1046,18 @@ export default function VirtualCard() {
             
             {selectedCard && (
               <div className="space-y-4 py-4">
+                {/* Quick info */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
+                    <p className="text-xs text-stone-500">{getText('Email Kat', 'Email Carte', 'Card Email')}</p>
+                    <p className="font-medium break-all">{selectedCard.card_email || user?.email || '—'}</p>
+                  </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
+                    <p className="text-xs text-stone-500">{getText('ID Kat (Provider)', 'ID Carte (Provider)', 'Card ID (Provider)')}</p>
+                    <p className="font-mono text-sm break-all">{selectedCard.provider_card_id || '—'}</p>
+                  </div>
+                </div>
+
                 {/* Card Visual */}
                 <div className={`relative rounded-2xl p-4 sm:p-6 text-white overflow-hidden ${
                   selectedCard.card_type === 'mastercard' 
@@ -1116,6 +1161,16 @@ export default function VirtualCard() {
                     )}
                   </p>
                 </div>
+
+                <Button
+                  variant="outline"
+                  onClick={() => refreshCardDetails(selectedCard)}
+                  disabled={refreshingDetails}
+                  className="w-full"
+                >
+                  <RefreshCw size={16} className={`mr-2 ${refreshingDetails ? 'animate-spin' : ''}`} />
+                  {getText('Rechaje detay kat', 'Rafraîchir détails carte', 'Refresh card details')}
+                </Button>
 
                 <Button onClick={() => setShowCardDetails(false)} className="w-full" variant="outline">
                   {getText('Fèmen', 'Fermer', 'Close')}
@@ -1239,9 +1294,38 @@ export default function VirtualCard() {
                     'Note: shows Strowallet response (may return 403 if IP is not whitelisted).'
                   )}
                 </p>
-                <pre className="text-xs whitespace-pre-wrap bg-stone-50 dark:bg-stone-900 border rounded-lg p-3 overflow-x-auto">
-                  {txData ? JSON.stringify(txData, null, 2) : ''}
-                </pre>
+                {extractTxRows(txData).length ? (
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-stone-50 dark:bg-stone-900">
+                        <tr>
+                          <th className="text-left p-2">{getText('Dat', 'Date', 'Date')}</th>
+                          <th className="text-left p-2">{getText('Deskripsyon', 'Description', 'Description')}</th>
+                          <th className="text-right p-2">{getText('Montan', 'Montant', 'Amount')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {extractTxRows(txData).slice(0, 50).map((r, idx) => (
+                          <tr key={idx} className="border-t">
+                            <td className="p-2 whitespace-nowrap">
+                              {String(r.created_at || r.createdAt || r.date || r.time || '—')}
+                            </td>
+                            <td className="p-2">
+                              {String(r.description || r.narration || r.merchant || r.type || '—')}
+                            </td>
+                            <td className="p-2 text-right whitespace-nowrap">
+                              {String(r.amount ?? r.value ?? r.total ?? '—')} {String(r.currency || '')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <pre className="text-xs whitespace-pre-wrap bg-stone-50 dark:bg-stone-900 border rounded-lg p-3 overflow-x-auto">
+                    {txData ? JSON.stringify(txData, null, 2) : ''}
+                  </pre>
+                )}
                 <div className="flex gap-2">
                   <Button
                     variant="outline"

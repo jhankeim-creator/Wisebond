@@ -3155,6 +3155,74 @@ async def get_card_orders(current_user: dict = Depends(get_current_user)):
     ).sort("created_at", -1).to_list(50)
     return {"orders": orders}
 
+
+@api_router.get("/virtual-cards/{order_id}/detail")
+async def virtual_card_detail(
+    order_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Fetch/refresh a user's card details (best-effort).
+    We never return full card number/CVV to clients.
+    """
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not _virtual_cards_enabled(settings):
+        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
+
+    order = await db.virtual_card_orders.find_one(
+        {"order_id": order_id, "user_id": current_user["user_id"], "status": "approved"},
+        {"_id": 0, "card_number": 0, "card_cvv": 0, "provider_raw": 0},
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Card not found or not approved")
+
+    # Only Strowallet cards support provider refresh at the moment.
+    if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
+        return {"card": order, "note": "No provider detail available for this card"}
+
+    cfg = _strowallet_config(settings)
+    if not cfg.get("fetch_detail_path"):
+        return {"card": order, "note": "Provider card detail endpoint not configured"}
+
+    # Try fetch detail from provider to populate last4/expiry/etc.
+    payload: Dict[str, Any] = {
+        "card_id": order.get("provider_card_id"),
+        "reference": f"detail-{order_id}",
+    }
+    # Include customer id if present (some deployments require it).
+    u = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0, "strowallet_customer_id": 1, "strowallet_user_id": 1})
+    stw_customer_id = (u or {}).get("strowallet_customer_id") or (u or {}).get("strowallet_user_id")
+    if stw_customer_id:
+        payload["customer_id"] = stw_customer_id
+        payload["card_user_id"] = stw_customer_id
+    payload = _with_aliases(payload, "card_id", "cardId", "id")
+
+    stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
+    card_number = _extract_first(stw_detail, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
+    card_expiry = _extract_first(stw_detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
+    card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
+    card_brand = _extract_first(stw_detail, "data.brand", "brand", "data.card.brand")
+    card_type = _extract_first(stw_detail, "data.type", "type", "data.card.type")
+
+    update_doc: Dict[str, Any] = {}
+    if card_number:
+        card_number_str = str(card_number).replace(" ", "")
+        update_doc["card_last4"] = card_number_str[-4:]
+    if card_expiry:
+        update_doc["card_expiry"] = str(card_expiry)
+    if card_holder_name:
+        update_doc["card_holder_name"] = str(card_holder_name)
+    if card_brand and not order.get("card_brand"):
+        update_doc["card_brand"] = str(card_brand)
+    if card_type and not order.get("card_type"):
+        update_doc["card_type"] = str(card_type).lower()
+
+    if update_doc:
+        await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": update_doc})
+        order.update(update_doc)
+
+    return {"provider": "strowallet", "card": order}
+
 @api_router.get("/virtual-cards/deposits")
 async def get_card_deposits(current_user: dict = Depends(get_current_user)):
     """Get user's card deposit history (deposits made to their virtual card)"""
