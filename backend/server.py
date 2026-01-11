@@ -3745,7 +3745,9 @@ async def update_virtual_card_controls(
 
     # We auto-freeze on first failure to prevent 3-fail hard blocks; do not hard-block unlocks.
     failed_count = int(order.get("failed_payment_count", 0) or 0)
-    is_hard_blocked = False
+    # Hard-block policy: after 3 failed payments, user must contact support to unlock.
+    # (UI already enforces this; backend must enforce it too.)
+    is_hard_blocked = failed_count >= 3
 
     update_doc: Dict[str, Any] = {}
 
