@@ -102,6 +102,7 @@ export default function Dashboard() {
     { action: 'qr', icon: QrCode, label: getText('Resevwa', 'Recevoir', 'Receive'), color: 'bg-blue-500 hover:bg-blue-600' },
     { to: '/transfer', icon: Send, label: t('transfer'), color: 'bg-amber-500 hover:bg-amber-600' },
     { to: '/swap', icon: TrendingUp, label: 'Swap', color: 'bg-purple-500 hover:bg-purple-600' },
+    { to: '/virtual-card', icon: CreditCard, label: getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card'), color: 'bg-purple-700 hover:bg-purple-800' },
     { to: '/withdraw', icon: ArrowUpCircle, label: t('withdraw'), color: 'bg-[#EA580C] hover:bg-[#C2410C]' }
   ];
 

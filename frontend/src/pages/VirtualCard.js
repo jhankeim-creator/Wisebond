@@ -401,7 +401,7 @@ export default function VirtualCard() {
             </CardContent>
           </Card>
         ) : null}
-        {/* Feature flag */}
+        {/* Feature flag (read-only mode when disabled) */}
         {virtualCardsEnabled === false ? (
           <Card>
             <CardContent className="p-8 text-center">
@@ -411,9 +411,9 @@ export default function VirtualCard() {
               </h3>
               <p className="text-stone-600 dark:text-stone-400">
                 {getText(
-                  'Fonksyon sa a ap aktive lè admin lan pare.',
-                  'Cette fonctionnalité sera activée par l’admin quand elle sera prête.',
-                  'This feature will be enabled by the admin when ready.'
+                  'Ou ka toujou wè kat/ou istorik ki deja egziste yo, men ou pa ka fè nouvo demann kounye a.',
+                  'Vous pouvez toujours voir vos cartes/historiques existants, mais vous ne pouvez pas faire de nouvelles demandes pour le moment.',
+                  'You can still view existing cards/history, but new requests are temporarily disabled.'
                 )}
               </p>
             </CardContent>
@@ -421,7 +421,7 @@ export default function VirtualCard() {
         ) : null}
 
         {/* KYC Check */}
-        {virtualCardsEnabled === false ? null : virtualCardsEnabled === null ? (
+        {virtualCardsEnabled === null ? (
           <Card>
             <CardContent className="p-8 text-center text-stone-500">
               {getText('Chajman...', 'Chargement...', 'Loading...')}
@@ -490,18 +490,18 @@ export default function VirtualCard() {
               </div>
               <div className="flex gap-3">
                 {approvedCards.length > 0 && (
-                  <Button onClick={openTopUpModal} className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                  <Button onClick={openTopUpModal} disabled={virtualCardsEnabled === false} className="bg-emerald-500 hover:bg-emerald-600 text-white">
                     <Plus className="mr-2" size={18} />
                     {getText('Ajoute kòb sou kat', 'Ajouter des fonds', 'Add funds to card')}
                   </Button>
                 )}
                 {approvedCards.length > 0 && (
-                  <Button onClick={openWithdrawModal} variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50">
+                  <Button onClick={openWithdrawModal} disabled={virtualCardsEnabled === false} variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50">
                     <ArrowDown className="mr-2" size={18} />
                     {getText('Retire sou bous', 'Retirer vers wallet', 'Withdraw to wallet')}
                   </Button>
                 )}
-                <Button onClick={() => setShowOrderModal(true)} className="btn-primary">
+                <Button onClick={() => setShowOrderModal(true)} disabled={virtualCardsEnabled === false} className="btn-primary">
                   <ShoppingCart className="mr-2" size={18} />
                   {getText('Komande yon kat', 'Commander une carte', 'Order a card')}
                 </Button>

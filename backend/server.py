@@ -3146,8 +3146,8 @@ def _calculate_card_fee_usd(amount: float, card_fees: List[Dict[str, Any]]) -> f
 @api_router.get("/virtual-cards")
 async def get_virtual_cards(current_user: dict = Depends(get_current_user)):
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _virtual_cards_enabled(settings):
-        return {"cards": []}
+    # Read-only access should remain available even if virtual cards are temporarily disabled,
+    # so customers can still see their previously issued cards/orders.
     cards = await db.virtual_cards.find(
         {"user_id": current_user["user_id"]},
         {"_id": 0}
@@ -3158,8 +3158,7 @@ async def get_virtual_cards(current_user: dict = Depends(get_current_user)):
 async def get_card_orders(current_user: dict = Depends(get_current_user)):
     """Get user's virtual card orders"""
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _virtual_cards_enabled(settings):
-        return {"orders": []}
+    # Read-only access should remain available even if disabled (do not hide already-issued cards).
     orders = await db.virtual_card_orders.find(
         {"user_id": current_user["user_id"]},
         {
@@ -3183,15 +3182,16 @@ async def virtual_card_detail(
     We never return full card number/CVV to clients.
     """
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _virtual_cards_enabled(settings):
-        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
-
     order = await db.virtual_card_orders.find_one(
         {"order_id": order_id, "user_id": current_user["user_id"], "status": "approved"},
         {"_id": 0, "card_number": 0, "card_cvv": 0, "provider_raw": 0},
     )
     if not order:
         raise HTTPException(status_code=404, detail="Card not found or not approved")
+
+    # If virtual cards are disabled, allow viewing stored details but don't call provider.
+    if not _virtual_cards_enabled(settings):
+        return {"card": order, "note": "Virtual cards are currently disabled; provider refresh is unavailable."}
 
     # Only Strowallet cards support provider refresh at the moment.
     if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
@@ -3244,8 +3244,7 @@ async def virtual_card_detail(
 async def get_card_deposits(current_user: dict = Depends(get_current_user)):
     """Get user's card deposit history (deposits made to their virtual card)"""
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _virtual_cards_enabled(settings):
-        return {"deposits": []}
+    # Read-only access should remain available even if disabled.
     deposits = await db.virtual_card_deposits.find(
         {"user_id": current_user["user_id"]},
         {"_id": 0}
@@ -3535,8 +3534,7 @@ async def update_virtual_card_controls(
 async def get_card_withdrawals(current_user: dict = Depends(get_current_user)):
     """Get user's card withdrawal history (withdrawals from virtual card back to wallet)."""
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _virtual_cards_enabled(settings):
-        return {"withdrawals": []}
+    # Read-only access should remain available even if disabled.
     withdrawals = await db.virtual_card_withdrawals.find(
         {"user_id": current_user["user_id"]},
         {"_id": 0},
