@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -16,6 +16,7 @@ import {
   Check, 
   X,
   Clock,
+  RefreshCw,
   Camera,
   CreditCard,
   User,
@@ -33,6 +34,8 @@ export default function KYC() {
   const { user, refreshUser } = useAuth();
   
   const [kycData, setKycData] = useState(null);
+  const [kycStatus, setKycStatus] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(true);
   const [formData, setFormData] = useState({
     full_name: '',
     date_of_birth: '',
@@ -49,7 +52,7 @@ export default function KYC() {
     id_back_image: '',
     selfie_with_id: ''
   });
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -57,18 +60,29 @@ export default function KYC() {
     return en;
   };
 
-  useEffect(() => {
-    fetchKycStatus();
-  }, []);
-
-  const fetchKycStatus = async () => {
+  const fetchKycStatus = useCallback(async () => {
+    setStatusLoading(true);
     try {
       const response = await axios.get(`${API}/kyc/status`);
-      setKycData(response.data.kyc);
+      setKycData(response.data?.kyc || null);
+      setKycStatus(response.data?.status || null);
     } catch (error) {
       console.error('Error fetching KYC status:', error);
+    } finally {
+      setStatusLoading(false);
     }
-  };
+
+    // Best-effort: refresh cached user so other pages/UI stay consistent.
+    try {
+      await refreshUser();
+    } catch {
+      // ignore
+    }
+  }, [refreshUser]);
+
+  useEffect(() => {
+    fetchKycStatus();
+  }, [fetchKycStatus]);
 
   const handleImageUpload = (field) => (e) => {
     const file = e.target.files[0];
@@ -155,21 +169,38 @@ export default function KYC() {
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
 
     try {
       await axios.post(`${API}/kyc/submit`, formData);
-      await refreshUser();
       await fetchKycStatus();
       toast.success(getText('Dokiman KYC soumèt siksè!', 'Documents KYC soumis avec succès!', 'KYC documents submitted successfully!'));
     } catch (error) {
       toast.error(error.response?.data?.detail || getText('Erè nan soumisyon', 'Erreur lors de la soumission', 'Submission error'));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  if (user?.kyc_status === 'approved') {
+  const effectiveStatus = kycStatus || user?.kyc_status || null;
+  const isReopened = Boolean(kycData?.reopened_at);
+
+  if (statusLoading) {
+    return (
+      <DashboardLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
+        <Card className="max-w-xl mx-auto">
+          <CardContent className="p-8 text-center">
+            <RefreshCw className="mx-auto mb-3 text-[#EA580C] animate-spin" size={28} />
+            <p className="text-stone-600">
+              {getText('Ap chaje estati KYC...', 'Chargement du statut KYC...', 'Loading KYC status...')}
+            </p>
+          </CardContent>
+        </Card>
+      </DashboardLayout>
+    );
+  }
+
+  if (effectiveStatus === 'approved') {
     return (
       <DashboardLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
         <Card className="max-w-xl mx-auto">
@@ -193,7 +224,9 @@ export default function KYC() {
     );
   }
 
-  if (user?.kyc_status === 'pending' && kycData) {
+  // Only show "pending review" screen for normal pending submissions.
+  // If the admin "re-opened" the KYC, we let the user resubmit instead.
+  if (effectiveStatus === 'pending' && kycData && !isReopened) {
     return (
       <DashboardLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
         <Card className="max-w-xl mx-auto">
@@ -213,7 +246,9 @@ export default function KYC() {
             </p>
             <div className="bg-stone-50 rounded-xl p-4 text-left">
               <p className="text-sm text-stone-500">{getText('Soumèt le', 'Soumis le', 'Submitted on')}:</p>
-              <p className="font-medium">{new Date(kycData.submitted_at).toLocaleString()}</p>
+              <p className="font-medium">
+                {kycData?.submitted_at ? new Date(kycData.submitted_at).toLocaleString() : '—'}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -244,7 +279,7 @@ export default function KYC() {
         </div>
 
         {/* Rejection Notice */}
-        {user?.kyc_status === 'rejected' && kycData?.rejection_reason && (
+        {effectiveStatus === 'rejected' && kycData?.rejection_reason && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
             <div className="flex items-start gap-3">
               <X className="text-red-500 mt-0.5" size={24} />
@@ -252,6 +287,32 @@ export default function KYC() {
                 <h3 className="font-semibold text-red-800 mb-1">{getText('Demann rejte', 'Demande rejetée', 'Request rejected')}</h3>
                 <p className="text-sm text-red-700">{kycData.rejection_reason}</p>
                 <p className="text-sm text-red-600 mt-2">{getText('Tanpri soumèt dokiman yo ankò.', 'Veuillez soumettre à nouveau vos documents.', 'Please resubmit your documents.')}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Re-open notice (admin requested a redo) */}
+        {effectiveStatus === 'pending' && isReopened && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="text-blue-600 mt-0.5" size={24} />
+              <div>
+                <h3 className="font-semibold text-blue-900 mb-1">
+                  {getText('KYC a re-ouvri (fè l refè)', 'KYC rouvert (à refaire)', 'KYC re-opened (redo required)')}
+                </h3>
+                <p className="text-sm text-blue-800">
+                  {getText(
+                    'Tanpri soumèt KYC ou ankò ak bon dokiman/foto yo.',
+                    'Veuillez resoumettre votre KYC avec les bons documents/photos.',
+                    'Please resubmit your KYC with the correct documents/photos.'
+                  )}
+                </p>
+                {kycData?.reopened_reason && (
+                  <p className="text-sm text-blue-700 mt-2">
+                    <span className="font-medium">{getText('Rezon:', 'Raison:', 'Reason:')}</span> {kycData.reopened_reason}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -599,10 +660,10 @@ export default function KYC() {
           <Button 
             type="submit" 
             className="btn-primary w-full"
-            disabled={loading}
+            disabled={submitting}
             data-testid="kyc-submit"
           >
-            {loading ? getText('Ap soumèt...', 'Soumission...', 'Submitting...') : getText('Soumèt Verifikasyon', 'Soumettre la Vérification', 'Submit Verification')}
+            {submitting ? getText('Ap soumèt...', 'Soumission...', 'Submitting...') : getText('Soumèt Verifikasyon', 'Soumettre la Vérification', 'Submit Verification')}
           </Button>
         </form>
       </div>
