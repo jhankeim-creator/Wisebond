@@ -309,17 +309,17 @@ export default function VirtualCard() {
 
   const viewCardDetails = (order) => {
     setSelectedCard(order);
-    setRevealedCard(null);
     setTxData(null);
     setShowCardDetails(true);
-    // Load transactions inline under the card (best-effort).
     openTransactions(order);
   };
 
+  // Single entry point: click the eye -> PIN -> reveal -> open details.
   const handleEyeClick = (order) => {
-    if (!order) return;
-    viewCardDetails(order);
-    // Prompt for PIN (or set PIN) then reveal.
+    if (!order?.order_id) return;
+    setSelectedCard(order);
+    setRevealedCard(null);
+    setTxData(null);
     if (!hasCardPin) {
       setShowSetPinModal(true);
       return;
@@ -401,6 +401,8 @@ export default function VirtualCard() {
       toast.success(getText('Detay revele!', 'Détails révélés!', 'Details revealed!'));
       setShowRevealModal(false);
       setRevealPin('');
+      // After successful reveal, open the details view (single flow: eye -> reveal -> details).
+      viewCardDetails(selectedCard);
     } catch (e) {
       toast.error(e.response?.data?.detail || e.message || 'Error');
     } finally {
@@ -832,11 +834,11 @@ export default function VirtualCard() {
                           </div>
                         ) : null}
 
-                        {/* Action bar (standard pattern: actions below, not on the card) */}
+                        {/* Action bar */}
                         <div className="p-3 flex items-center justify-between gap-2">
-                          <Button size="sm" onClick={() => viewCardDetails(c)} className="btn-primary">
+                          <Button size="sm" onClick={() => handleEyeClick(c)} className="btn-primary">
                             <Eye size={16} className="mr-2" />
-                            {getText('Detay', 'Détails', 'Details')}
+                            {getText('Wè', 'Voir', 'View')}
                           </Button>
 
                           <div className="flex items-center gap-2">
@@ -935,9 +937,9 @@ export default function VirtualCard() {
                             </div>
                             <div className="flex items-center gap-2 flex-wrap justify-end">
                               {order.status === 'approved' ? (
-                                <Button variant="outline" size="sm" onClick={() => viewCardDetails(order)} className="text-emerald-600 border-emerald-300 hover:bg-emerald-50">
+                                <Button variant="outline" size="sm" onClick={() => handleEyeClick(order)} className="text-emerald-600 border-emerald-300 hover:bg-emerald-50">
                                   <Eye size={16} className="mr-1" />
-                                  {getText('Detay', 'Détails', 'Details')}
+                                  {getText('Wè', 'Voir', 'View')}
                                 </Button>
                               ) : null}
                               {order.status === 'approved' && order.provider === 'strowallet' ? (
