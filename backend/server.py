@@ -4143,7 +4143,6 @@ async def admin_process_card_order(
                 "name_on_card": (user.get("full_name") or "").upper(),
                 "card_type": (order.get("card_type") or "visa"),
                 "amount": str(cfg.get("create_card_amount_usd") or 5),
-                "mode": cfg.get("mode") or "live",
                 "full_name": user.get("full_name"),
                 "name": user.get("full_name"),
                 "phone": user.get("phone"),
@@ -4164,72 +4163,9 @@ async def admin_process_card_order(
             # Remove empty values to avoid API rejections.
             create_payload = {k: v for k, v in create_payload.items() if v not in (None, "")}
 
-            # Some Strowallet deployments validate mode against a different enum.
-            # If we see "selected mode is invalid", retry with common alternatives (test/production) and/or omit it.
-            def _mode_candidates(v: Any) -> List[Optional[Any]]:
-                """
-                Return mode candidates without accidentally creating sandbox cards in live mode.
-                - If configured mode is live: try live-like variants only.
-                - If configured mode is sandbox: try test-like variants only.
-                - Always allow omitting mode as last resort.
-                """
-                raw = v if v is not None else ""
-                raw_str = str(raw).strip()
-                kind = raw_str.lower()
-                # Normalize common inputs
-                kind = {"sandbox": "sandbox", "test": "sandbox", "live": "live", "prod": "live", "production": "live"}.get(kind, kind or "live")
-
-                # Always try the configured raw value first (as-is) if present.
-                candidates: List[Optional[Any]] = []
-                if raw_str:
-                    candidates.append(raw_str)
-
-                if kind == "sandbox":
-                    candidates += ["test", "Test", "TEST", "sandbox", "Sandbox", "SANDBOX", 0, "0", 1, "1"]
-                else:
-                    # Some deployments use casing or numeric enums.
-                    candidates += ["live", "Live", "LIVE", "production", "Production", "PRODUCTION", "prod", "PROD", 1, "1", 0, "0"]
-
-                # Also allow omitting mode entirely
-                candidates.append(None)
-
-                # Deduplicate while preserving order (case-sensitive strings are kept distinct).
-                out: List[Optional[Any]] = []
-                for c in candidates:
-                    if c in out:
-                        continue
-                    out.append(c)
-                return out
-
-            stw_resp = None
-            last_mode_err = None
-            modes_tried: List[Any] = []
-            for m in _mode_candidates(cfg.get("mode") or create_payload.get("mode")):
-                try_payload = dict(create_payload)
-                if m:
-                    try_payload["mode"] = m
-                else:
-                    try_payload.pop("mode", None)
-                modes_tried.append(m)
-                try:
-                    stw_resp = await _strowallet_post(settings, cfg["create_path"], try_payload)
-                    break
-                except HTTPException as e:
-                    txt = _stw_error_text(getattr(e, "detail", ""))
-                    if "mode" in txt and "invalid" in txt:
-                        last_mode_err = getattr(e, "detail", str(e))
-                        continue
-                    raise
-            if stw_resp is None and last_mode_err is not None:
-                raise HTTPException(
-                    status_code=502,
-                    detail={
-                        "message": "Strowallet create-card failed: invalid mode",
-                        "modes_tried": modes_tried,
-                        "last_error": last_mode_err,
-                        "note": "Update Admin → Virtual Cards → Mode, or leave it blank if your plan does not require it.",
-                    },
-                )
+            # Strowallet bitvcard LIVE does NOT support a `mode` field.
+            # Environment is inferred from the LIVE keys + LIVE endpoint URL.
+            stw_resp = await _strowallet_post(settings, cfg["create_path"], create_payload)
             auto_created = True
 
             provider_card_id = _extract_first(
