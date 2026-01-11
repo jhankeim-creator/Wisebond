@@ -148,7 +148,6 @@ export default function AdminVirtualCards() {
           strowallet_withdraw_card_path: settings.strowallet_withdraw_card_path || '',
           strowallet_fetch_card_detail_path: settings.strowallet_fetch_card_detail_path || '',
           strowallet_card_transactions_path: settings.strowallet_card_transactions_path || '',
-          strowallet_mode: settings.strowallet_mode || 'live',
           strowallet_create_card_amount_usd: settings.strowallet_create_card_amount_usd ?? 5,
           strowallet_freeze_unfreeze_path: settings.strowallet_freeze_unfreeze_path || '',
           strowallet_full_card_history_path: settings.strowallet_full_card_history_path || '',
@@ -192,7 +191,6 @@ export default function AdminVirtualCards() {
         strowallet_withdraw_card_path: cardSettings.strowallet_withdraw_card_path || null,
         strowallet_fetch_card_detail_path: cardSettings.strowallet_fetch_card_detail_path || null,
         strowallet_card_transactions_path: cardSettings.strowallet_card_transactions_path || null,
-        strowallet_mode: cardSettings.strowallet_mode || 'live',
         strowallet_create_card_amount_usd: Number.isFinite(Number(cardSettings.strowallet_create_card_amount_usd))
           ? Number(cardSettings.strowallet_create_card_amount_usd)
           : 5,
@@ -226,7 +224,6 @@ export default function AdminVirtualCards() {
         strowallet_fund_card_path: s.strowallet_fund_card_path || '/api/bitvcard/fund-card/',
         strowallet_fetch_card_detail_path: s.strowallet_fetch_card_detail_path || '/api/bitvcard/fetch-card-detail/',
         strowallet_card_transactions_path: s.strowallet_card_transactions_path || '/api/bitvcard/card-transactions/',
-        strowallet_mode: s.strowallet_mode || 'live',
         strowallet_create_card_amount_usd: s.strowallet_create_card_amount_usd ?? 5,
         strowallet_freeze_unfreeze_path: s.strowallet_freeze_unfreeze_path || '',
         strowallet_full_card_history_path: s.strowallet_full_card_history_path || '',
@@ -658,28 +655,6 @@ export default function AdminVirtualCards() {
                         />
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        <div>
-                          <Label>{getText('Mode', 'Mode', 'Mode')}</Label>
-                          <Select
-                            value={cardSettings.strowallet_mode || 'live'}
-                            onValueChange={(v) => setCardSettings({ ...cardSettings, strowallet_mode: v })}
-                          >
-                            <SelectTrigger className="mt-1">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="live">live</SelectItem>
-                              <SelectItem value="sandbox">sandbox</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-stone-500 mt-1">
-                            {getText(
-                              'Si Strowallet kont ou se sandbox, mete sandbox isit la.',
-                              'Si votre compte Strowallet est sandbox, choisissez sandbox.',
-                              'If your Strowallet account is sandbox, choose sandbox.'
-                            )}
-                          </p>
-                        </div>
                         <div>
                           <Label>{getText('Default amount (USD)', 'Montant par défaut (USD)', 'Default amount (USD)')}</Label>
                           <Input

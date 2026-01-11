@@ -257,11 +257,6 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
     if not brand_name:
         brand_name = "KAYICOM"
 
-    # Some Strowallet deployments require passing `mode` when creating cards.
-    # Keep the raw value (admin-configurable) so we can support provider-specific enums.
-    stw_mode_raw = (str((settings or {}).get("strowallet_mode") or os.environ.get("STROWALLET_MODE") or "live")).strip()
-    if not stw_mode_raw:
-        stw_mode_raw = "live"
     try:
         stw_amount = float((settings or {}).get("strowallet_create_card_amount_usd") or os.environ.get("STROWALLET_CREATE_CARD_AMOUNT_USD") or 5)
     except Exception:
@@ -336,7 +331,6 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
         "fetch_detail_path": fetch_detail_path,
         "card_tx_path": card_tx_path,
         "brand_name": brand_name,
-        "mode": stw_mode_raw,
         "create_card_amount_usd": stw_amount,
         "set_limit_path": set_limit_path,
         "freeze_path": freeze_path,
@@ -433,9 +427,6 @@ def _ensure_strowallet_auth_payload(payload: Dict[str, Any], cfg: Dict[str, str]
         payload.setdefault("secret_key", api_secret)
         payload.setdefault("api_secret", api_secret)
         payload.setdefault("secret", api_secret)
-    # Many SDK calls include `mode`; add it if configured.
-    if cfg.get("mode"):
-        payload.setdefault("mode", cfg["mode"])
     return payload
 
 async def _strowallet_post(settings: Optional[dict], path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -6715,7 +6706,6 @@ async def admin_strowallet_apply_default_endpoints(admin: dict = Depends(get_adm
         "strowallet_fund_card_path": "/api/bitvcard/fund-card/",
         "strowallet_fetch_card_detail_path": "/api/bitvcard/fetch-card-detail/",
         "strowallet_card_transactions_path": "/api/bitvcard/card-transactions/",
-        "strowallet_mode": "live",
         "strowallet_create_card_amount_usd": 5.0,
         # Advanced endpoints vary by plan; keep empty so admin can fill in if provided by Strowallet.
         "strowallet_freeze_unfreeze_path": "",
