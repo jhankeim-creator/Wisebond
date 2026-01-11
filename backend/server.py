@@ -352,9 +352,34 @@ def _extract_first(d: Any, *paths: str) -> Optional[Any]:
         for key in path.split("."):
             if isinstance(cur, dict) and key in cur:
                 cur = cur[key]
-            else:
-                ok = False
-                break
+                continue
+
+            # Support providers that return arrays at intermediate nodes.
+            # Examples:
+            # - {"data": [{"card_id": "..."}]} with path "data.card_id"
+            # - {"data": [{"card": {"id": "..."}}]} with path "data.card.id"
+            if isinstance(cur, list):
+                # Numeric index support: "data.0.card_id"
+                if key.isdigit():
+                    idx = int(key)
+                    if 0 <= idx < len(cur):
+                        cur = cur[idx]
+                        continue
+                    ok = False
+                    break
+
+                # Non-index key: find the first object containing that key.
+                found = False
+                for item in cur:
+                    if isinstance(item, dict) and key in item and item[key] is not None:
+                        cur = item[key]
+                        found = True
+                        break
+                if found:
+                    continue
+
+            ok = False
+            break
         if ok and cur is not None:
             return cur
     return None
@@ -4031,6 +4056,9 @@ async def admin_create_card_manually(
 class CardDetailsPayload(BaseModel):
     action: Optional[str] = None  # approve or reject
     admin_notes: Optional[str] = None
+    # Optional: if a Strowallet card was already created outside/earlier, admin can link it here
+    # to avoid issuing a duplicate card during approval.
+    provider_card_id: Optional[str] = None
     card_brand: Optional[str] = None  # Wise, Payoneer, etc.
     card_type: Optional[str] = None  # visa or mastercard
     card_holder_name: Optional[str] = None
@@ -4094,124 +4122,190 @@ async def admin_process_card_order(
 
             cfg = _strowallet_config(settings)
 
-            # Some Strowallet APIs require creating a user/customer first (ex: /api/bitvcard/create-user/).
-            # We store the returned customer/user id on our user record to reuse it.
-            stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
-            if not stw_customer_id and cfg.get("create_user_path"):
-                # Prefer approved KYC for provider onboarding requirements.
-                kyc = await db.kyc.find_one(
-                    {"user_id": user["user_id"], "status": "approved"},
-                    {"_id": 0},
-                )
-                if not kyc:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="User KYC must be approved before creating a Strowallet customer.",
-                    )
-                stw_customer_id = await _strowallet_create_customer_id(
-                    settings=settings,
-                    cfg=cfg,
-                    user=user,
-                    # Use the user's actual email for provider customer identity (avoid collisions with card_email).
-                    customer_email=(user.get("email") or ""),
-                    kyc=kyc,
-                )
-                if stw_customer_id:
-                    await db.users.update_one(
-                        {"user_id": user["user_id"]},
-                        {"$set": {"strowallet_customer_id": stw_customer_id}},
-                    )
+            # If admin provided a provider_card_id, link it instead of creating a new card.
+            provided_provider_card_id = (payload.provider_card_id or "").strip()
+            if provided_provider_card_id:
+                provider_card_id = provided_provider_card_id
+                update_doc["provider"] = "strowallet"
+                update_doc["provider_card_id"] = provider_card_id
+                update_doc["provider_raw"] = {"linked": True}
 
-            # If customer id is still missing, continue best-effort.
-            # Many Strowallet create-card setups accept customerEmail only.
+                # Best-effort pull details from provider so customer dashboard has info.
+                if cfg.get("fetch_detail_path"):
+                    try:
+                        stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
+                        detail_payload: Dict[str, Any] = {"card_id": provider_card_id, "reference": f"detail-{order_id}"}
+                        if stw_customer_id:
+                            detail_payload["customer_id"] = stw_customer_id
+                            detail_payload["card_user_id"] = stw_customer_id
+                        detail_payload = _with_aliases(detail_payload, "card_id", "cardId", "id")
+                        stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], detail_payload)
+                        update_doc["provider_raw"] = {"linked": True, "detail": stw_detail}
 
-            create_payload: Dict[str, Any] = {
-                # Common fields across many Strowallet deployments (best-effort).
-                "email": order.get("card_email") or user.get("email"),
-                "card_email": order.get("card_email") or user.get("email"),
-                # Strowallet bitvcard schema (per docs)
-                "customerEmail": order.get("card_email") or user.get("email"),
-                "name_on_card": (user.get("full_name") or "").upper(),
-                "card_type": (order.get("card_type") or "visa"),
-                "amount": str(cfg.get("create_card_amount_usd") or 5),
-                "full_name": user.get("full_name"),
-                "name": user.get("full_name"),
-                "phone": user.get("phone"),
-                "phone_number": user.get("phone"),
-                "reference": order_id,
-                "customer_reference": user.get("user_id"),
-            }
-            if stw_customer_id:
-                # Try common keys used by Strowallet deployments
-                create_payload["customer_id"] = stw_customer_id
-                create_payload["user_id"] = stw_customer_id
-                create_payload["card_user_id"] = stw_customer_id
+                        card_number = _extract_first(stw_detail, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
+                        card_expiry = _extract_first(stw_detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
+                        card_brand = _extract_first(stw_detail, "data.brand", "brand", "data.card.brand")
+                        card_type = _extract_first(stw_detail, "data.type", "type", "data.card.type")
+                        card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
 
-            # Provide common aliases for provider schemas
-            create_payload = _with_aliases(create_payload, "phone", "mobile", "msisdn")
-            create_payload = _with_aliases(create_payload, "customerEmail", "customer_email", "customeremail")
+                        if cfg.get("brand_name"):
+                            update_doc["card_brand"] = cfg["brand_name"]
+                        elif card_brand:
+                            update_doc["card_brand"] = str(card_brand)
+                        else:
+                            update_doc["card_brand"] = "Virtual Card"
 
-            # Remove empty values to avoid API rejections.
-            create_payload = {k: v for k, v in create_payload.items() if v not in (None, "")}
+                        if card_type:
+                            update_doc["card_type"] = str(card_type).lower()
+                        if card_holder_name:
+                            update_doc["card_holder_name"] = str(card_holder_name)
+                        elif user.get("full_name"):
+                            update_doc["card_holder_name"] = str(user["full_name"]).upper()
 
-            # Strowallet bitvcard LIVE does NOT support a `mode` field.
-            # Environment is inferred from the LIVE keys + LIVE endpoint URL.
-            stw_resp = await _strowallet_post(settings, cfg["create_path"], create_payload)
-            auto_created = True
+                        if card_number:
+                            card_number_str = str(card_number).replace(" ", "")
+                            update_doc["card_last4"] = card_number_str[-4:]
+                        if card_expiry:
+                            update_doc["card_expiry"] = str(card_expiry)
+                    except Exception as e:
+                        # Don't block approval if detail fetch fails; linking still helps show the card.
+                        update_doc["provider_raw"] = {"linked": True, "detail_error": str(e)}
 
-            provider_card_id = _extract_first(
-                stw_resp,
-                "data.card.card_id",
-                "data.card_id",
-                "data.card_id",
-                "data.id",
-                "card_id",
-                "id",
-                "data.card.id",
-            )
-
-            # If a fetch-card-detail endpoint is configured, use it to get full card details.
-            stw_detail = None
-            if provider_card_id and cfg.get("fetch_detail_path"):
-                detail_payload: Dict[str, Any] = {"card_id": provider_card_id}
-                if stw_customer_id:
-                    detail_payload["customer_id"] = stw_customer_id
-                    detail_payload["card_user_id"] = stw_customer_id
-                detail_payload = _with_aliases(detail_payload, "card_id", "cardId", "id")
-                stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], detail_payload)
-
-            src = stw_detail or stw_resp
-            card_number = _extract_first(src, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
-            card_expiry = _extract_first(src, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
-            card_brand = _extract_first(src, "data.brand", "brand", "data.card.brand")
-            card_type = _extract_first(src, "data.type", "type", "data.card.type")
-            card_holder_name = _extract_first(src, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
-
-            update_doc["provider"] = "strowallet"
-            update_doc["provider_card_id"] = provider_card_id
-            update_doc["provider_raw"] = {"create": stw_resp, "detail": stw_detail} if stw_detail else stw_resp
-
-            # White-label: prefer configured brand name for UI display.
-            if cfg.get("brand_name"):
-                update_doc["card_brand"] = cfg["brand_name"]
-            elif card_brand:
-                update_doc["card_brand"] = str(card_brand)
             else:
-                update_doc["card_brand"] = "Virtual Card"
+                # Some Strowallet APIs require creating a user/customer first (ex: /api/bitvcard/create-user/).
+                # We store the returned customer/user id on our user record to reuse it.
+                stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
+                if not stw_customer_id and cfg.get("create_user_path"):
+                    # Prefer approved KYC for provider onboarding requirements.
+                    kyc = await db.kyc.find_one(
+                        {"user_id": user["user_id"], "status": "approved"},
+                        {"_id": 0},
+                    )
+                    if not kyc:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="User KYC must be approved before creating a Strowallet customer.",
+                        )
+                    stw_customer_id = await _strowallet_create_customer_id(
+                        settings=settings,
+                        cfg=cfg,
+                        user=user,
+                        # Use the user's actual email for provider customer identity (avoid collisions with card_email).
+                        customer_email=(user.get("email") or ""),
+                        kyc=kyc,
+                    )
+                    if stw_customer_id:
+                        await db.users.update_one(
+                            {"user_id": user["user_id"]},
+                            {"$set": {"strowallet_customer_id": stw_customer_id}},
+                        )
 
-            if card_type:
-                update_doc["card_type"] = str(card_type).lower()
+                # If customer id is still missing, continue best-effort.
+                # Many Strowallet create-card setups accept customerEmail only.
 
-            if card_holder_name:
-                update_doc["card_holder_name"] = str(card_holder_name)
-            elif user.get("full_name"):
-                update_doc["card_holder_name"] = str(user["full_name"]).upper()
+                create_payload: Dict[str, Any] = {
+                    # Common fields across many Strowallet deployments (best-effort).
+                    "email": order.get("card_email") or user.get("email"),
+                    "card_email": order.get("card_email") or user.get("email"),
+                    # Strowallet bitvcard schema (per docs)
+                    "customerEmail": order.get("card_email") or user.get("email"),
+                    "name_on_card": (user.get("full_name") or "").upper(),
+                    "card_type": (order.get("card_type") or "visa"),
+                    "amount": str(cfg.get("create_card_amount_usd") or 5),
+                    "full_name": user.get("full_name"),
+                    "name": user.get("full_name"),
+                    "phone": user.get("phone"),
+                    "phone_number": user.get("phone"),
+                    "reference": order_id,
+                    "customer_reference": user.get("user_id"),
+                }
+                if stw_customer_id:
+                    # Try common keys used by Strowallet deployments
+                    create_payload["customer_id"] = stw_customer_id
+                    create_payload["user_id"] = stw_customer_id
+                    create_payload["card_user_id"] = stw_customer_id
 
-            if card_number:
-                card_number_str = str(card_number).replace(" ", "")
-                update_doc["card_last4"] = card_number_str[-4:]
-            if card_expiry:
-                update_doc["card_expiry"] = str(card_expiry)
+                # Provide common aliases for provider schemas
+                create_payload = _with_aliases(create_payload, "phone", "mobile", "msisdn")
+                create_payload = _with_aliases(create_payload, "customerEmail", "customer_email", "customeremail")
+
+                # Remove empty values to avoid API rejections.
+                create_payload = {k: v for k, v in create_payload.items() if v not in (None, "")}
+
+                # Strowallet bitvcard LIVE does NOT support a `mode` field.
+                # Environment is inferred from the LIVE keys + LIVE endpoint URL.
+                stw_resp = await _strowallet_post(settings, cfg["create_path"], create_payload)
+                auto_created = True
+
+                provider_card_id = _extract_first(
+                    stw_resp,
+                    "data.card.card_id",
+                    "data.card_id",
+                    "data.cardId",
+                    "data.id",
+                    "data.card.cardId",
+                    "card_id",
+                    "id",
+                    "data.card.id",
+                )
+
+                # Persist provider metadata immediately so we don't lose it if a follow-up call fails.
+                update_doc["provider"] = "strowallet"
+                update_doc["provider_card_id"] = str(provider_card_id) if provider_card_id else None
+                update_doc["provider_raw"] = {"create": stw_resp}
+
+                # If a fetch-card-detail endpoint is configured, use it to get full card details.
+                # IMPORTANT: do not fail the approval flow if detail fetch fails; card might already be created.
+                stw_detail = None
+                stw_detail_error: Optional[str] = None
+                if provider_card_id and cfg.get("fetch_detail_path"):
+                    try:
+                        detail_payload: Dict[str, Any] = {"card_id": provider_card_id, "reference": f"detail-{order_id}"}
+                        if stw_customer_id:
+                            detail_payload["customer_id"] = stw_customer_id
+                            detail_payload["card_user_id"] = stw_customer_id
+                        detail_payload = _with_aliases(detail_payload, "card_id", "cardId", "id")
+                        stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], detail_payload)
+                        update_doc["provider_raw"] = {"create": stw_resp, "detail": stw_detail}
+                    except Exception as e:
+                        stw_detail_error = str(e)
+                        update_doc["provider_raw"] = {"create": stw_resp, "detail_error": stw_detail_error}
+
+                src = stw_detail or stw_resp
+                card_number = _extract_first(src, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
+                card_expiry = _extract_first(src, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
+                card_brand = _extract_first(src, "data.brand", "brand", "data.card.brand")
+                card_type = _extract_first(src, "data.type", "type", "data.card.type")
+                card_holder_name = _extract_first(src, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
+                # If we couldn't extract provider_card_id, annotate admin notes for follow-up.
+                if not provider_card_id:
+                    update_doc["admin_notes"] = (
+                        (payload.admin_notes or "")
+                        + ("\n" if payload.admin_notes else "")
+                        + "WARN: Strowallet card created but provider_card_id could not be extracted from response."
+                    )
+
+                # White-label: prefer configured brand name for UI display.
+                if cfg.get("brand_name"):
+                    update_doc["card_brand"] = cfg["brand_name"]
+                elif card_brand:
+                    update_doc["card_brand"] = str(card_brand)
+                else:
+                    update_doc["card_brand"] = "Virtual Card"
+
+                if card_type:
+                    update_doc["card_type"] = str(card_type).lower()
+
+                if card_holder_name:
+                    update_doc["card_holder_name"] = str(card_holder_name)
+                elif user.get("full_name"):
+                    update_doc["card_holder_name"] = str(user["full_name"]).upper()
+
+                if card_number:
+                    card_number_str = str(card_number).replace(" ", "")
+                    update_doc["card_last4"] = card_number_str[-4:]
+                if card_expiry:
+                    update_doc["card_expiry"] = str(card_expiry)
 
         # Manual entry is only honored when Strowallet automation is NOT enabled.
         if not _strowallet_enabled(settings):
@@ -6723,6 +6817,109 @@ async def admin_strowallet_apply_default_endpoints(admin: dict = Depends(get_adm
 
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     return {"message": "Default Strowallet endpoints applied", "settings": settings}
+
+
+@api_router.post("/admin/strowallet/sync-user-cards")
+async def admin_strowallet_sync_user_cards(
+    email: Optional[str] = Query(default=None, description="User email to sync cards for"),
+    user_id: Optional[str] = Query(default=None, description="User id to sync cards for"),
+    admin: dict = Depends(get_admin_user),
+):
+    """
+    Admin utility: refresh Strowallet card details (last4/expiry/name/brand/type) for a user.
+    This fixes cases where cards exist at provider but our dashboard is missing details.
+    """
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not _strowallet_enabled(settings):
+        raise HTTPException(status_code=400, detail="Strowallet is disabled")
+
+    if not email and not user_id:
+        raise HTTPException(status_code=400, detail="Provide email or user_id")
+
+    q_user: Dict[str, Any] = {}
+    if user_id:
+        q_user["user_id"] = str(user_id).strip()
+    if email:
+        q_user["email"] = str(email).strip().lower()
+
+    user = await db.users.find_one(q_user, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    cfg = _strowallet_config(settings)
+    if not cfg.get("fetch_detail_path"):
+        raise HTTPException(status_code=400, detail="Provider card detail endpoint not configured")
+
+    orders = await db.virtual_card_orders.find(
+        {"user_id": user["user_id"], "status": "approved", "provider": "strowallet"},
+        {"_id": 0},
+    ).to_list(200)
+
+    updated: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, Any]] = []
+    stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
+
+    for o in orders:
+        oid = o.get("order_id")
+        provider_card_id = o.get("provider_card_id")
+        if not provider_card_id:
+            skipped.append({"order_id": oid, "reason": "missing_provider_card_id"})
+            continue
+
+        payload: Dict[str, Any] = {"card_id": provider_card_id, "reference": f"admin-sync-{oid}"}
+        if stw_customer_id:
+            payload["customer_id"] = stw_customer_id
+            payload["card_user_id"] = stw_customer_id
+        payload = _with_aliases(payload, "card_id", "cardId", "id")
+
+        try:
+            stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
+        except Exception as e:
+            skipped.append({"order_id": oid, "reason": f"fetch_failed: {e}"})
+            continue
+
+        card_number = _extract_first(stw_detail, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
+        card_expiry = _extract_first(stw_detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
+        card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
+        card_brand = _extract_first(stw_detail, "data.brand", "brand", "data.card.brand")
+        card_type = _extract_first(stw_detail, "data.type", "type", "data.card.type")
+
+        update_doc: Dict[str, Any] = {
+            "provider": "strowallet",
+            "provider_card_id": str(provider_card_id),
+            "provider_raw": {"detail": stw_detail},
+        }
+
+        if card_number:
+            card_number_str = str(card_number).replace(" ", "")
+            update_doc["card_last4"] = card_number_str[-4:]
+        if card_expiry:
+            update_doc["card_expiry"] = str(card_expiry)
+        if card_holder_name:
+            update_doc["card_holder_name"] = str(card_holder_name)
+        if cfg.get("brand_name"):
+            update_doc["card_brand"] = cfg["brand_name"]
+        elif card_brand:
+            update_doc["card_brand"] = str(card_brand)
+        if card_type:
+            update_doc["card_type"] = str(card_type).lower()
+
+        await db.virtual_card_orders.update_one({"order_id": oid}, {"$set": update_doc})
+        updated.append({"order_id": oid, "provider_card_id": str(provider_card_id)})
+
+    await log_action(
+        admin["user_id"],
+        "strowallet_sync_user_cards",
+        {"user_id": user["user_id"], "email": user.get("email"), "updated": len(updated), "skipped": len(skipped)},
+    )
+
+    return {
+        "user_id": user["user_id"],
+        "email": user.get("email"),
+        "updated": updated,
+        "skipped": skipped,
+        "note": "Sensitive PAN/CVV are never stored; we store only last4/expiry/name/brand/type.",
+    }
 
 # Public endpoint for chat settings (no auth required)
 @api_router.get("/public/chat-settings")
