@@ -81,17 +81,6 @@ export default function AdminVirtualCards() {
     return en;
   }, [language]);
 
-  const getErrorMessage = (e) => {
-    const detail = e?.response?.data?.detail ?? e?.response?.data?.message ?? e?.message;
-    if (!detail) return getText('Erè', 'Erreur', 'Error');
-    if (typeof detail === 'string') return detail;
-    try {
-      return JSON.stringify(detail, null, 2);
-    } catch {
-      return String(detail);
-    }
-  };
-
   // Fetch orders
   const fetchOrders = useCallback(async () => {
     setOrdersLoading(true);
@@ -425,7 +414,7 @@ export default function AdminVirtualCards() {
       resetOrderForm();
       fetchOrders();
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      toast.error(getText('Erè nan tretman', 'Erreur lors du traitement', 'Error processing'));
     } finally {
       setProcessing(false);
     }
@@ -450,7 +439,7 @@ export default function AdminVirtualCards() {
       setDeliveryInfo('');
       fetchTopups();
     } catch (error) {
-      toast.error(getErrorMessage(error));
+      toast.error(getText('Erè nan tretman', 'Erreur lors du traitement', 'Error processing'));
     } finally {
       setProcessing(false);
     }
