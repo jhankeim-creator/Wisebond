@@ -3509,21 +3509,6 @@ async def get_card_orders(
     """
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
 
-    # Always enforce program default billing address for all card orders.
-    try:
-        billing_default = _default_card_billing()
-        await db.virtual_card_orders.update_many(
-            {"user_id": current_user["user_id"]},
-            {"$set": {
-                "billing_address": billing_default.get("billing_address"),
-                "billing_city": billing_default.get("billing_city"),
-                "billing_country": billing_default.get("billing_country"),
-                "billing_zip": billing_default.get("billing_zip"),
-            }},
-        )
-    except Exception:
-        pass
-
     # Best-effort sync before returning, so the customer dashboard shows latest provider data.
     # Keep this guarded: only when feature enabled + refresh requested.
     if refresh and _virtual_cards_enabled(settings):
@@ -3754,18 +3739,6 @@ async def virtual_card_detail(
     if not cfg.get("fetch_detail_path"):
         return {"card": order_full, "note": "Provider card detail endpoint not configured"}
 
-    # Always enforce program default billing address for cards.
-    try:
-        billing_default = _default_card_billing()
-        update_doc: Dict[str, Any] = {
-            "billing_address": billing_default.get("billing_address"),
-            "billing_city": billing_default.get("billing_city"),
-            "billing_country": billing_default.get("billing_country"),
-            "billing_zip": billing_default.get("billing_zip"),
-        }
-    except Exception:
-        update_doc = {}
-
     # Try fetch detail from provider to populate last4/expiry/etc.
     payload: Dict[str, Any] = {
         "card_id": order_full.get("provider_card_id"),
@@ -3804,6 +3777,7 @@ async def virtual_card_detail(
         "data.card.currency",
     )
 
+    update_doc: Dict[str, Any] = {}
     if card_number:
         card_number_str = str(card_number).replace(" ", "")
         update_doc["card_last4"] = card_number_str[-4:]
@@ -3819,6 +3793,28 @@ async def virtual_card_detail(
         update_doc["card_balance"] = float(card_balance)
     if card_currency and not order_full.get("card_currency"):
         update_doc["card_currency"] = str(card_currency).upper()
+
+    # Billing address: provider may not return it on fetch-detail.
+    # Backfill from approved KYC (the same data used for provider onboarding).
+    try:
+        if not any(order_full.get(k) for k in ("billing_address", "billing_city", "billing_country", "billing_zip")):
+            kyc = await db.kyc.find_one(
+                {"user_id": current_user["user_id"], "status": "approved"},
+                {"_id": 0, "full_address": 1, "city": 1, "country": 1},
+            )
+            if kyc:
+                if kyc.get("full_address"):
+                    update_doc.setdefault("billing_address", str(kyc.get("full_address")))
+                if kyc.get("city"):
+                    update_doc.setdefault("billing_city", str(kyc.get("city")))
+                if kyc.get("country"):
+                    update_doc.setdefault("billing_country", str(kyc.get("country")))
+                if kyc.get("full_address") and not order_full.get("billing_zip"):
+                    m_zip = re.search(r"(\d{4,6})(?!.*\d)", str(kyc.get("full_address") or ""))
+                    if m_zip:
+                        update_doc.setdefault("billing_zip", m_zip.group(1))
+    except Exception:
+        pass
 
     # Extra provider fields (best-effort) for customer dashboard:
     raw_status = _extract_first(
@@ -5023,7 +5019,6 @@ async def admin_create_card_manually(
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     default_card_bg = settings.get("card_background_image") if settings else None
     card_image = payload.card_image or default_card_bg
-    billing_default = _default_card_billing()
 
     provider_card_id = (str(payload.provider_card_id).strip() if payload.provider_card_id else "") or None
     if provider_card_id:
@@ -5101,11 +5096,10 @@ async def admin_create_card_manually(
         # SECURITY: store only last4 (never store full PAN / CVV).
         "card_last4": payload.card_last4 or (str(detail_card_number).replace(" ", "")[-4:] if detail_card_number else None),
         "card_expiry": payload.card_expiry or (str(detail_expiry) if detail_expiry else None),
-        # Program default billing address (always)
-        "billing_address": billing_default.get("billing_address"),
-        "billing_city": billing_default.get("billing_city"),
-        "billing_country": billing_default.get("billing_country"),
-        "billing_zip": billing_default.get("billing_zip"),
+        "billing_address": payload.billing_address,
+        "billing_city": payload.billing_city,
+        "billing_country": payload.billing_country,
+        "billing_zip": payload.billing_zip,
         "card_image": card_image,
         "fee": 0,  # No fee for manual creation
         "status": "approved",  # Already approved

@@ -54,10 +54,12 @@ export default function VirtualCard() {
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showCardDetails, setShowCardDetails] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
+  const [showTxModal, setShowTxModal] = useState(false);
   const [txLoading, setTxLoading] = useState(false);
   const [txData, setTxData] = useState(null);
   const [refreshingDetails, setRefreshingDetails] = useState(false);
-  // UI: mask-only on list (full details via reveal)
+  // UI-only: customers can toggle mask style
+  const [maskStyleByOrderId, setMaskStyleByOrderId] = useState({});
   // PIN / Reveal full details
   const [hasCardPin, setHasCardPin] = useState(!!user?.has_card_pin);
   const [showSetPinModal, setShowSetPinModal] = useState(false);
@@ -86,7 +88,9 @@ export default function VirtualCard() {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawCardId, setWithdrawCardId] = useState('');
   const [submittingWithdraw, setSubmittingWithdraw] = useState(false);
-  // (card controls hidden from customer UI)
+  const [updatingControls, setUpdatingControls] = useState(false);
+  const [spendingLimit, setSpendingLimit] = useState('');
+  const [spendingPeriod, setSpendingPeriod] = useState('monthly');
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -311,20 +315,13 @@ export default function VirtualCard() {
     setSelectedCard(order);
     setRevealedCard(null);
     setTxData(null);
+    setSpendingLimit(order?.spending_limit_usd != null ? String(order.spending_limit_usd) : '');
+    setSpendingPeriod(order?.spending_limit_period || 'monthly');
     setShowCardDetails(true);
-    // Load transactions inline under the card (best-effort).
-    openTransactions(order);
-  };
-
-  const handleEyeClick = (order) => {
-    if (!order) return;
-    viewCardDetails(order);
-    // Prompt for PIN (or set PIN) then reveal.
-    if (!hasCardPin) {
-      setShowSetPinModal(true);
-      return;
+    // Load provider transactions inline under the card (best-effort).
+    if (order?.provider === 'strowallet') {
+      openTransactions(order);
     }
-    setShowRevealModal(true);
   };
 
   const setPin = async () => {
@@ -412,6 +409,7 @@ export default function VirtualCard() {
     if (!order?.order_id) return;
     setTxLoading(true);
     setTxData(null);
+    setShowTxModal(true);
     try {
       const resp = await axios.get(`${API}/virtual-cards/${order.order_id}/transactions?page=1&take=50`);
       setTxData(resp.data);
@@ -490,7 +488,10 @@ export default function VirtualCard() {
     return `**** **** **** ${String(last4).slice(-4)}`;
   };
 
-  // Mask style toggle removed: list always shows masked number.
+  const toggleMaskStyle = (orderId) => {
+    if (!orderId) return;
+    setMaskStyleByOrderId((prev) => ({ ...prev, [orderId]: !prev?.[orderId] }));
+  };
 
   const topUpFee = calculateTopUpFee();
   const totalTopUpAmount = Math.max(0, parseFloat(topUpAmount || 0) + (topUpFee || 0));
@@ -735,24 +736,24 @@ export default function VirtualCard() {
                             {/* Number row */}
                             <div className="flex items-center gap-3 mt-10">
                               <span className="font-mono text-[18px] tracking-[4px]">
-                                {formatCardNumberAsterisks(c.card_last4)}
+                                {maskStyleByOrderId?.[c.order_id] ? formatCardNumber(c.card_last4) : formatCardNumberAsterisks(c.card_last4)}
                               </span>
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                onClick={() => handleEyeClick(c)}
+                                onClick={() => toggleMaskStyle(c.order_id)}
                                 className="h-8 w-8 p-0 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-                                aria-label={getText('Wè detay kat la', 'Voir les détails', 'View card details')}
+                                aria-label={getText('Chanje afichaj mask la', 'Changer le masquage', 'Toggle mask display')}
                               >
-                                <Eye size={16} />
+                                {maskStyleByOrderId?.[c.order_id] ? <EyeOff size={16} /> : <Eye size={16} />}
                               </Button>
                               <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
                                 onClick={() => copyToClipboard(
-                                  formatCardNumberAsterisks(c.card_last4),
+                                  maskStyleByOrderId?.[c.order_id] ? formatCardNumber(c.card_last4) : formatCardNumberAsterisks(c.card_last4),
                                   getText('Nimewo kat (mask)', 'Numéro (masqué)', 'Card number (masked)')
                                 )}
                                 className="h-8 w-8 p-0 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
@@ -1333,8 +1334,8 @@ export default function VirtualCard() {
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
                     <p className="text-xs text-stone-500">{getText('Balans Kat', 'Solde Carte', 'Card balance')}</p>
                     <p className="font-semibold">
-                      {(revealedCard?.card_balance ?? selectedCard.card_balance) != null
-                        ? `${Number(revealedCard?.card_balance ?? selectedCard.card_balance).toFixed(2)} ${(revealedCard?.card_currency || selectedCard.card_currency || 'USD')}`
+                      {selectedCard.card_balance != null
+                        ? `${Number(selectedCard.card_balance).toFixed(2)} ${selectedCard.card_currency || 'USD'}`
                         : '—'}
                     </p>
                     <p className="text-[11px] text-stone-500 mt-1">
@@ -1537,8 +1538,6 @@ export default function VirtualCard() {
 
                 {txLoading ? (
                   <div className="text-sm text-stone-500">{getText('Chajman...', 'Chargement...', 'Loading...')}</div>
-                ) : txData?.error ? (
-                  <div className="text-sm text-red-600">{String(txData.error)}</div>
                 ) : extractTxRows(txData).length ? (
                   <div className="overflow-x-auto border rounded-lg">
                     <table className="min-w-full text-xs">
@@ -1566,6 +1565,76 @@ export default function VirtualCard() {
                   <div className="text-sm text-stone-500">{getText('Pa gen tranzaksyon pou montre.', 'Aucune transaction.', 'No transactions to show.')}</div>
                 )}
               </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Transactions Modal */}
+        <Dialog open={showTxModal} onOpenChange={setShowTxModal}>
+          <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <History className="text-purple-700" size={20} />
+                {getText('Tranzaksyon Kat', 'Transactions Carte', 'Card Transactions')}
+              </DialogTitle>
+            </DialogHeader>
+            {txLoading ? (
+              <div className="py-8 text-center text-stone-500">{getText('Chajman...', 'Chargement...', 'Loading...')}</div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-stone-500">
+                  {getText(
+                    'Nòt: sa montre repons sèvis kat la (si IP pa otorize, li ka bay 403).',
+                    'Note: affiche la réponse du service de carte (si IP non autorisée, peut retourner 403).',
+                    'Note: shows the card provider response (may return 403 if server IP is not allowed).'
+                  )}
+                </p>
+                {extractTxRows(txData).length ? (
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-stone-50 dark:bg-stone-900">
+                        <tr>
+                          <th className="text-left p-2">{getText('Dat', 'Date', 'Date')}</th>
+                          <th className="text-left p-2">{getText('Deskripsyon', 'Description', 'Description')}</th>
+                          <th className="text-right p-2">{getText('Montan', 'Montant', 'Amount')}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {extractTxRows(txData).slice(0, 50).map((r, idx) => (
+                          <tr key={idx} className="border-t">
+                            <td className="p-2 whitespace-nowrap">
+                              {String(r.created_at || r.createdAt || r.date || r.time || '—')}
+                            </td>
+                            <td className="p-2">
+                              {String(r.description || r.narration || r.merchant || r.type || '—')}
+                            </td>
+                            <td className="p-2 text-right whitespace-nowrap">
+                              {String(r.amount ?? r.value ?? r.total ?? '—')} {String(r.currency || '')}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <pre className="text-xs whitespace-pre-wrap bg-stone-50 dark:bg-stone-900 border rounded-lg p-3 overflow-x-auto">
+                    {txData ? JSON.stringify(txData, null, 2) : ''}
+                  </pre>
+                )}
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => selectedCard ? openTransactions(selectedCard) : null}
+                    disabled={txLoading || !selectedCard}
+                  >
+                    <RefreshCw size={16} className="mr-2" />
+                    {getText('Rechaje', 'Recharger', 'Reload')}
+                  </Button>
+                  <Button variant="outline" onClick={() => setShowTxModal(false)}>
+                    {getText('Fèmen', 'Fermer', 'Close')}
+                  </Button>
+                </div>
               </div>
             )}
           </DialogContent>
