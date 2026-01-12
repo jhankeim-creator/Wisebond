@@ -67,7 +67,7 @@ export default function AdminKYC() {
 
   const fetchImageStorageStatus = useCallback(async () => {
     try {
-      const resp = await axios.get(`${API}/admin/kyc-image-storage-status`);
+      const resp = await axios.get(`${API}/admin/kyc/image-storage-status`);
       setImageStorage(resp.data || null);
     } catch (e) {
       // Not fatal for KYC workflow.
