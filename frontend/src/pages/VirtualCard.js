@@ -28,8 +28,7 @@ import {
   MapPin,
   Plus,
   ArrowRight,
-  ArrowDown,
-  RefreshCw
+  ArrowDown
 } from 'lucide-react';
 
 // Card logos
