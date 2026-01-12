@@ -70,8 +70,6 @@ export default function AdminSettings() {
     strowallet_create_card_path: '',
     strowallet_fund_card_path: '',
     strowallet_withdraw_card_path: '',
-    strowallet_fetch_card_detail_path: '',
-    strowallet_card_transactions_path: '',
     strowallet_brand_name: 'KAYICOM',
     
     // Fees & Affiliate
@@ -176,7 +174,6 @@ export default function AdminSettings() {
         'plisio_enabled', 'plisio_api_key', 'plisio_secret_key',
         'strowallet_enabled', 'strowallet_base_url', 'strowallet_api_key', 'strowallet_api_secret',
         'strowallet_create_user_path', 'strowallet_create_card_path', 'strowallet_fund_card_path', 'strowallet_withdraw_card_path',
-        'strowallet_fetch_card_detail_path', 'strowallet_card_transactions_path',
         'strowallet_brand_name',
         'card_order_fee_htg', 'affiliate_reward_htg', 'affiliate_cards_required',
         'card_background_image',
@@ -743,7 +740,7 @@ export default function AdminSettings() {
                   <div>
                     <Label>{getText('Create user path', 'Create user path', 'Create user path')}</Label>
                     <Input
-                      placeholder="/api/bitvcard/card-user"
+                      placeholder="/api/bitvcard/create-user/"
                       value={settings.strowallet_create_user_path || ''}
                       onChange={(e) => setSettings({ ...settings, strowallet_create_user_path: e.target.value })}
                       className="mt-1 font-mono text-sm"
@@ -752,7 +749,7 @@ export default function AdminSettings() {
                   <div>
                     <Label>{getText('Create path', 'Create path', 'Create path')}</Label>
                     <Input
-                      placeholder="/api/bitvcard/create-card/"
+                      placeholder="/api/virtualcards/create-card"
                       value={settings.strowallet_create_card_path || ''}
                       onChange={(e) => setSettings({ ...settings, strowallet_create_card_path: e.target.value })}
                       className="mt-1 font-mono text-sm"
@@ -761,7 +758,7 @@ export default function AdminSettings() {
                   <div>
                     <Label>{getText('Fund path', 'Fund path', 'Fund path')}</Label>
                     <Input
-                      placeholder="/api/bitvcard/fund-card/"
+                      placeholder="/api/virtualcards/fund-card"
                       value={settings.strowallet_fund_card_path || ''}
                       onChange={(e) => setSettings({ ...settings, strowallet_fund_card_path: e.target.value })}
                       className="mt-1 font-mono text-sm"
@@ -770,27 +767,9 @@ export default function AdminSettings() {
                   <div>
                     <Label>{getText('Withdraw path', 'Withdraw path', 'Withdraw path')}</Label>
                     <Input
-                      placeholder="/api/bitvcard/withdraw-card/ (si disponib)"
+                      placeholder="/api/virtualcards/withdraw-card"
                       value={settings.strowallet_withdraw_card_path || ''}
                       onChange={(e) => setSettings({ ...settings, strowallet_withdraw_card_path: e.target.value })}
-                      className="mt-1 font-mono text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label>{getText('Fetch card detail path', 'Fetch card detail path', 'Fetch card detail path')}</Label>
-                    <Input
-                      placeholder="/api/bitvcard/fetch-card-detail/"
-                      value={settings.strowallet_fetch_card_detail_path || ''}
-                      onChange={(e) => setSettings({ ...settings, strowallet_fetch_card_detail_path: e.target.value })}
-                      className="mt-1 font-mono text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label>{getText('Card transactions path', 'Card transactions path', 'Card transactions path')}</Label>
-                    <Input
-                      placeholder="/api/bitvcard/card-transactions/"
-                      value={settings.strowallet_card_transactions_path || ''}
-                      onChange={(e) => setSettings({ ...settings, strowallet_card_transactions_path: e.target.value })}
                       className="mt-1 font-mono text-sm"
                     />
                   </div>

@@ -221,12 +221,9 @@ class AdminSettingsUpdate(BaseModel):
     strowallet_base_url: Optional[str] = None
     strowallet_api_key: Optional[str] = None
     strowallet_api_secret: Optional[str] = None
-    strowallet_create_user_path: Optional[str] = None
     strowallet_create_card_path: Optional[str] = None
     strowallet_fund_card_path: Optional[str] = None
     strowallet_withdraw_card_path: Optional[str] = None
-    strowallet_fetch_card_detail_path: Optional[str] = None
-    strowallet_card_transactions_path: Optional[str] = None
     strowallet_brand_name: Optional[str] = None
 
     # Fees & Affiliate
@@ -1576,12 +1573,9 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
             "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", ""),
             "strowallet_api_key": "",
             "strowallet_api_secret": "",
-            "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/card-user",
             "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", ""),
             "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", ""),
             "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", ""),
-            "strowallet_fetch_card_detail_path": os.environ.get("STROWALLET_FETCH_CARD_DETAIL_PATH", "") or "/api/bitvcard/fetch-card-detail/",
-            "strowallet_card_transactions_path": os.environ.get("STROWALLET_CARD_TRANSACTIONS_PATH", "") or "/api/bitvcard/card-transactions/",
             "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", "") or "KAYICOM",
 
             # Fees & Affiliate

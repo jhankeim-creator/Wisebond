@@ -109,13 +109,10 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
         brand_name = "KAYICOM"
 
     # Endpoint paths can vary by Strowallet plan; allow overrides.
-    # Defaults tuned for Strowallet bitvcard endpoints.
-    create_user_path = ((settings or {}).get("strowallet_create_user_path") or os.environ.get("STROWALLET_CREATE_USER_PATH") or "/api/bitvcard/card-user").strip()
-    create_path = ((settings or {}).get("strowallet_create_card_path") or os.environ.get("STROWALLET_CREATE_CARD_PATH") or "/api/bitvcard/create-card/").strip()
-    fund_path = ((settings or {}).get("strowallet_fund_card_path") or os.environ.get("STROWALLET_FUND_CARD_PATH") or "/api/bitvcard/fund-card/").strip()
-    withdraw_path = ((settings or {}).get("strowallet_withdraw_card_path") or os.environ.get("STROWALLET_WITHDRAW_CARD_PATH") or "").strip()
-    fetch_detail_path = ((settings or {}).get("strowallet_fetch_card_detail_path") or os.environ.get("STROWALLET_FETCH_CARD_DETAIL_PATH") or "/api/bitvcard/fetch-card-detail/").strip()
-    card_tx_path = ((settings or {}).get("strowallet_card_transactions_path") or os.environ.get("STROWALLET_CARD_TRANSACTIONS_PATH") or "/api/bitvcard/card-transactions/").strip()
+    create_user_path = ((settings or {}).get("strowallet_create_user_path") or os.environ.get("STROWALLET_CREATE_USER_PATH") or "/api/bitvcard/create-user/").strip()
+    create_path = ((settings or {}).get("strowallet_create_card_path") or os.environ.get("STROWALLET_CREATE_CARD_PATH") or "/api/virtualcards/create-card").strip()
+    fund_path = ((settings or {}).get("strowallet_fund_card_path") or os.environ.get("STROWALLET_FUND_CARD_PATH") or "/api/virtualcards/fund-card").strip()
+    withdraw_path = ((settings or {}).get("strowallet_withdraw_card_path") or os.environ.get("STROWALLET_WITHDRAW_CARD_PATH") or "/api/virtualcards/withdraw-card").strip()
     set_limit_path = ((settings or {}).get("strowallet_set_limit_path") or os.environ.get("STROWALLET_SET_LIMIT_PATH") or "").strip()
     freeze_path = ((settings or {}).get("strowallet_freeze_card_path") or os.environ.get("STROWALLET_FREEZE_CARD_PATH") or "").strip()
     unfreeze_path = ((settings or {}).get("strowallet_unfreeze_card_path") or os.environ.get("STROWALLET_UNFREEZE_CARD_PATH") or "").strip()
@@ -124,10 +121,7 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
     create_user_path = create_user_path if create_user_path.startswith("/") else f"/{create_user_path}"
     create_path = create_path if create_path.startswith("/") else f"/{create_path}"
     fund_path = fund_path if fund_path.startswith("/") else f"/{fund_path}"
-    if withdraw_path:
-        withdraw_path = withdraw_path if withdraw_path.startswith("/") else f"/{withdraw_path}"
-    fetch_detail_path = fetch_detail_path if fetch_detail_path.startswith("/") else f"/{fetch_detail_path}"
-    card_tx_path = card_tx_path if card_tx_path.startswith("/") else f"/{card_tx_path}"
+    withdraw_path = withdraw_path if withdraw_path.startswith("/") else f"/{withdraw_path}"
     if set_limit_path:
         set_limit_path = set_limit_path if set_limit_path.startswith("/") else f"/{set_limit_path}"
     if freeze_path:
@@ -143,8 +137,6 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
         "create_path": create_path,
         "fund_path": fund_path,
         "withdraw_path": withdraw_path,
-        "fetch_detail_path": fetch_detail_path,
-        "card_tx_path": card_tx_path,
         "brand_name": brand_name,
         "set_limit_path": set_limit_path,
         "freeze_path": freeze_path,
@@ -168,19 +160,6 @@ def _extract_first(d: Any, *paths: str) -> Optional[Any]:
         if ok and cur is not None:
             return cur
     return None
-
-def _with_aliases(payload: Dict[str, Any], key: str, *aliases: str) -> Dict[str, Any]:
-    """
-    Add common alias keys for a given payload field if present.
-    Useful for provider APIs that vary in naming conventions.
-    """
-    if key not in payload or payload[key] in (None, ""):
-        return payload
-    v = payload[key]
-    for a in aliases:
-        if a and a not in payload:
-            payload[a] = v
-    return payload
 
 async def _strowallet_post(settings: Optional[dict], path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     cfg = _strowallet_config(settings)
@@ -428,8 +407,6 @@ class AdminSettingsUpdate(BaseModel):
     strowallet_create_card_path: Optional[str] = None
     strowallet_fund_card_path: Optional[str] = None
     strowallet_withdraw_card_path: Optional[str] = None
-    strowallet_fetch_card_detail_path: Optional[str] = None
-    strowallet_card_transactions_path: Optional[str] = None
     # White-label branding for automated cards (displayed in UI as card_brand)
     strowallet_brand_name: Optional[str] = None
     # Optional Strowallet controls endpoints (plans vary)
@@ -2500,8 +2477,6 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
                 "currency": "USD",
                 "reference": deposit["deposit_id"],
             }
-            fund_payload = _with_aliases(fund_payload, "card_id", "cardId", "id")
-            fund_payload = _with_aliases(fund_payload, "amount", "fund_amount", "value")
             stw_resp = await _strowallet_post(settings, cfg["fund_path"], fund_payload)
             provider_txn_id = _extract_first(stw_resp, "data.transaction_id", "data.txn_id", "transaction_id", "txn_id", "id")
 
@@ -2984,9 +2959,7 @@ async def admin_process_card_order(
         ])
 
         auto_created = False
-        # Strowallet-first mode: if enabled, issuing should be automatic (no manual card details required).
-        # Manual details (card_number/cvv/etc) are ignored when Strowallet automation is enabled.
-        if _strowallet_enabled(settings):
+        if _strowallet_enabled(settings) and not manual_details_provided:
             user = await db.users.find_one({"user_id": order["user_id"]}, {"_id": 0})
             if not user:
                 raise HTTPException(status_code=404, detail="User not found")
@@ -2997,33 +2970,22 @@ async def admin_process_card_order(
             # We store the returned customer/user id on our user record to reuse it.
             stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
             if not stw_customer_id and cfg.get("create_user_path"):
-                full_name = (user.get("full_name") or "").strip()
-                parts = [p for p in full_name.split(" ") if p]
-                first_name = parts[0] if parts else full_name
-                last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
                 create_user_payload: Dict[str, Any] = {
                     "email": user.get("email"),
                     "full_name": user.get("full_name"),
                     "name": user.get("full_name"),
-                    "first_name": first_name,
-                    "last_name": last_name,
                     "phone": user.get("phone"),
-                    "phone_number": user.get("phone"),
                     "reference": user.get("user_id"),
                     "customer_reference": user.get("user_id"),
                 }
                 create_user_payload = {k: v for k, v in create_user_payload.items() if v not in (None, "")}
-                # Provide common aliases for provider schemas
-                create_user_payload = _with_aliases(create_user_payload, "phone", "mobile", "msisdn")
                 stw_user_resp = await _strowallet_post(settings, cfg["create_user_path"], create_user_payload)
                 stw_customer_id = _extract_first(
                     stw_user_resp,
                     "data.customer_id",
                     "data.user_id",
-                    "data.card_user_id",
                     "customer_id",
                     "user_id",
-                    "card_user_id",
                     "data.id",
                     "id",
                 )
@@ -3040,7 +3002,6 @@ async def admin_process_card_order(
                 "full_name": user.get("full_name"),
                 "name": user.get("full_name"),
                 "phone": user.get("phone"),
-                "phone_number": user.get("phone"),
                 "reference": order_id,
                 "customer_reference": user.get("user_id"),
             }
@@ -3048,10 +3009,6 @@ async def admin_process_card_order(
                 # Try common keys used by Strowallet deployments
                 create_payload["customer_id"] = stw_customer_id
                 create_payload["user_id"] = stw_customer_id
-                create_payload["card_user_id"] = stw_customer_id
-
-            # Provide common aliases for provider schemas
-            create_payload = _with_aliases(create_payload, "phone", "mobile", "msisdn")
 
             # Remove empty values to avoid API rejections.
             create_payload = {k: v for k, v in create_payload.items() if v not in (None, "")}
@@ -3061,36 +3018,22 @@ async def admin_process_card_order(
 
             provider_card_id = _extract_first(
                 stw_resp,
-                "data.card.card_id",
-                "data.card_id",
                 "data.card_id",
                 "data.id",
                 "card_id",
                 "id",
                 "data.card.id",
             )
-
-            # If a fetch-card-detail endpoint is configured, use it to get full card details.
-            stw_detail = None
-            if provider_card_id and cfg.get("fetch_detail_path"):
-                detail_payload: Dict[str, Any] = {"card_id": provider_card_id}
-                if stw_customer_id:
-                    detail_payload["customer_id"] = stw_customer_id
-                    detail_payload["card_user_id"] = stw_customer_id
-                detail_payload = _with_aliases(detail_payload, "card_id", "cardId", "id")
-                stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], detail_payload)
-
-            src = stw_detail or stw_resp
-            card_number = _extract_first(src, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
-            card_cvv = _extract_first(src, "data.cvv", "cvv", "data.card.cvv", "data.card.cvv2", "cvv2")
-            card_expiry = _extract_first(src, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
-            card_brand = _extract_first(src, "data.brand", "brand", "data.card.brand")
-            card_type = _extract_first(src, "data.type", "type", "data.card.type")
-            card_holder_name = _extract_first(src, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
+            card_number = _extract_first(stw_resp, "data.card_number", "data.number", "card_number", "number", "data.card.number")
+            card_cvv = _extract_first(stw_resp, "data.cvv", "cvv", "data.card.cvv")
+            card_expiry = _extract_first(stw_resp, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry")
+            card_brand = _extract_first(stw_resp, "data.brand", "brand", "data.card.brand")
+            card_type = _extract_first(stw_resp, "data.type", "type", "data.card.type")
+            card_holder_name = _extract_first(stw_resp, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
 
             update_doc["provider"] = "strowallet"
             update_doc["provider_card_id"] = provider_card_id
-            update_doc["provider_raw"] = {"create": stw_resp, "detail": stw_detail} if stw_detail else stw_resp
+            update_doc["provider_raw"] = stw_resp
 
             # White-label: prefer configured brand name for UI display.
             if cfg.get("brand_name"):
@@ -3117,24 +3060,24 @@ async def admin_process_card_order(
             if card_expiry:
                 update_doc["card_expiry"] = str(card_expiry)
 
-        # Manual entry is only honored when Strowallet automation is NOT enabled.
-        if not _strowallet_enabled(settings):
-            if payload.card_brand:
-                update_doc["card_brand"] = payload.card_brand
-            if payload.card_type:
-                update_doc["card_type"] = payload.card_type
-            if payload.card_holder_name:
-                update_doc["card_holder_name"] = payload.card_holder_name
-            if payload.card_number:
-                update_doc["card_number"] = payload.card_number
-                # Auto-extract last 4 digits
-                update_doc["card_last4"] = payload.card_number[-4:]
-            elif payload.card_last4:
-                update_doc["card_last4"] = payload.card_last4
-            if payload.card_expiry:
-                update_doc["card_expiry"] = payload.card_expiry
-            if payload.card_cvv:
-                update_doc["card_cvv"] = payload.card_cvv
+        # If the card was auto-created, ignore default UI values unless the admin
+        # explicitly provided manual card details.
+        if payload.card_brand and (manual_details_provided or not auto_created):
+            update_doc["card_brand"] = payload.card_brand
+        if payload.card_type and (manual_details_provided or not auto_created):
+            update_doc["card_type"] = payload.card_type
+        if payload.card_holder_name and (manual_details_provided or not auto_created):
+            update_doc["card_holder_name"] = payload.card_holder_name
+        if payload.card_number:
+            update_doc["card_number"] = payload.card_number
+            # Auto-extract last 4 digits
+            update_doc["card_last4"] = payload.card_number[-4:]
+        elif payload.card_last4:
+            update_doc["card_last4"] = payload.card_last4
+        if payload.card_expiry and (manual_details_provided or not auto_created):
+            update_doc["card_expiry"] = payload.card_expiry
+        if payload.card_cvv and (manual_details_provided or not auto_created):
+            update_doc["card_cvv"] = payload.card_cvv
         if payload.billing_address:
             update_doc["billing_address"] = payload.billing_address
         if payload.billing_city:
@@ -5175,12 +5118,10 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
             "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", ""),
             "strowallet_api_key": "",
             "strowallet_api_secret": "",
-            "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/card-user",
-            "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", "") or "/api/bitvcard/create-card/",
-            "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", "") or "/api/bitvcard/fund-card/",
-            "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", "") or "",
-            "strowallet_fetch_card_detail_path": os.environ.get("STROWALLET_FETCH_CARD_DETAIL_PATH", "") or "/api/bitvcard/fetch-card-detail/",
-            "strowallet_card_transactions_path": os.environ.get("STROWALLET_CARD_TRANSACTIONS_PATH", "") or "/api/bitvcard/card-transactions/",
+            "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/create-user/",
+            "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", ""),
+            "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", ""),
+            "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", ""),
             "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", "") or "KAYICOM",
             "strowallet_set_limit_path": os.environ.get("STROWALLET_SET_LIMIT_PATH", ""),
             "strowallet_freeze_card_path": os.environ.get("STROWALLET_FREEZE_CARD_PATH", ""),
