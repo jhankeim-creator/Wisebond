@@ -43,7 +43,6 @@ export default function VirtualCard() {
   const [cardDeposits, setCardDeposits] = useState([]);
   const [cardWithdrawals, setCardWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
   const [virtualCardsEnabled, setVirtualCardsEnabled] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
@@ -108,7 +107,6 @@ export default function VirtualCard() {
 
   const fetchData = useCallback(async () => {
     try {
-      setLoadError(null);
       const [ordersRes, depositsRes, withdrawalsRes] = await Promise.all([
         axios.get(`${API}/virtual-cards/orders`),
         axios.get(`${API}/virtual-cards/deposits`),
@@ -119,12 +117,6 @@ export default function VirtualCard() {
       setCardWithdrawals(withdrawalsRes.data.withdrawals || []);
     } catch (error) {
       console.error('Error fetching data:', error);
-      const msg =
-        error?.response?.data?.detail ||
-        error?.response?.data?.message ||
-        error?.message ||
-        'Error fetching virtual card data';
-      setLoadError(String(msg));
     } finally {
       setLoading(false);
     }
@@ -351,25 +343,6 @@ export default function VirtualCard() {
   return (
     <DashboardLayout title={getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card')}>
       <div className="space-y-6" data-testid="virtual-card-page">
-        {loadError ? (
-          <Card className="border-red-200 bg-red-50 dark:bg-red-900/10">
-            <CardContent className="p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div>
-                  <p className="font-semibold text-red-700 dark:text-red-300">
-                    {getText('Gen yon erè pandan chajman kat vityèl yo', 'Erreur lors du chargement des cartes', 'Error loading virtual cards')}
-                  </p>
-                  <p className="text-xs text-red-700/80 dark:text-red-300/80 break-words mt-1">
-                    {loadError}
-                  </p>
-                </div>
-                <Button variant="outline" onClick={() => { setLoading(true); fetchData(); fetchConfig(); }}>
-                  {getText('Re-try', 'Réessayer', 'Retry')}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
         {/* Feature flag */}
         {virtualCardsEnabled === false ? (
           <Card>
@@ -476,28 +449,6 @@ export default function VirtualCard() {
                 </Button>
               </div>
             </div>
-
-            {/* Pending order notice */}
-            {!loading && approvedCards.length === 0 && cardOrders.some(o => o.status === 'pending') ? (
-              <Card className="border-amber-200 bg-amber-50 dark:bg-amber-900/10">
-                <CardContent className="p-4">
-                  <p className="font-semibold text-amber-800 dark:text-amber-300">
-                    {getText(
-                      'Demann kat ou an an atant apwobasyon admin lan.',
-                      'Votre demande de carte est en attente d’approbation.',
-                      'Your card request is pending admin approval.'
-                    )}
-                  </p>
-                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                    {getText(
-                      'Si ou bezwen li pi vit, kontakte sipò a.',
-                      'Si besoin, contactez le support.',
-                      'If needed, contact support.'
-                    )}
-                  </p>
-                </CardContent>
-              </Card>
-            ) : null}
 
             {/* USD Balance for Top-up */}
             {approvedCards.length > 0 && (
