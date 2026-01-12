@@ -1108,12 +1108,8 @@ async def _strowallet_issue_card_for_order(
     }
 
     # Branding
-    if cfg.get("brand_name"):
-        update_doc["card_brand"] = cfg["brand_name"]
-    elif card_brand:
-        update_doc["card_brand"] = str(card_brand)
-    else:
-        update_doc["card_brand"] = "Virtual Card"
+    # Always use our program brand name for UI (ignore provider brand strings).
+    update_doc["card_brand"] = cfg.get("brand_name") or "KAYICOM"
 
     if card_type:
         update_doc["card_type"] = str(card_type).lower()
@@ -3680,8 +3676,8 @@ async def get_card_orders(
                             update_doc["card_expiry"] = str(card_expiry)
                         if card_holder_name:
                             update_doc["card_holder_name"] = str(card_holder_name)
-                        if card_brand:
-                            update_doc["card_brand"] = str(card_brand)
+                        # Always use our program brand name for UI.
+                        update_doc["card_brand"] = cfg.get("brand_name") or "KAYICOM"
                         if card_type:
                             update_doc["card_type"] = str(card_type).lower()
                         if card_balance is not None:
@@ -3896,8 +3892,8 @@ async def virtual_card_detail(
         update_doc["card_expiry"] = str(card_expiry)
     if card_holder_name:
         update_doc["card_holder_name"] = str(card_holder_name)
-    if card_brand and not order_full.get("card_brand"):
-        update_doc["card_brand"] = str(card_brand)
+    # Always use our program brand name for UI (ignore provider brand strings).
+    update_doc["card_brand"] = cfg.get("brand_name") or "KAYICOM"
     if card_type and not order_full.get("card_type"):
         update_doc["card_type"] = str(card_type).lower()
     if card_balance is not None:
@@ -5478,12 +5474,8 @@ async def admin_process_card_order(
                         )
                         card_currency = _extract_first(stw_detail, "data.currency", "currency", "data.card.currency")
 
-                        if cfg.get("brand_name"):
-                            update_doc["card_brand"] = cfg["brand_name"]
-                        elif card_brand:
-                            update_doc["card_brand"] = str(card_brand)
-                        else:
-                            update_doc["card_brand"] = "Virtual Card"
+                        # Always use our program brand name for UI.
+                        update_doc["card_brand"] = cfg.get("brand_name") or "KAYICOM"
 
                         if card_type:
                             update_doc["card_type"] = str(card_type).lower()
