@@ -1091,9 +1091,9 @@ export default function VirtualCard() {
 
                   <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-300">
                     {getText(
-                      'Atansyon: Depi premye echèk peman, kat la ka auto-freeze pou pwoteje w (pou evite rive 3 echèk). Verifye balans ou + adrès bòdwo, epi debloke lè ou pare.',
-                      'Attention: dès le premier échec, la carte peut être auto-freeze pour vous protéger (éviter 3 échecs). Vérifiez solde + adresse, puis débloquez.',
-                      'Warning: after the first failure, the card may auto-freeze to protect you (avoid reaching 3 failures). Check balance/billing, then unlock.'
+                      'Atansyon: 3 echèk peman ka bloke kat la. Asire balans ou bon epi enfòmasyon bòdwo yo kòrèk.',
+                      'Attention: 3 échecs de paiement peuvent bloquer la carte. Assurez-vous d’avoir un bon solde et une bonne adresse de facturation.',
+                      'Warning: 3 failed payments may lock the card. Keep enough balance and correct billing details.'
                     )}
                     {typeof selectedCard.failed_payment_count === 'number' ? (
                       <div className="mt-2 font-semibold">
