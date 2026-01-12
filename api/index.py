@@ -98,30 +98,29 @@ _DATA_URL_IMAGE_RE = re.compile(
     flags=re.IGNORECASE | re.DOTALL,
 )
 
-def _cloudinary_creds(settings: Optional[dict]) -> Dict[str, Optional[str]]:
-    s = settings or {}
-    cloud_name = (s.get("cloudinary_cloud_name") or os.environ.get("CLOUDINARY_CLOUD_NAME") or "").strip() or None
-    api_key = (s.get("cloudinary_api_key") or os.environ.get("CLOUDINARY_API_KEY") or "").strip() or None
-    api_secret = (s.get("cloudinary_api_secret") or os.environ.get("CLOUDINARY_API_SECRET") or "").strip() or None
-    folder = (s.get("cloudinary_folder") or os.environ.get("CLOUDINARY_FOLDER") or "kayicom/kyc").strip().strip("/") or "kayicom/kyc"
-    return {"cloud_name": cloud_name, "api_key": api_key, "api_secret": api_secret, "folder": folder}
+_CLOUDINARY_CONFIGURED: Optional[bool] = None
 
 
-def _cloudinary_is_configured(settings: Optional[dict]) -> bool:
-    c = _cloudinary_creds(settings)
-    return bool(c.get("cloud_name") and c.get("api_key") and c.get("api_secret"))
+def _cloudinary_is_configured() -> bool:
+    global _CLOUDINARY_CONFIGURED
+    if _CLOUDINARY_CONFIGURED is not None:
+        return _CLOUDINARY_CONFIGURED
+    cloud_name = (os.environ.get("CLOUDINARY_CLOUD_NAME") or "").strip()
+    api_key = (os.environ.get("CLOUDINARY_API_KEY") or "").strip()
+    api_secret = (os.environ.get("CLOUDINARY_API_SECRET") or "").strip()
+    _CLOUDINARY_CONFIGURED = bool(cloud_name and api_key and api_secret)
+    return _CLOUDINARY_CONFIGURED
 
 
-def _cloudinary_setup(settings: Optional[dict]) -> bool:
-    if not _cloudinary_is_configured(settings):
+def _cloudinary_setup() -> bool:
+    if not _cloudinary_is_configured():
         return False
     import cloudinary  # type: ignore
-    c = _cloudinary_creds(settings)
 
     cloudinary.config(
-        cloud_name=c["cloud_name"],
-        api_key=c["api_key"],
-        api_secret=c["api_secret"],
+        cloud_name=(os.environ.get("CLOUDINARY_CLOUD_NAME") or "").strip(),
+        api_key=(os.environ.get("CLOUDINARY_API_KEY") or "").strip(),
+        api_secret=(os.environ.get("CLOUDINARY_API_SECRET") or "").strip(),
         secure=True,
     )
     return True
@@ -142,8 +141,8 @@ def _parse_image_data_url(value: str) -> Optional[Dict[str, Any]]:
     return {"mime": mime, "bytes": raw, "data_url": value.strip()}
 
 
-async def _cloudinary_upload_data_url(*, settings: Optional[dict], data_url: str, folder: str, public_id: str) -> str:
-    if not _cloudinary_setup(settings):
+async def _cloudinary_upload_data_url(*, data_url: str, folder: str, public_id: str) -> str:
+    if not _cloudinary_setup():
         raise RuntimeError("Cloudinary not configured")
     import cloudinary.uploader  # type: ignore
 
@@ -168,7 +167,6 @@ async def _kyc_store_image_value(
     user_id: str,
     kyc_id: str,
     field_name: str,
-    settings: Optional[dict] = None,
 ) -> Dict[str, Any]:
     if not value:
         return {"value": value, "meta": None}
@@ -187,17 +185,17 @@ async def _kyc_store_image_value(
 
     mime = parsed["mime"]
     raw = parsed["bytes"]
-    max_bytes = int((settings or {}).get("kyc_max_image_bytes") or os.environ.get("KYC_MAX_IMAGE_BYTES") or 5 * 1024 * 1024)
+    max_bytes = int(os.environ.get("KYC_MAX_IMAGE_BYTES") or 5 * 1024 * 1024)
     if len(raw) > max_bytes:
         raise HTTPException(status_code=413, detail="Image too large")
     if mime not in {"image/jpeg", "image/png", "image/webp"}:
         raise HTTPException(status_code=400, detail="Unsupported image type")
 
-    if _cloudinary_is_configured(settings):
-        folder = _cloudinary_creds(settings).get("folder") or "kayicom/kyc"
+    if _cloudinary_is_configured():
+        folder = (os.environ.get("CLOUDINARY_FOLDER") or "kayicom/kyc").strip().strip("/")
         public_id = f"{kyc_id}_{field_name}"
         try:
-            url = await _cloudinary_upload_data_url(settings=settings, data_url=parsed["data_url"], folder=folder, public_id=public_id)
+            url = await _cloudinary_upload_data_url(data_url=parsed["data_url"], folder=folder, public_id=public_id)
             return {
                 "value": url,
                 "meta": {
@@ -381,13 +379,6 @@ class AdminSettingsUpdate(BaseModel):
     announcement_text_fr: Optional[str] = None
     announcement_text_en: Optional[str] = None
     announcement_link: Optional[str] = None
-
-    # KYC image storage (recommended)
-    cloudinary_cloud_name: Optional[str] = None
-    cloudinary_api_key: Optional[str] = None
-    cloudinary_api_secret: Optional[str] = None
-    cloudinary_folder: Optional[str] = None
-    kyc_max_image_bytes: Optional[int] = None
 
 class BulkEmailRequest(BaseModel):
     subject: str
@@ -979,28 +970,24 @@ async def submit_kyc(request: KYCSubmit, current_user: dict = Depends(get_curren
         raise HTTPException(status_code=400, detail="KYC already approved")
     
     kyc_id = str(uuid.uuid4())
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
 
     id_front = await _kyc_store_image_value(
         request.id_front_image,
         user_id=current_user["user_id"],
         kyc_id=kyc_id,
         field_name="id_front_image",
-        settings=settings,
     )
     id_back = await _kyc_store_image_value(
         request.id_back_image,
         user_id=current_user["user_id"],
         kyc_id=kyc_id,
         field_name="id_back_image",
-        settings=settings,
     )
     selfie = await _kyc_store_image_value(
         request.selfie_with_id,
         user_id=current_user["user_id"],
         kyc_id=kyc_id,
         field_name="selfie_with_id",
-        settings=settings,
     )
 
     kyc_doc = {
@@ -1562,9 +1549,8 @@ async def admin_migrate_kyc_images(
     admin: dict = Depends(get_admin_user),
 ):
     db = get_db()
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _cloudinary_is_configured(settings):
-        raise HTTPException(status_code=400, detail="Cloudinary is not configured (set in Admin Settings or CLOUDINARY_* env vars)")
+    if not _cloudinary_is_configured():
+        raise HTTPException(status_code=400, detail="Cloudinary is not configured (set CLOUDINARY_* env vars)")
 
     base_filter: Dict[str, Any] = {}
     if status and status != "all":
@@ -1616,7 +1602,7 @@ async def admin_migrate_kyc_images(
             if not isinstance(val, str) or not val.lower().startswith("data:image/"):
                 continue
             try:
-                stored = await _kyc_store_image_value(val, user_id=user_id, kyc_id=kyc_id, field_name=field_name, settings=settings)
+                stored = await _kyc_store_image_value(val, user_id=user_id, kyc_id=kyc_id, field_name=field_name)
                 if stored["value"] and stored["value"] != val:
                     update_fields[field_name] = stored["value"]
                     meta[field_name] = stored["meta"]
@@ -1636,24 +1622,6 @@ async def admin_migrate_kyc_images(
         "migrated": migrated,
         "errors": errors[:20],
         "note": "Run again to continue migrating remaining records.",
-    }
-
-
-@api_router.get("/admin/kyc/image-storage-status")
-async def admin_kyc_image_storage_status(admin: dict = Depends(get_admin_user)):
-    db = get_db()
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    c = _cloudinary_creds(settings)
-    source = "none"
-    if settings and any((settings.get("cloudinary_cloud_name"), settings.get("cloudinary_api_key"), settings.get("cloudinary_api_secret"))):
-        source = "settings"
-    elif any((os.environ.get("CLOUDINARY_CLOUD_NAME"), os.environ.get("CLOUDINARY_API_KEY"), os.environ.get("CLOUDINARY_API_SECRET"))):
-        source = "env"
-    return {
-        "cloudinary_configured": _cloudinary_is_configured(settings),
-        "source": source,
-        "cloudinary_folder": c.get("folder"),
-        "kyc_max_image_bytes": int((settings or {}).get("kyc_max_image_bytes") or os.environ.get("KYC_MAX_IMAGE_BYTES") or 5242880),
     }
 
 @api_router.get("/admin/deposits")
@@ -1910,13 +1878,6 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
         "announcement_text_fr": "",
         "announcement_text_en": "",
         "announcement_link": ""
-        ,
-        # KYC image storage (recommended)
-        "cloudinary_cloud_name": os.environ.get("CLOUDINARY_CLOUD_NAME", "") or "",
-        "cloudinary_api_key": "",
-        "cloudinary_api_secret": "",
-        "cloudinary_folder": os.environ.get("CLOUDINARY_FOLDER", "") or "kayicom/kyc",
-        "kyc_max_image_bytes": int(os.environ.get("KYC_MAX_IMAGE_BYTES", "5242880") or "5242880"),
     }
 
     if settings:
