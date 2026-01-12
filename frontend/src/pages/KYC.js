@@ -160,8 +160,7 @@ export default function KYC() {
     
     // Validate required fields
     if (!formData.full_name || !formData.date_of_birth || !formData.full_address || 
-        !formData.city || !formData.state || !formData.phone_number || !formData.id_number ||
-        !formData.id_front_image || !formData.selfie_with_id) {
+        !formData.phone_number || !formData.id_front_image || !formData.selfie_with_id) {
       toast.error(getText(
         'Tanpri ranpli tout chan obligatwa yo',
         'Veuillez remplir tous les champs obligatoires',
@@ -420,25 +419,23 @@ export default function KYC() {
 
               <div className="grid md:grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="city">{getText('Vil', 'Ville', 'City')} *</Label>
+                  <Label htmlFor="city">{getText('Vil', 'Ville', 'City')}</Label>
                   <Input
                     id="city"
                     placeholder={getText('Pòtoprens', 'Port-au-Prince', 'Port-au-Prince')}
                     value={formData.city}
                     onChange={(e) => setFormData({...formData, city: e.target.value})}
                     className="mt-1"
-                    required
                   />
                 </div>
                 <div>
-                  <Label htmlFor="state">{getText('Eta / Depatman', 'État / Département', 'State / Department')} *</Label>
+                  <Label htmlFor="state">{getText('Eta / Depatman', 'État / Département', 'State / Department')}</Label>
                   <Input
                     id="state"
                     placeholder={getText('Ouest', 'Ouest', 'Ouest')}
                     value={formData.state}
                     onChange={(e) => setFormData({...formData, state: e.target.value})}
                     className="mt-1"
-                    required
                   />
                 </div>
                 <div>
@@ -517,7 +514,7 @@ export default function KYC() {
                 <div>
                   <Label htmlFor="id_number">
                     <FileText size={16} className="inline mr-2" />
-                    {getText('Nimewo ID', 'Numéro d\'ID', 'ID Number')} *
+                    {getText('Nimewo ID', 'Numéro d\'ID', 'ID Number')}
                   </Label>
                   <Input
                     id="id_number"
@@ -525,7 +522,6 @@ export default function KYC() {
                     value={formData.id_number}
                     onChange={(e) => setFormData({...formData, id_number: e.target.value})}
                     className="mt-1"
-                    required
                   />
                 </div>
               </div>

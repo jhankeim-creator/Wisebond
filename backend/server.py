@@ -498,8 +498,7 @@ async def _strowallet_create_customer_id(
     """
     # Strowallet create-user (bitvcard) often requires KYC + address fields.
     kyc = kyc or {}
-    # Prefer KYC name when present (it tends to match ID documents).
-    full_name = (kyc.get("full_name") or user.get("full_name") or "").strip()
+    full_name = (user.get("full_name") or "").strip()
     parts = [p for p in full_name.split(" ") if p]
     first_name = parts[0] if parts else full_name
     last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
@@ -537,8 +536,6 @@ async def _strowallet_create_customer_id(
 
     customer_email_final = (customer_email or user.get("email") or "").strip()
 
-    phone_number = (kyc.get("phone_number") or user.get("phone") or "").strip()
-
     create_user_payload: Dict[str, Any] = {
         # Required field names (provider schema)
         "customerEmail": customer_email_final,
@@ -546,7 +543,7 @@ async def _strowallet_create_customer_id(
         "idType": id_type,
         "firstName": first_name,
         "lastName": last_name,
-        "phoneNumber": phone_number,
+        "phoneNumber": (user.get("phone") or "").strip(),
         "city": city,
         "state": state,
         "country": country,
@@ -5488,14 +5485,10 @@ async def admin_review_kyc(
     
     await db.kyc.update_one({"kyc_id": kyc_id}, {"$set": update_doc})
     
-    # Update user with KYC status and contact details if available
+    # Update user with KYC status and WhatsApp number if available
     user_update = {"kyc_status": new_status}
-    if action == "approve":
-        if kyc.get("whatsapp_number"):
-            user_update["whatsapp_number"] = kyc.get("whatsapp_number")
-        # Keep a normalized phone on the user record (used by providers like Strowallet).
-        if kyc.get("phone_number"):
-            user_update["phone"] = kyc.get("phone_number")
+    if action == "approve" and kyc.get("whatsapp_number"):
+        user_update["whatsapp_number"] = kyc.get("whatsapp_number")
     
     await db.users.update_one({"user_id": kyc["user_id"]}, {"$set": user_update})
     
