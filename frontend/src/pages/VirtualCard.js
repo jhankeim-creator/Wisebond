@@ -1370,9 +1370,9 @@ export default function VirtualCard() {
                   <div className="relative z-10">
                     <div className="flex justify-between items-start mb-6">
                       <div>
-                        <span className="text-white/90 font-bold text-lg">
-                          {String(selectedCard.card_brand || 'KAYICOM').toUpperCase()}
-                        </span>
+                        {selectedCard.card_brand && (
+                          <span className="text-white/90 font-bold text-lg">{selectedCard.card_brand}</span>
+                        )}
                       </div>
                       <img 
                         src={selectedCard.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
