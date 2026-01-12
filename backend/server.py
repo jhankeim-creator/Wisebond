@@ -5904,32 +5904,6 @@ async def root():
 async def health():
     return {"status": "healthy"}
 
-@api_router.post("/webhooks/strowallet")
-async def strowallet_webhook(request: Request):
-    """
-    Strowallet card issuing webhook receiver.
-    We accept JSON payloads and store them for audit/debugging. This endpoint is intentionally
-    tolerant: it returns 200 even if we don't recognize the event yet, so Strowallet won't retry forever.
-    """
-    try:
-        body = await request.json()
-    except Exception:
-        body = {"raw": (await request.body()).decode("utf-8", "replace")}
-
-    # Store event for debugging/audit (best-effort).
-    try:
-        await db.webhook_events.insert_one({
-            "event_id": str(uuid.uuid4()),
-            "provider": "strowallet",
-            "received_at": datetime.now(timezone.utc).isoformat(),
-            "headers": {k.lower(): v for k, v in request.headers.items()},
-            "payload": body,
-        })
-    except Exception as e:
-        logger.warning(f"Failed to store strowallet webhook event: {e}")
-
-    return {"ok": True}
-
 @app.get("/")
 async def health_check():
     return {"status": "online", "message": "Wisebond Backend API"}
