@@ -3779,7 +3779,7 @@ async def virtual_card_detail(
         return {"card": safe or {}, "note": "Virtual cards are currently disabled; provider refresh is unavailable."}
 
     # Only Strowallet cards support provider refresh at the moment.
-    if str(order_full.get("provider") or "").strip().lower() != "strowallet" or not order_full.get("provider_card_id"):
+    if str(order_full.get("provider") or "").lower() != "strowallet" or not order_full.get("provider_card_id"):
         safe = await db.virtual_card_orders.find_one(
             {"order_id": order_id, "user_id": current_user["user_id"]},
             {
@@ -4193,7 +4193,7 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
     # try to deliver the top-up instantly.
     try:
         settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-        if _strowallet_enabled(settings) and (str(card_order.get("provider") or "").strip().lower() == "strowallet") and card_order.get("provider_card_id"):
+        if _strowallet_enabled(settings) and (str(card_order.get("provider") or "").lower() == "strowallet") and card_order.get("provider_card_id"):
             cfg = _strowallet_config(settings)
             fund_payload: Dict[str, Any] = {
                 "card_id": card_order.get("provider_card_id"),
@@ -4304,7 +4304,7 @@ async def update_virtual_card_controls(
         raise HTTPException(status_code=404, detail="Card not found or not approved")
 
     # Only automated (Strowallet) cards can be managed here.
-    if str(order.get("provider") or "").strip().lower() != "strowallet" or not order.get("provider_card_id"):
+    if str(order.get("provider") or "").lower() != "strowallet" or not order.get("provider_card_id"):
         raise HTTPException(status_code=400, detail="This card cannot be managed automatically")
 
     # We auto-freeze on first failure to prevent 3-fail hard blocks; do not hard-block unlocks.
@@ -4447,7 +4447,7 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
 
     if not _strowallet_enabled(settings):
         raise HTTPException(status_code=400, detail="Card withdrawals are not enabled")
-    if str(card_order.get("provider") or "").strip().lower() != "strowallet" or not card_order.get("provider_card_id"):
+    if str(card_order.get("provider") or "").lower() != "strowallet" or not card_order.get("provider_card_id"):
         raise HTTPException(status_code=400, detail="This card is not eligible for automated withdrawals")
     # Allow withdrawals even if the card is locked/frozen.
 
@@ -4562,7 +4562,7 @@ async def virtual_card_transactions(
     )
     if not order:
         raise HTTPException(status_code=404, detail="Card not found or not approved")
-    if str(order.get("provider") or "").strip().lower() != "strowallet" or not order.get("provider_card_id"):
+    if str(order.get("provider") or "").lower() != "strowallet" or not order.get("provider_card_id"):
         raise HTTPException(status_code=400, detail="This card is not eligible for provider transactions")
 
     cfg = _strowallet_config(settings)
@@ -4761,8 +4761,7 @@ async def virtual_card_reveal(
         raise HTTPException(status_code=404, detail="Card not found")
     if str(order.get("status") or "").lower() != "approved":
         raise HTTPException(status_code=403, detail="Card is not approved yet")
-    provider_norm = str(order.get("provider") or "").strip().lower()
-    if not order.get("provider_card_id") or (provider_norm not in ("", "strowallet")):
+    if str(order.get("provider") or "").lower() != "strowallet" or not order.get("provider_card_id"):
         raise HTTPException(status_code=400, detail="Full details are only available for provider-issued cards")
 
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
@@ -4920,7 +4919,7 @@ async def virtual_card_full_history(
     )
     if not order:
         raise HTTPException(status_code=404, detail="Card not found or not approved")
-    if str(order.get("provider") or "").strip().lower() != "strowallet" or not order.get("provider_card_id"):
+    if str(order.get("provider") or "").lower() != "strowallet" or not order.get("provider_card_id"):
         raise HTTPException(status_code=400, detail="This card is not eligible for provider history")
 
     cfg = _strowallet_config(settings)
@@ -4963,7 +4962,7 @@ async def virtual_card_freezeunfreeze(
     )
     if not order:
         raise HTTPException(status_code=404, detail="Card not found or not approved")
-    if str(order.get("provider") or "").strip().lower() != "strowallet" or not order.get("provider_card_id"):
+    if str(order.get("provider") or "").lower() != "strowallet" or not order.get("provider_card_id"):
         raise HTTPException(status_code=400, detail="This card cannot be managed automatically")
 
     cfg = _strowallet_config(settings)
@@ -5018,7 +5017,7 @@ async def virtual_card_withdraw_status(
     )
     if not record:
         raise HTTPException(status_code=404, detail="Withdrawal not found")
-    if str(record.get("provider") or "").strip().lower() != "strowallet":
+    if str(record.get("provider") or "").lower() != "strowallet":
         return {"provider": record.get("provider"), "withdrawal": record}
 
     cfg = _strowallet_config(settings)
@@ -5055,7 +5054,7 @@ async def virtual_card_upgrade_limit(
     )
     if not order:
         raise HTTPException(status_code=404, detail="Card not found or not approved")
-    if str(order.get("provider") or "").strip().lower() != "strowallet" or not order.get("provider_card_id"):
+    if str(order.get("provider") or "").lower() != "strowallet" or not order.get("provider_card_id"):
         raise HTTPException(status_code=400, detail="This card cannot be managed automatically")
 
     cfg = _strowallet_config(settings)
@@ -8573,7 +8572,7 @@ async def admin_auto_issue_virtual_card_order(
         raise HTTPException(status_code=404, detail="User not found")
 
     # If already issued, just refresh provider detail best-effort.
-    if str(order.get("provider") or "").strip().lower() == "strowallet" and order.get("provider_card_id"):
+    if str(order.get("provider") or "").lower() == "strowallet" and order.get("provider_card_id"):
         # Reuse the existing customer detail endpoint logic by calling provider directly
         cfg = _strowallet_config(settings)
         stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
