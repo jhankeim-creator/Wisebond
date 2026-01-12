@@ -474,36 +474,6 @@ def _extract_float_first(d: Any, *paths: str) -> Optional[float]:
     raw = _extract_first(d, *paths)
     return _safe_float(raw)
 
-
-_STROWALLET_CREATE_USER_REQUIRED_KEYS = [
-    "customerEmail",
-    "idNumber",
-    "idType",
-    "firstName",
-    "lastName",
-    "phoneNumber",
-    "city",
-    "state",
-    "country",
-    "zipCode",
-    "line1",
-    "houseNumber",
-    "idImage",
-    "userPhoto",
-    "dateOfBirth",
-]
-
-
-def _strowallet_kyc_can_create_user(create_user_payload: Dict[str, Any]) -> bool:
-    """
-    Return True if KYC-derived create-user payload contains all required fields.
-    """
-    try:
-        missing = [k for k in _STROWALLET_CREATE_USER_REQUIRED_KEYS if k not in (create_user_payload or {})]
-        return len(missing) == 0
-    except Exception:
-        return False
-
 def _with_aliases(payload: Dict[str, Any], key: str, *aliases: str) -> Dict[str, Any]:
     """
     Add common alias keys for a given payload field if present.
@@ -838,7 +808,24 @@ async def _strowallet_create_customer_id(
     create_user_payload = {k: v for k, v in create_user_payload.items() if v not in (None, "")}
 
     # Fail fast if critical fields are missing (avoid confusing provider errors).
-    missing = [k for k in _STROWALLET_CREATE_USER_REQUIRED_KEYS if k not in create_user_payload]
+    required_keys = [
+        "customerEmail",
+        "idNumber",
+        "idType",
+        "firstName",
+        "lastName",
+        "phoneNumber",
+        "city",
+        "state",
+        "country",
+        "zipCode",
+        "line1",
+        "houseNumber",
+        "idImage",
+        "userPhoto",
+        "dateOfBirth",
+    ]
+    missing = [k for k in required_keys if k not in create_user_payload]
     if missing:
         raise HTTPException(
             status_code=400,
@@ -959,53 +946,34 @@ async def _strowallet_issue_card_for_order(
     cfg = _strowallet_config(settings)
     now = datetime.now(timezone.utc).isoformat()
 
-    # Provider customer id is OPTIONAL in many Strowallet plans.
-    # Only attempt create-user when we have the required KYC fields; otherwise proceed with create-card.
+    # Ensure (best-effort) provider customer id exists if required by plan.
     stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
     if not stw_customer_id and cfg.get("create_user_path"):
         kyc = await db.kyc.find_one(
             {"user_id": user.get("user_id"), "status": "approved"},
             {"_id": 0},
         )
-        if kyc:
-            probe_payload: Dict[str, Any] = {
-                "customerEmail": (user.get("email") or "").strip(),
-                "idNumber": (kyc.get("id_number") or "").strip(),
-                "idType": (kyc.get("id_type") or "").strip(),
-                "firstName": (str(kyc.get("full_name") or user.get("full_name") or "").split(" ") or [""])[0] or "",
-                "lastName": (str(kyc.get("full_name") or user.get("full_name") or "").split(" ") or [""])[-1] or "",
-                "phoneNumber": (kyc.get("phone_number") or kyc.get("whatsapp_number") or user.get("phone") or "").strip(),
-                "city": (kyc.get("city") or "").strip(),
-                "state": (kyc.get("state") or "").strip(),
-                "country": (kyc.get("country") or "").strip(),
-                "zipCode": (kyc.get("zip_code") or "").strip() or "00000",
-                "line1": (kyc.get("full_address") or "").strip(),
-                "houseNumber": (kyc.get("house_number") or "").strip() or "1",
-                "idImage": (kyc.get("id_front_image") or "").strip(),
-                "userPhoto": (kyc.get("selfie_with_id") or "").strip(),
-                "dateOfBirth": (kyc.get("date_of_birth") or "").strip(),
-            }
-            probe_payload = {k: v for k, v in probe_payload.items() if v not in (None, "")}
-            if _strowallet_kyc_can_create_user(probe_payload):
-                stw_customer_id = await _strowallet_create_customer_id(
-                    settings=settings,
-                    cfg=cfg,
-                    user=user,
-                    customer_email=(user.get("email") or ""),
-                    kyc=kyc,
-                )
-                if stw_customer_id and user.get("user_id"):
-                    await db.users.update_one(
-                        {"user_id": user["user_id"]},
-                        {"$set": {
-                            "strowallet_customer_id": stw_customer_id,
-                            # Keep a copy of the address used for provider onboarding so we can display it later,
-                            # even if the provider detail endpoint doesn't return billing address.
-                            "strowallet_billing_address": (kyc or {}).get("full_address"),
-                            "strowallet_billing_city": (kyc or {}).get("city"),
-                            "strowallet_billing_country": (kyc or {}).get("country"),
-                        }},
-                    )
+        if not kyc:
+            raise HTTPException(status_code=400, detail="User KYC must be approved before creating a Strowallet customer.")
+        stw_customer_id = await _strowallet_create_customer_id(
+            settings=settings,
+            cfg=cfg,
+            user=user,
+            customer_email=(user.get("email") or ""),
+            kyc=kyc,
+        )
+        if stw_customer_id and user.get("user_id"):
+            await db.users.update_one(
+                {"user_id": user["user_id"]},
+                {"$set": {
+                    "strowallet_customer_id": stw_customer_id,
+                    # Keep a copy of the address used for provider onboarding so we can display it later,
+                    # even if the provider detail endpoint doesn't return billing address.
+                    "strowallet_billing_address": (kyc or {}).get("full_address"),
+                    "strowallet_billing_city": (kyc or {}).get("city"),
+                    "strowallet_billing_country": (kyc or {}).get("country"),
+                }},
+            )
 
     create_payload: Dict[str, Any] = {
         "email": order.get("card_email") or user.get("email"),
@@ -5312,45 +5280,29 @@ async def admin_process_card_order(
                 # We store the returned customer/user id on our user record to reuse it.
                 stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
                 if not stw_customer_id and cfg.get("create_user_path"):
-                    # Prefer approved KYC for provider onboarding requirements, but keep it OPTIONAL.
-                    # Many Strowallet create-card setups accept customerEmail only.
+                    # Prefer approved KYC for provider onboarding requirements.
                     kyc = await db.kyc.find_one(
                         {"user_id": user["user_id"], "status": "approved"},
                         {"_id": 0},
                     )
-                    if kyc:
-                        probe_payload: Dict[str, Any] = {
-                            "customerEmail": (user.get("email") or "").strip(),
-                            "idNumber": (kyc.get("id_number") or "").strip(),
-                            "idType": (kyc.get("id_type") or "").strip(),
-                            "firstName": (str(kyc.get("full_name") or user.get("full_name") or "").split(" ") or [""])[0] or "",
-                            "lastName": (str(kyc.get("full_name") or user.get("full_name") or "").split(" ") or [""])[-1] or "",
-                            "phoneNumber": (kyc.get("phone_number") or kyc.get("whatsapp_number") or user.get("phone") or "").strip(),
-                            "city": (kyc.get("city") or "").strip(),
-                            "state": (kyc.get("state") or "").strip(),
-                            "country": (kyc.get("country") or "").strip(),
-                            "zipCode": (kyc.get("zip_code") or "").strip() or "00000",
-                            "line1": (kyc.get("full_address") or "").strip(),
-                            "houseNumber": (kyc.get("house_number") or "").strip() or "1",
-                            "idImage": (kyc.get("id_front_image") or "").strip(),
-                            "userPhoto": (kyc.get("selfie_with_id") or "").strip(),
-                            "dateOfBirth": (kyc.get("date_of_birth") or "").strip(),
-                        }
-                        probe_payload = {k: v for k, v in probe_payload.items() if v not in (None, "")}
-                        if _strowallet_kyc_can_create_user(probe_payload):
-                            stw_customer_id = await _strowallet_create_customer_id(
-                                settings=settings,
-                                cfg=cfg,
-                                user=user,
-                                # Use the user's actual email for provider customer identity (avoid collisions with card_email).
-                                customer_email=(user.get("email") or ""),
-                                kyc=kyc,
-                            )
-                            if stw_customer_id:
-                                await db.users.update_one(
-                                    {"user_id": user["user_id"]},
-                                    {"$set": {"strowallet_customer_id": stw_customer_id}},
-                                )
+                    if not kyc:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="User KYC must be approved before creating a Strowallet customer.",
+                        )
+                    stw_customer_id = await _strowallet_create_customer_id(
+                        settings=settings,
+                        cfg=cfg,
+                        user=user,
+                        # Use the user's actual email for provider customer identity (avoid collisions with card_email).
+                        customer_email=(user.get("email") or ""),
+                        kyc=kyc,
+                    )
+                    if stw_customer_id:
+                        await db.users.update_one(
+                            {"user_id": user["user_id"]},
+                            {"$set": {"strowallet_customer_id": stw_customer_id}},
+                        )
 
                 # If customer id is still missing, continue best-effort.
                 # Many Strowallet create-card setups accept customerEmail only.
