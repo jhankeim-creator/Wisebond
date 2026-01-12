@@ -1233,19 +1233,19 @@ export default function AdminSettings() {
           </TabsList>
 
           <TabsContent value="notifications" className="mt-6">
-            {NotificationsTab()}
+            <NotificationsTab />
           </TabsContent>
 
           <TabsContent value="deposit" className="mt-6">
-            {DepositMethodsTab()}
+            <DepositMethodsTab />
           </TabsContent>
 
           <TabsContent value="fees" className="mt-6">
-            {FeesTab()}
+            <FeesTab />
           </TabsContent>
 
           <TabsContent value="system" className="mt-6">
-            {SystemTab()}
+            <SystemTab />
           </TabsContent>
         </Tabs>
 
