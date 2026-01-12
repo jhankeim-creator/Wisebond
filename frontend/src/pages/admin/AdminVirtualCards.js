@@ -1964,7 +1964,7 @@ export default function AdminVirtualCards() {
                         <div>
                           <p className="text-stone-500 text-xs mb-1">{getText('Adrès Faktirasyon', 'Adresse de Facturation', 'Billing Address')}</p>
                           <p className="text-sm text-stone-700 dark:text-stone-300">
-                            {[fetchedExternalCard.billing_address, fetchedExternalCard.billing_city, fetchedExternalCard.billing_country, fetchedExternalCard.billing_zip].filter(Boolean).join(', ')}
+                            {[fetchedExternalCard.billing_address, fetchedExternalCard.billing_city, fetchedExternalCard.billing_state, fetchedExternalCard.billing_country, fetchedExternalCard.billing_zip].filter(Boolean).join(', ')}
                           </p>
                         </div>
                       </div>

@@ -4124,22 +4124,78 @@ async def admin_fetch_external_card_details(
         _extract_first(stw_detail, "response.card_detail.card_type", "response.card_detail.card_brand",
                        "data.card_type", "data.cardType", "data.type", "data.brand", "card_type", "cardType", "type", "brand")
     ) or "visa"
-    billing_address = (
-        card_data.get("billing_address") or card_data.get("address") or card_data.get("street") or
-        _extract_first(stw_detail, "response.card_detail.billing_address", "data.billing_address", "data.address", "billing_address", "address")
-    )
-    billing_city = (
-        card_data.get("billing_city") or card_data.get("city") or
-        _extract_first(stw_detail, "response.card_detail.billing_city", "data.billing_city", "data.city", "billing_city", "city")
-    )
-    billing_country = (
-        card_data.get("billing_country") or card_data.get("country") or
-        _extract_first(stw_detail, "response.card_detail.billing_country", "data.billing_country", "data.country", "billing_country", "country")
-    )
-    billing_zip = (
-        card_data.get("billing_zip") or card_data.get("zip_code") or card_data.get("zipCode") or card_data.get("postal_code") or
-        _extract_first(stw_detail, "response.card_detail.billing_zip", "data.billing_zip", "data.zip_code", "data.zipCode", "billing_zip", "zip_code", "zipCode")
-    )
+    # Check if billing address is in a nested object
+    billing_obj = card_data.get("billing_address") if isinstance(card_data.get("billing_address"), dict) else None
+    if not billing_obj:
+        billing_obj = card_data.get("address") if isinstance(card_data.get("address"), dict) else None
+    if not billing_obj:
+        billing_obj = card_data.get("billing") if isinstance(card_data.get("billing"), dict) else None
+    
+    # Extract address fields - check nested object first, then direct fields
+    billing_address = None
+    billing_city = None
+    billing_country = None
+    billing_state = None
+    billing_zip = None
+    
+    if billing_obj:
+        logger.info(f"Found billing object with keys: {list(billing_obj.keys())}")
+        billing_address = (
+            billing_obj.get("street") or billing_obj.get("address") or billing_obj.get("street_address") or
+            billing_obj.get("address_line1") or billing_obj.get("line1") or billing_obj.get("address1")
+        )
+        billing_city = billing_obj.get("city") or billing_obj.get("town")
+        billing_country = billing_obj.get("country") or billing_obj.get("country_code")
+        billing_state = billing_obj.get("state") or billing_obj.get("region") or billing_obj.get("province")
+        billing_zip = (
+            billing_obj.get("zip") or billing_obj.get("zip_code") or billing_obj.get("postal_code") or
+            billing_obj.get("zipCode") or billing_obj.get("postcode")
+        )
+    
+    # If not from nested object, try direct fields
+    if not billing_address:
+        billing_address = (
+            card_data.get("billing_address") if not isinstance(card_data.get("billing_address"), dict) else None
+        ) or (
+            card_data.get("address") if not isinstance(card_data.get("address"), dict) else None
+        ) or card_data.get("street") or card_data.get("street_address") or (
+            card_data.get("address_line1") or card_data.get("address_line_1") or
+            card_data.get("line1") or card_data.get("address1")
+        ) or _extract_first(stw_detail, "response.card_detail.billing_address", "response.card_detail.street",
+                           "response.card_detail.address", "data.billing_address", "data.address")
+    
+    if not billing_city:
+        billing_city = (
+            card_data.get("billing_city") or card_data.get("city") or card_data.get("town") or
+            _extract_first(stw_detail, "response.card_detail.billing_city", "response.card_detail.city",
+                          "data.billing_city", "data.city")
+        )
+    
+    if not billing_state:
+        billing_state = (
+            card_data.get("billing_state") or card_data.get("state") or 
+            card_data.get("region") or card_data.get("province") or
+            _extract_first(stw_detail, "response.card_detail.state", "response.card_detail.region",
+                          "data.state", "data.region")
+        )
+    
+    if not billing_country:
+        billing_country = (
+            card_data.get("billing_country") or card_data.get("country") or card_data.get("country_code") or
+            _extract_first(stw_detail, "response.card_detail.billing_country", "response.card_detail.country",
+                          "data.billing_country", "data.country")
+        )
+    
+    if not billing_zip:
+        billing_zip = (
+            card_data.get("billing_zip") or card_data.get("zip_code") or card_data.get("zipCode") or 
+            card_data.get("postal_code") or card_data.get("postcode") or card_data.get("zip") or
+            _extract_first(stw_detail, "response.card_detail.billing_zip", "response.card_detail.zip_code",
+                          "response.card_detail.postal_code", "data.billing_zip", "data.zip_code")
+        )
+    
+    # Log what we found
+    logger.info(f"Billing: address={billing_address}, city={billing_city}, state={billing_state}, country={billing_country}, zip={billing_zip}")
 
     if not card_number:
         # Return the full response for debugging
@@ -4171,6 +4227,7 @@ async def admin_fetch_external_card_details(
         "card_type": str(card_type).lower() if card_type else "visa",
         "billing_address": str(billing_address) if billing_address else None,
         "billing_city": str(billing_city) if billing_city else None,
+        "billing_state": str(billing_state) if billing_state else None,
         "billing_country": str(billing_country) if billing_country else None,
         "billing_zip": str(billing_zip) if billing_zip else None,
     }
@@ -4334,22 +4391,70 @@ async def admin_link_external_card(
         card_data.get("card_brand") or card_data.get("brand") or card_data.get("type") or
         _extract_first(stw_detail, "response.card_detail.card_type", "response.card_detail.card_brand", "data.card_type")
     ) or "visa"
-    billing_address = (
-        card_data.get("billing_address") or card_data.get("address") or card_data.get("street") or
-        _extract_first(stw_detail, "response.card_detail.billing_address", "data.billing_address")
-    )
-    billing_city = (
-        card_data.get("billing_city") or card_data.get("city") or
-        _extract_first(stw_detail, "response.card_detail.billing_city", "data.billing_city")
-    )
-    billing_country = (
-        card_data.get("billing_country") or card_data.get("country") or
-        _extract_first(stw_detail, "response.card_detail.billing_country", "data.billing_country")
-    )
-    billing_zip = (
-        card_data.get("billing_zip") or card_data.get("zip_code") or card_data.get("zipCode") or card_data.get("postal_code") or
-        _extract_first(stw_detail, "response.card_detail.billing_zip", "data.billing_zip")
-    )
+    
+    # Check if billing address is in a nested object
+    billing_obj = card_data.get("billing_address") if isinstance(card_data.get("billing_address"), dict) else None
+    if not billing_obj:
+        billing_obj = card_data.get("address") if isinstance(card_data.get("address"), dict) else None
+    if not billing_obj:
+        billing_obj = card_data.get("billing") if isinstance(card_data.get("billing"), dict) else None
+    
+    billing_address = None
+    billing_city = None
+    billing_country = None
+    billing_state = None
+    billing_zip = None
+    
+    if billing_obj:
+        logger.info(f"[link] Found billing object with keys: {list(billing_obj.keys())}")
+        billing_address = (
+            billing_obj.get("street") or billing_obj.get("address") or billing_obj.get("street_address") or
+            billing_obj.get("address_line1") or billing_obj.get("line1") or billing_obj.get("address1")
+        )
+        billing_city = billing_obj.get("city") or billing_obj.get("town")
+        billing_country = billing_obj.get("country") or billing_obj.get("country_code")
+        billing_state = billing_obj.get("state") or billing_obj.get("region") or billing_obj.get("province")
+        billing_zip = (
+            billing_obj.get("zip") or billing_obj.get("zip_code") or billing_obj.get("postal_code") or
+            billing_obj.get("zipCode") or billing_obj.get("postcode")
+        )
+    
+    if not billing_address:
+        billing_address = (
+            card_data.get("billing_address") if not isinstance(card_data.get("billing_address"), dict) else None
+        ) or (
+            card_data.get("address") if not isinstance(card_data.get("address"), dict) else None
+        ) or card_data.get("street") or card_data.get("street_address") or (
+            card_data.get("address_line1") or card_data.get("address_line_1")
+        ) or _extract_first(stw_detail, "response.card_detail.billing_address", "response.card_detail.street", "data.billing_address")
+    
+    if not billing_city:
+        billing_city = (
+            card_data.get("billing_city") or card_data.get("city") or card_data.get("town") or
+            _extract_first(stw_detail, "response.card_detail.billing_city", "response.card_detail.city", "data.billing_city")
+        )
+    
+    if not billing_state:
+        billing_state = (
+            card_data.get("billing_state") or card_data.get("state") or 
+            card_data.get("region") or card_data.get("province") or
+            _extract_first(stw_detail, "response.card_detail.state", "response.card_detail.region", "data.state")
+        )
+    
+    if not billing_country:
+        billing_country = (
+            card_data.get("billing_country") or card_data.get("country") or card_data.get("country_code") or
+            _extract_first(stw_detail, "response.card_detail.billing_country", "response.card_detail.country", "data.billing_country")
+        )
+    
+    if not billing_zip:
+        billing_zip = (
+            card_data.get("billing_zip") or card_data.get("zip_code") or card_data.get("zipCode") or 
+            card_data.get("postal_code") or card_data.get("postcode") or card_data.get("zip") or
+            _extract_first(stw_detail, "response.card_detail.billing_zip", "response.card_detail.zip_code", "data.billing_zip")
+        )
+    
+    logger.info(f"[link] Billing: address={billing_address}, city={billing_city}, state={billing_state}, country={billing_country}, zip={billing_zip}")
 
     # Format card details
     card_last4 = str(card_number)[-4:] if card_number else None
@@ -4377,6 +4482,7 @@ async def admin_link_external_card(
         "card_expiry": card_expiry,
         "billing_address": str(billing_address) if billing_address else None,
         "billing_city": str(billing_city) if billing_city else None,
+        "billing_state": str(billing_state) if billing_state else None,
         "billing_country": str(billing_country) if billing_country else None,
         "billing_zip": str(billing_zip) if billing_zip else None,
         "fee": 0,  # No fee for linking existing card
