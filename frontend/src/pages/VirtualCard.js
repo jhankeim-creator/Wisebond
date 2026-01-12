@@ -318,10 +318,6 @@ export default function VirtualCard() {
     setSpendingLimit(order?.spending_limit_usd != null ? String(order.spending_limit_usd) : '');
     setSpendingPeriod(order?.spending_limit_period || 'monthly');
     setShowCardDetails(true);
-    // Load provider transactions inline under the card (best-effort).
-    if (order?.provider === 'strowallet') {
-      openTransactions(order);
-    }
   };
 
   const setPin = async () => {
@@ -1409,56 +1405,51 @@ export default function VirtualCard() {
                   </div>
                 </div>
 
-                {/* Eye click -> reveal full details */}
-                <div className="border rounded-xl p-4 space-y-3 bg-stone-50 dark:bg-stone-800">
-                  <div className="flex items-center justify-between gap-3">
+                {/* Full reveal controls */}
+                {selectedCard?.provider === 'strowallet' ? (
+                  <div className="border rounded-xl p-4 space-y-3 bg-stone-50 dark:bg-stone-800">
                     <p className="text-sm text-stone-700 dark:text-stone-200">
-                      <strong>{getText('Detay kat la:', 'Détails de la carte:', 'Card details:')}</strong>{' '}
+                      <strong>{getText('Detay sansib:', 'Détails sensibles:', 'Sensitive details:')}</strong>{' '}
                       {getText(
-                        'Klike sou zye a pou wè nimewo a + CVV.',
-                        'Cliquez sur l’œil pour voir le numéro + CVV.',
-                        'Click the eye to view card number + CVV.'
+                        'Ou dwe mete PIN 4 chif ou pou revele nimewo kat + CVV.',
+                        'Vous devez entrer votre PIN (4 chiffres) pour révéler le numéro + CVV.',
+                        'Enter your 4-digit PIN to reveal card number + CVV.'
                       )}
                     </p>
-                    {!hasCardPin ? (
-                      <Button onClick={() => setShowSetPinModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white">
-                        {getText('Mete PIN', 'Définir PIN', 'Set PIN')}
-                      </Button>
-                    ) : (
-                      <Button onClick={() => setShowRevealModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white">
-                        <Eye size={16} className="mr-2" />
-                        {getText('Wè', 'Voir', 'View')}
-                      </Button>
-                    )}
-                  </div>
 
-                  {revealedCard?.cvv ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-white dark:bg-stone-900 rounded-lg p-3 border">
-                        <p className="text-xs text-stone-500">CVV</p>
-                        <p className="font-mono text-lg font-semibold">{String(revealedCard.cvv)}</p>
+                    {revealedCard?.cvv ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-white dark:bg-stone-900 rounded-lg p-3 border">
+                          <p className="text-xs text-stone-500">CVV</p>
+                          <p className="font-mono text-lg font-semibold">{String(revealedCard.cvv)}</p>
+                        </div>
+                        <div className="bg-white dark:bg-stone-900 rounded-lg p-3 border">
+                          <p className="text-xs text-stone-500">{getText('Non sou kat', 'Nom sur carte', 'Name on card')}</p>
+                          <p className="font-semibold">{String(revealedCard.card_holder_name || '').toUpperCase()}</p>
+                        </div>
                       </div>
-                      <div className="bg-white dark:bg-stone-900 rounded-lg p-3 border">
-                        <p className="text-xs text-stone-500">{getText('Ekspire', 'Expire', 'Expires')}</p>
-                        <p className="font-mono text-lg font-semibold">{String(revealedCard.expiry || selectedCard.card_expiry || 'MM/YY')}</p>
-                      </div>
+                    ) : null}
+
+                    <div className="flex gap-2 flex-wrap">
+                      {!hasCardPin ? (
+                        <Button onClick={() => setShowSetPinModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white">
+                          {getText('Mete PIN', 'Définir PIN', 'Set PIN')}
+                        </Button>
+                      ) : (
+                        <Button onClick={() => setShowRevealModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white">
+                          {getText('Revele detay', 'Révéler détails', 'Reveal details')}
+                        </Button>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        onClick={() => { setShowPinResetModal(true); }}
+                      >
+                        {getText('Mwen bliye PIN', 'J’ai oublié le PIN', 'Forgot PIN')}
+                      </Button>
                     </div>
-                  ) : (
-                    <p className="text-xs text-stone-500">
-                      {getText(
-                        'Detay yo maske. Klike sou zye a pou revele yo.',
-                        'Détails masqués. Cliquez sur l’œil pour les révéler.',
-                        'Details are masked. Click the eye to reveal.'
-                      )}
-                    </p>
-                  )}
-
-                  <div className="flex gap-2 flex-wrap">
-                    <Button variant="outline" onClick={() => setShowPinResetModal(true)}>
-                      {getText('Mwen bliye PIN', 'J’ai oublié le PIN', 'Forgot PIN')}
-                    </Button>
                   </div>
-                </div>
+                ) : null}
 
                 {(selectedCard.billing_address || selectedCard.billing_city || selectedCard.billing_country) && (
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
@@ -1498,18 +1489,6 @@ export default function VirtualCard() {
                   </p>
                 </div>
 
-                {/* Actions under card */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <Button onClick={() => openTopUpModalForCard(selectedCard)} className="bg-emerald-600 hover:bg-emerald-700 text-white" disabled={virtualCardsEnabled === false}>
-                    <Plus size={16} className="mr-2" />
-                    {getText('Topup', 'Recharger', 'Top up')}
-                  </Button>
-                  <Button onClick={() => openWithdrawModalForCard(selectedCard)} className="bg-amber-600 hover:bg-amber-700 text-white" disabled={virtualCardsEnabled === false}>
-                    <ArrowDown size={16} className="mr-2" />
-                    {getText('Retrè', 'Retrait', 'Withdraw')}
-                  </Button>
-                </div>
-
                 <Button
                   variant="outline"
                   onClick={() => refreshCardDetails(selectedCard)}
@@ -1517,54 +1496,106 @@ export default function VirtualCard() {
                   className="w-full"
                 >
                   <RefreshCw size={16} className={`mr-2 ${refreshingDetails ? 'animate-spin' : ''}`} />
-                  {getText('Ajou balans/ekspire', 'Rafraîchir solde/expire', 'Refresh balance/expiry')}
+                  {getText('Rechaje detay kat', 'Rafraîchir détails carte', 'Refresh card details')}
                 </Button>
 
                 <Button onClick={() => setShowCardDetails(false)} className="w-full" variant="outline">
                   {getText('Fèmen', 'Fermer', 'Close')}
                 </Button>
 
-              {/* Transaction history under card */}
-              <div className="border-t pt-4 space-y-2">
-                <div className="flex items-center justify-between gap-2">
+              {/* Controls */}
+              {selectedCard?.provider === 'strowallet' ? (
+                <div className="border-t pt-4 space-y-3">
                   <h4 className="font-semibold text-stone-900 dark:text-white">
-                    {getText('Istorik tranzaksyon', 'Historique transactions', 'Transaction history')}
+                    {getText('Jesyon Kat', 'Gestion Carte', 'Card Management')}
                   </h4>
-                  <Button variant="outline" size="sm" onClick={() => openTransactions(selectedCard)} disabled={txLoading}>
-                    <RefreshCw size={14} className={`mr-2 ${txLoading ? 'animate-spin' : ''}`} />
-                    {getText('Rechaje', 'Recharger', 'Reload')}
-                  </Button>
-                </div>
 
-                {txLoading ? (
-                  <div className="text-sm text-stone-500">{getText('Chajman...', 'Chargement...', 'Loading...')}</div>
-                ) : extractTxRows(txData).length ? (
-                  <div className="overflow-x-auto border rounded-lg">
-                    <table className="min-w-full text-xs">
-                      <thead className="bg-stone-50 dark:bg-stone-900">
-                        <tr>
-                          <th className="text-left p-2">{getText('Dat', 'Date', 'Date')}</th>
-                          <th className="text-left p-2">{getText('Deskripsyon', 'Description', 'Description')}</th>
-                          <th className="text-right p-2">{getText('Montan', 'Montant', 'Amount')}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {extractTxRows(txData).slice(0, 50).map((r, idx) => (
-                          <tr key={idx} className="border-t">
-                            <td className="p-2 whitespace-nowrap">{String(r.created_at || r.createdAt || r.date || r.time || '—')}</td>
-                            <td className="p-2">{String(r.narrative || r.description || r.narration || r.merchant || r.type || '—')}</td>
-                            <td className="p-2 text-right whitespace-nowrap">
-                              {String(r.amount ?? r.value ?? r.total ?? '—')} {String(r.currency || '')}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-300">
+                    {getText(
+                      'Atansyon: Depi premye echèk peman, kat la ka auto-freeze pou pwoteje w (pou evite rive 3 echèk). Verifye balans ou + adrès bòdwo, epi debloke lè ou pare.',
+                      'Attention: dès le premier échec, la carte peut être auto-freeze pour vous protéger (éviter 3 échecs). Vérifiez solde + adresse, puis débloquez.',
+                      'Warning: after the first failure, the card may auto-freeze to protect you (avoid reaching 3 failures). Check balance/billing, then unlock.'
+                    )}
+                    {typeof selectedCard.failed_payment_count === 'number' ? (
+                      <div className="mt-2 font-semibold">
+                        {getText('Echèk: ', 'Échecs: ', 'Fails: ')}{selectedCard.failed_payment_count}/3
+                      </div>
+                    ) : null}
                   </div>
-                ) : (
-                  <div className="text-sm text-stone-500">{getText('Pa gen tranzaksyon pou montre.', 'Aucune transaction.', 'No transactions to show.')}</div>
-                )}
-              </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label>{getText('Limit depans (USD)', 'Limite dépenses (USD)', 'Spending limit (USD)')}</Label>
+                      <Input
+                        type="number"
+                        min="1"
+                        value={spendingLimit}
+                        onChange={(e) => setSpendingLimit(e.target.value)}
+                        className="mt-2"
+                      />
+                    </div>
+                    <div>
+                      <Label>{getText('Peryòd', 'Période', 'Period')}</Label>
+                      <Select value={spendingPeriod} onValueChange={setSpendingPeriod}>
+                        <SelectTrigger className="mt-2">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="daily">{getText('Chak jou', 'Quotidien', 'Daily')}</SelectItem>
+                          <SelectItem value="monthly">{getText('Chak mwa', 'Mensuel', 'Monthly')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      onClick={() => updateControls({ spending_limit_usd: parseFloat(spendingLimit), spending_limit_period: spendingPeriod })}
+                      disabled={updatingControls || !spendingLimit || Number(spendingLimit) <= 0}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                    >
+                      {getText('Sove limit', 'Enregistrer limite', 'Save limit')}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => openTransactions(selectedCard)}
+                      disabled={txLoading}
+                      className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                    >
+                      {getText('Wè tranzaksyon', 'Voir transactions', 'View transactions')}
+                    </Button>
+                    {selectedCard?.card_status === 'locked' ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => updateControls({ lock: false })}
+                        disabled={updatingControls || (selectedCard.failed_payment_count >= 3)}
+                        className="border-amber-300 text-amber-700 hover:bg-amber-50"
+                      >
+                        {getText('Debloke', 'Débloquer', 'Unlock')}
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        onClick={() => updateControls({ lock: true })}
+                        disabled={updatingControls}
+                        className="border-red-300 text-red-700 hover:bg-red-50"
+                      >
+                        {getText('Bloke kat la', 'Bloquer la carte', 'Lock card')}
+                      </Button>
+                    )}
+                  </div>
+
+                  {(selectedCard.failed_payment_count >= 3) ? (
+                    <div className="text-xs text-red-600">
+                      {getText(
+                        'Kat la bloke apre 3 echèk. Kontakte sipò pou debloke.',
+                        'Carte bloquée après 3 échecs. Contactez le support pour débloquer.',
+                        'Card locked after 3 failures. Contact support to unlock.'
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               </div>
             )}
           </DialogContent>
