@@ -1124,6 +1124,13 @@ export default function VirtualCard() {
                           {formatCardNumber(selectedCard.card_last4)}
                         </span>
                       </div>
+                      <p className="text-xs text-white/70 mt-2">
+                        {getText(
+                          'Pou sekirite w, app la pa montre nimewo kat konplè oswa CVV. Tcheke email ou / kontakte sipò si ou bezwen detay yo.',
+                          'Pour votre sécurité, l’app n’affiche pas le numéro complet ni le CVV. Vérifiez votre email / contactez le support si besoin.',
+                          'For your security, the app does not show the full card number or CVV. Check your email / contact support if needed.'
+                        )}
+                      </p>
                     </div>
                     
                     <div className="flex justify-between items-end">
