@@ -3976,29 +3976,33 @@ async def admin_fetch_external_card_details(
     logger.info(f"Strowallet API raw response: {stw_detail}")
     
     # Try to find card data in various locations
-    # Strowallet API can return data in: response, data, message, or directly in root
+    # Strowallet API returns data in: response.card_detail
     card_data = None
     
-    # Option 1: response is a dict with card_number
+    # Option 1: response.card_detail (Strowallet actual format!)
     if isinstance(stw_detail.get("response"), dict):
         r = stw_detail["response"]
-        if r.get("card_number") or r.get("cardNumber") or r.get("pan"):
+        if isinstance(r.get("card_detail"), dict):
+            card_data = r["card_detail"]
+            logger.info(f"Found card data in 'response.card_detail': {list(card_data.keys())}")
+        elif r.get("card_number") or r.get("cardNumber") or r.get("pan"):
             card_data = r
             logger.info(f"Found card data in 'response': {list(r.keys())}")
     
-    # Option 2: data is a dict with card_number
+    # Option 2: data.card_detail
     if not card_data and isinstance(stw_detail.get("data"), dict):
         d = stw_detail["data"]
-        if d.get("card_number") or d.get("cardNumber") or d.get("pan"):
+        if isinstance(d.get("card_detail"), dict):
+            card_data = d["card_detail"]
+            logger.info(f"Found card data in 'data.card_detail': {list(card_data.keys())}")
+        elif d.get("card_number") or d.get("cardNumber") or d.get("pan"):
             card_data = d
             logger.info(f"Found card data in 'data': {list(d.keys())}")
     
-    # Option 3: message is a dict with card_number
-    if not card_data and isinstance(stw_detail.get("message"), dict):
-        m = stw_detail["message"]
-        if m.get("card_number") or m.get("cardNumber") or m.get("pan"):
-            card_data = m
-            logger.info(f"Found card data in 'message': {list(m.keys())}")
+    # Option 3: card_detail directly in root
+    if not card_data and isinstance(stw_detail.get("card_detail"), dict):
+        card_data = stw_detail["card_detail"]
+        logger.info(f"Found card data in 'card_detail': {list(card_data.keys())}")
     
     # Option 4: card_number is directly in root
     if not card_data:
@@ -4006,32 +4010,15 @@ async def admin_fetch_external_card_details(
             card_data = stw_detail
             logger.info(f"Found card data in root: {list(stw_detail.keys())}")
     
-    # Option 5: message might be a JSON string
-    if not card_data and isinstance(stw_detail.get("message"), str):
-        try:
-            import json
-            m = json.loads(stw_detail["message"])
-            if isinstance(m, dict) and (m.get("card_number") or m.get("cardNumber")):
-                card_data = m
-                logger.info(f"Found card data in message (JSON string): {list(m.keys())}")
-        except:
-            pass
-    
-    # Option 6: response might be a JSON string
-    if not card_data and isinstance(stw_detail.get("response"), str):
-        try:
-            import json
-            r = json.loads(stw_detail["response"])
-            if isinstance(r, dict) and (r.get("card_number") or r.get("cardNumber")):
-                card_data = r
-                logger.info(f"Found card data in response (JSON string): {list(r.keys())}")
-        except:
-            pass
-    
     # If still no card_data, use the full response for extraction
     if not card_data:
         card_data = stw_detail
-        logger.warning(f"Could not find card data wrapper, using full response")
+        logger.warning(f"Could not find card data wrapper, using full response: {list(stw_detail.keys()) if isinstance(stw_detail, dict) else type(stw_detail)}")
+    
+    # Log all available keys in card_data for debugging
+    if isinstance(card_data, dict):
+        logger.info(f"card_data keys: {list(card_data.keys())}")
+        logger.info(f"card_data sample values: {[(k, str(v)[:50]) for k, v in list(card_data.items())[:10]]}")
     
     # Extract card fields - try many possible field names
     card_number = (
@@ -4040,65 +4027,74 @@ async def admin_fetch_external_card_details(
         card_data.get("masked_pan") or card_data.get("unmasked_pan") or
         card_data.get("number") or card_data.get("card_no") or
         card_data.get("account_number") or card_data.get("cardNo") or
-        _extract_first(stw_detail, "response.card_number", "data.card_number", "message.card_number")
+        card_data.get("masked_card_number") or card_data.get("full_card_number") or
+        _extract_first(stw_detail, "response.card_detail.card_number", "response.card_detail.pan", 
+                       "response.card_number", "data.card_number", "message.card_number")
     )
     
     # Log what we found for debugging
-    logger.info(f"Extracted card_number: {'YES' if card_number else 'NO'}")
-    if not card_number:
-        logger.info(f"Available card_data keys: {list(card_data.keys()) if isinstance(card_data, dict) else 'N/A'}")
+    logger.info(f"Extracted card_number: {'YES - ' + str(card_number)[:6] + '...' if card_number else 'NO'}")
     
     expiry_month = (
         card_data.get("expiry_month") or card_data.get("expiryMonth") or 
         card_data.get("exp_month") or card_data.get("expMonth") or
         card_data.get("month") or card_data.get("expiry_mm") or
-        _extract_first(stw_detail, "response.expiry_month", "data.expiry_month")
+        card_data.get("card_expiry_month") or
+        _extract_first(stw_detail, "response.card_detail.expiry_month", "response.expiry_month", "data.expiry_month")
     )
     expiry_year = (
         card_data.get("expiry_year") or card_data.get("expiryYear") or 
         card_data.get("exp_year") or card_data.get("expYear") or
         card_data.get("year") or card_data.get("expiry_yy") or
-        _extract_first(stw_detail, "response.expiry_year", "data.expiry_year")
+        card_data.get("card_expiry_year") or
+        _extract_first(stw_detail, "response.card_detail.expiry_year", "response.expiry_year", "data.expiry_year")
     )
     cvv = (
         card_data.get("cvv") or card_data.get("cvc") or 
         card_data.get("cvv2") or card_data.get("security_code") or
         card_data.get("cvv_code") or card_data.get("cvc2") or
-        _extract_first(stw_detail, "response.cvv", "data.cvv")
+        card_data.get("card_cvv") or card_data.get("card_cvc") or
+        _extract_first(stw_detail, "response.card_detail.cvv", "response.cvv", "data.cvv")
     )
     holder_name = (
         card_data.get("card_holder_name") or card_data.get("cardHolderName") or 
         card_data.get("name_on_card") or card_data.get("cardholder_name") or
-        _extract_first(stw_detail, "response.card_holder_name", "data.card_holder_name")
+        card_data.get("card_name") or  # Sometimes card_name is used for holder name
+        _extract_first(stw_detail, "response.card_detail.card_holder_name", "response.card_holder_name", "data.card_holder_name")
     )
-    balance = _extract_first(
-        stw_detail,
-        "data.balance", "data.card.balance", "balance",
+    balance = (
+        card_data.get("balance") or card_data.get("card_balance") or
+        _extract_first(stw_detail, "response.card_detail.balance", "data.balance", "data.card.balance", "balance")
     )
-    currency = _extract_first(
-        stw_detail,
-        "data.currency", "data.card.currency", "currency",
+    currency = (
+        card_data.get("currency") or card_data.get("card_currency") or
+        _extract_first(stw_detail, "response.card_detail.currency", "data.currency", "data.card.currency", "currency")
     ) or "USD"
-    card_status = _extract_first(
-        stw_detail,
-        "data.status", "data.card.status", "data.card_status", "status", "card_status",
+    card_status = (
+        card_data.get("status") or card_data.get("card_status") or card_data.get("is_active") or
+        _extract_first(stw_detail, "response.card_detail.status", "data.status", "data.card.status", "status", "card_status")
     ) or "active"
-    card_type = _extract_first(
-        stw_detail,
-        "data.card_type", "data.cardType", "data.type", "data.brand",
-        "card_type", "cardType", "type", "brand",
+    card_type = (
+        card_data.get("card_type") or card_data.get("cardType") or 
+        card_data.get("card_brand") or card_data.get("brand") or card_data.get("type") or
+        _extract_first(stw_detail, "response.card_detail.card_type", "response.card_detail.card_brand",
+                       "data.card_type", "data.cardType", "data.type", "data.brand", "card_type", "cardType", "type", "brand")
     ) or "visa"
-    billing_address = _extract_first(
-        stw_detail, "data.billing_address", "data.address", "billing_address", "address",
+    billing_address = (
+        card_data.get("billing_address") or card_data.get("address") or card_data.get("street") or
+        _extract_first(stw_detail, "response.card_detail.billing_address", "data.billing_address", "data.address", "billing_address", "address")
     )
-    billing_city = _extract_first(
-        stw_detail, "data.billing_city", "data.city", "billing_city", "city",
+    billing_city = (
+        card_data.get("billing_city") or card_data.get("city") or
+        _extract_first(stw_detail, "response.card_detail.billing_city", "data.billing_city", "data.city", "billing_city", "city")
     )
-    billing_country = _extract_first(
-        stw_detail, "data.billing_country", "data.country", "billing_country", "country",
+    billing_country = (
+        card_data.get("billing_country") or card_data.get("country") or
+        _extract_first(stw_detail, "response.card_detail.billing_country", "data.billing_country", "data.country", "billing_country", "country")
     )
-    billing_zip = _extract_first(
-        stw_detail, "data.billing_zip", "data.zip_code", "data.zipCode", "billing_zip", "zip_code", "zipCode",
+    billing_zip = (
+        card_data.get("billing_zip") or card_data.get("zip_code") or card_data.get("zipCode") or card_data.get("postal_code") or
+        _extract_first(stw_detail, "response.card_detail.billing_zip", "data.billing_zip", "data.zip_code", "data.zipCode", "billing_zip", "zip_code", "zipCode")
     )
 
     if not card_number:
