@@ -3730,6 +3730,7 @@ async def get_card_orders(
             "card_cvv": 0,
             "provider_raw": 0,
             # Never expose admin/internal fields to clients.
+            "provider_card_id": 0,
             "admin_notes": 0,
             "processed_by": 0,
             "processed_at": 0,
@@ -3737,12 +3738,6 @@ async def get_card_orders(
             "client_id": 0,
         },
     ).sort("created_at", -1).to_list(50)
-    # Derive safe capability flags without exposing internal ids.
-    for o in (orders or []):
-        provider_norm = str(o.get("provider") or "").strip().lower()
-        o["can_reveal"] = bool(o.get("provider_card_id")) and (provider_norm in ("strowallet", ""))
-        # Never expose provider_card_id to clients.
-        o.pop("provider_card_id", None)
     return {"orders": orders}
 
 

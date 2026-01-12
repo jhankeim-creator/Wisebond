@@ -389,14 +389,6 @@ export default function VirtualCard() {
 
   const revealFullDetails = async () => {
     if (!selectedCard?.order_id) return;
-    if (!selectedCard?.can_reveal) {
-      toast.error(getText(
-        'Detay konplè disponib sèlman pou kat Strowallet yo.',
-        'Les détails complets sont disponibles uniquement pour les cartes Strowallet.',
-        'Full details are only available for Strowallet cards.'
-      ));
-      return;
-    }
     const pin = String(revealPin || '').trim();
     if (!/^\d{4}$/.test(pin)) {
       toast.error(getText('PIN nan dwe 4 chif.', 'Le PIN doit avoir 4 chiffres.', 'PIN must be 4 digits.'));
@@ -1417,24 +1409,13 @@ export default function VirtualCard() {
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm text-stone-700 dark:text-stone-200">
                       <strong>{getText('Detay kat la:', 'Détails de la carte:', 'Card details:')}</strong>{' '}
-                      {selectedCard?.can_reveal
-                        ? getText(
-                            'Klike sou zye a pou wè nimewo a + CVV.',
-                            'Cliquez sur l’œil pour voir le numéro + CVV.',
-                            'Click the eye to view card number + CVV.'
-                          )
-                        : getText(
-                            'Detay konplè disponib sèlman pou kat Strowallet yo.',
-                            'Les détails complets sont disponibles uniquement pour les cartes Strowallet.',
-                            'Full details are only available for Strowallet cards.'
-                          )}
+                      {getText(
+                        'Klike sou zye a pou wè nimewo a + CVV.',
+                        'Cliquez sur l’œil pour voir le numéro + CVV.',
+                        'Click the eye to view card number + CVV.'
+                      )}
                     </p>
-                    {!selectedCard?.can_reveal ? (
-                      <Button disabled className="bg-stone-400 text-white cursor-not-allowed">
-                        <Eye size={16} className="mr-2" />
-                        {getText('Wè', 'Voir', 'View')}
-                      </Button>
-                    ) : !hasCardPin ? (
+                    {!hasCardPin ? (
                       <Button onClick={() => setShowSetPinModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white">
                         {getText('Mete PIN', 'Définir PIN', 'Set PIN')}
                       </Button>
@@ -1468,7 +1449,7 @@ export default function VirtualCard() {
                   )}
 
                   <div className="flex gap-2 flex-wrap">
-                    <Button variant="outline" onClick={() => setShowPinResetModal(true)} disabled={!selectedCard?.can_reveal}>
+                    <Button variant="outline" onClick={() => setShowPinResetModal(true)}>
                       {getText('Mwen bliye PIN', 'J’ai oublié le PIN', 'Forgot PIN')}
                     </Button>
                   </div>
