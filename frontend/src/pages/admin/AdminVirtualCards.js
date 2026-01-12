@@ -24,7 +24,6 @@ export default function AdminVirtualCards() {
   const [activeTab, setActiveTab] = useState('orders');
   const [strowalletEnabled, setStrowalletEnabled] = useState(false);
   const [autoIssueStrowallet, setAutoIssueStrowallet] = useState(true);
-  const [providerCardId, setProviderCardId] = useState('');
   const [cardSettings, setCardSettings] = useState(null);
   const [savingCardSettings, setSavingCardSettings] = useState(false);
   
@@ -407,12 +406,7 @@ export default function AdminVirtualCards() {
       // If auto-issuing via Strowallet, do NOT send manual card details.
       // Backend will create the card via Strowallet and populate details automatically.
       const payload = shouldAutoIssue
-        ? {
-          action,
-          admin_notes: adminNotes,
-          // Optional: if card already exists in Strowallet, link it to avoid duplicates.
-          ...(providerCardId ? { provider_card_id: String(providerCardId).trim() } : {}),
-        }
+        ? { action, admin_notes: adminNotes }
         : {
           action,
           admin_notes: adminNotes,
@@ -461,7 +455,6 @@ export default function AdminVirtualCards() {
 
   const resetOrderForm = () => {
     setAdminNotes('');
-    setProviderCardId('');
     setCardDetails({
       card_email: '',
       card_brand: '',
@@ -480,7 +473,6 @@ export default function AdminVirtualCards() {
   const openOrderModal = (order) => {
     setSelectedOrder(order);
     setAdminNotes(order.admin_notes || '');
-    setProviderCardId(order?.provider_card_id || '');
     // Default to auto-issue if Strowallet is enabled and the order isn't already a provider card.
     setAutoIssueStrowallet(!!strowalletEnabled && (order?.provider !== 'strowallet'));
     setCardDetails({
@@ -1346,25 +1338,6 @@ export default function AdminVirtualCards() {
                       <Label>{getText('Nòt Admin', 'Notes Admin', 'Admin Notes')}</Label>
                       <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} rows={2} className="mt-1" />
                     </div>
-
-                    {strowalletEnabled && autoIssueStrowallet && (
-                      <div>
-                        <Label>{getText('ID Kat (Strowallet) - opsyonèl', 'ID Carte (Strowallet) - optionnel', 'Card ID (Strowallet) - optional')}</Label>
-                        <Input
-                          value={providerCardId}
-                          onChange={(e) => setProviderCardId(e.target.value)}
-                          className="mt-1 font-mono"
-                          placeholder="ex: 123456"
-                        />
-                        <p className="text-xs text-stone-500 mt-1">
-                          {getText(
-                            'Sèvi ak sa sèlman si kat la deja kreye nan Strowallet epi ou pa vle kreye yon doublon.',
-                            'Utilisez ceci seulement si la carte existe déjà dans Strowallet et vous ne voulez pas créer un doublon.',
-                            'Use this only if the card already exists in Strowallet and you want to avoid creating a duplicate.'
-                          )}
-                        </p>
-                      </div>
-                    )}
 
                     <div className="flex gap-4 pt-4 border-t">
                       <Button onClick={() => handleProcessOrder('approve')} disabled={processing} className="flex-1 bg-emerald-500 hover:bg-emerald-600">
