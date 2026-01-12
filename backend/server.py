@@ -156,22 +156,6 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
         (settings or {}).get("strowallet_unfreeze_card_path") or os.environ.get("STROWALLET_UNFREEZE_CARD_PATH"),
         "",
     )
-    freeze_unfreeze_path = _normalize_strowallet_path(
-        (settings or {}).get("strowallet_freeze_unfreeze_path") or os.environ.get("STROWALLET_FREEZE_UNFREEZE_PATH"),
-        "",
-    )
-    full_history_path = _normalize_strowallet_path(
-        (settings or {}).get("strowallet_full_card_history_path") or os.environ.get("STROWALLET_FULL_CARD_HISTORY_PATH"),
-        "",
-    )
-    withdraw_status_path = _normalize_strowallet_path(
-        (settings or {}).get("strowallet_withdraw_status_path") or os.environ.get("STROWALLET_WITHDRAW_STATUS_PATH"),
-        "",
-    )
-    upgrade_limit_path = _normalize_strowallet_path(
-        (settings or {}).get("strowallet_upgrade_limit_path") or os.environ.get("STROWALLET_UPGRADE_LIMIT_PATH"),
-        "",
-    )
 
     base_url = base_url.rstrip("/")
     # (paths already normalized)
@@ -192,10 +176,6 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
         "set_limit_path": set_limit_path,
         "freeze_path": freeze_path,
         "unfreeze_path": unfreeze_path,
-        "freeze_unfreeze_path": freeze_unfreeze_path,
-        "full_history_path": full_history_path,
-        "withdraw_status_path": withdraw_status_path,
-        "upgrade_limit_path": upgrade_limit_path,
     }
 
 def _extract_first(d: Any, *paths: str) -> Optional[Any]:
@@ -284,9 +264,6 @@ def _ensure_strowallet_auth_payload(payload: Dict[str, Any], cfg: Dict[str, str]
         payload.setdefault("secret_key", api_secret)
         payload.setdefault("api_secret", api_secret)
         payload.setdefault("secret", api_secret)
-    # Many SDK calls include `mode`; add it if configured.
-    if cfg.get("mode"):
-        payload.setdefault("mode", cfg["mode"])
     return payload
 
 async def _strowallet_post(settings: Optional[dict], path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -549,11 +526,6 @@ class AdminSettingsUpdate(BaseModel):
     strowallet_set_limit_path: Optional[str] = None
     strowallet_freeze_card_path: Optional[str] = None
     strowallet_unfreeze_card_path: Optional[str] = None
-    # Optional Strowallet advanced endpoints (plans vary)
-    strowallet_freeze_unfreeze_path: Optional[str] = None
-    strowallet_full_card_history_path: Optional[str] = None
-    strowallet_withdraw_status_path: Optional[str] = None
-    strowallet_upgrade_limit_path: Optional[str] = None
 
     # Fees & Affiliate (optional, UI-configurable)
     card_order_fee_htg: Optional[int] = None
@@ -2834,202 +2806,6 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
     if "_id" in record:
         del record["_id"]
     return {"withdrawal": record, "message": "Withdrawal processed successfully"}
-
-
-@api_router.get("/virtual-cards/{order_id}/transactions")
-async def virtual_card_transactions(
-    order_id: str,
-    page: int = Query(default=1, ge=1, le=10000),
-    take: int = Query(default=50, ge=1, le=200),
-    current_user: dict = Depends(get_current_user),
-):
-    """
-    Fetch Strowallet card transactions for a user's approved card.
-    Requires provider card id and Strowallet automation enabled.
-    """
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _virtual_cards_enabled(settings):
-        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
-
-    order = await db.virtual_card_orders.find_one(
-        {"order_id": order_id, "user_id": current_user["user_id"], "status": "approved"},
-        {"_id": 0},
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Card not found or not approved")
-    if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
-        raise HTTPException(status_code=400, detail="This card is not eligible for provider transactions")
-
-    cfg = _strowallet_config(settings)
-    if not cfg.get("card_tx_path"):
-        raise HTTPException(status_code=400, detail="Card transactions endpoint not configured")
-
-    payload: Dict[str, Any] = {
-        "card_id": order.get("provider_card_id"),
-        "page": str(page),
-        "take": str(take),
-        "reference": f"tx-{order_id}-{page}-{take}",
-    }
-    payload = _with_aliases(payload, "card_id", "cardId", "id")
-    resp = await _strowallet_post(settings, cfg["card_tx_path"], payload)
-    return {"provider": "strowallet", "order_id": order_id, "response": resp}
-
-
-@api_router.get("/virtual-cards/{order_id}/history")
-async def virtual_card_full_history(
-    order_id: str,
-    page: int = Query(default=1, ge=1, le=10000),
-    take: int = Query(default=50, ge=1, le=200),
-    current_user: dict = Depends(get_current_user),
-):
-    """
-    Fetch full card history if provider offers a dedicated endpoint.
-    Falls back to transactions endpoint if not configured.
-    """
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _virtual_cards_enabled(settings):
-        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
-
-    order = await db.virtual_card_orders.find_one(
-        {"order_id": order_id, "user_id": current_user["user_id"], "status": "approved"},
-        {"_id": 0},
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Card not found or not approved")
-    if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
-        raise HTTPException(status_code=400, detail="This card is not eligible for provider history")
-
-    cfg = _strowallet_config(settings)
-    path = cfg.get("full_history_path") or cfg.get("card_tx_path")
-    if not path:
-        raise HTTPException(status_code=400, detail="Card history endpoint not configured")
-
-    payload: Dict[str, Any] = {
-        "card_id": order.get("provider_card_id"),
-        "page": str(page),
-        "take": str(take),
-        "reference": f"hist-{order_id}-{page}-{take}",
-    }
-    payload = _with_aliases(payload, "card_id", "cardId", "id")
-    resp = await _strowallet_post(settings, path, payload)
-    return {"provider": "strowallet", "order_id": order_id, "response": resp, "path_used": path}
-
-
-class FreezeUnfreezeRequest(BaseModel):
-    action: Literal["freeze", "unfreeze"]
-
-
-@api_router.post("/virtual-cards/{order_id}/freezeunfreeze")
-async def virtual_card_freezeunfreeze(
-    order_id: str,
-    payload: FreezeUnfreezeRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    """
-    Freeze/unfreeze card. Supports either a single provider endpoint (freeze_unfreeze_path)
-    or separate freeze/unfreeze paths.
-    """
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _virtual_cards_enabled(settings):
-        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
-
-    order = await db.virtual_card_orders.find_one(
-        {"order_id": order_id, "user_id": current_user["user_id"], "status": "approved"},
-        {"_id": 0},
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Card not found or not approved")
-    if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
-        raise HTTPException(status_code=400, detail="This card cannot be managed automatically")
-
-    cfg = _strowallet_config(settings)
-    body: Dict[str, Any] = {"card_id": order.get("provider_card_id"), "action": payload.action, "reference": f"{payload.action}-{order_id}"}
-    body = _with_aliases(body, "card_id", "cardId", "id")
-
-    if cfg.get("freeze_unfreeze_path"):
-        resp = await _strowallet_post(settings, cfg["freeze_unfreeze_path"], body)
-    else:
-        if payload.action == "freeze":
-            if not cfg.get("freeze_path"):
-                raise HTTPException(status_code=400, detail="Freeze endpoint not configured")
-            resp = await _strowallet_post(settings, cfg["freeze_path"], body)
-        else:
-            if not cfg.get("unfreeze_path"):
-                raise HTTPException(status_code=400, detail="Unfreeze endpoint not configured")
-            resp = await _strowallet_post(settings, cfg["unfreeze_path"], body)
-
-    return {"provider": "strowallet", "order_id": order_id, "action": payload.action, "response": resp}
-
-
-@api_router.get("/virtual-cards/withdrawals/{withdrawal_id}/status")
-async def virtual_card_withdraw_status(
-    withdrawal_id: str,
-    current_user: dict = Depends(get_current_user),
-):
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _virtual_cards_enabled(settings):
-        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
-
-    record = await db.virtual_card_withdrawals.find_one(
-        {"withdrawal_id": withdrawal_id, "user_id": current_user["user_id"]},
-        {"_id": 0},
-    )
-    if not record:
-        raise HTTPException(status_code=404, detail="Withdrawal not found")
-    if record.get("provider") != "strowallet":
-        return {"provider": record.get("provider"), "withdrawal": record}
-
-    cfg = _strowallet_config(settings)
-    if not cfg.get("withdraw_status_path"):
-        return {"provider": "strowallet", "withdrawal": record, "note": "Provider withdraw status endpoint not configured"}
-
-    payload: Dict[str, Any] = {
-        "reference": record.get("withdrawal_id"),
-        "transactionReference": record.get("provider_txn_id"),
-        "transaction_reference": record.get("provider_txn_id"),
-    }
-    resp = await _strowallet_post(settings, cfg["withdraw_status_path"], payload)
-    return {"provider": "strowallet", "withdrawal": record, "response": resp}
-
-
-class UpgradeLimitRequest(BaseModel):
-    limit: Optional[float] = None
-    period: Optional[Literal["daily", "monthly"]] = None
-
-
-@api_router.post("/virtual-cards/{order_id}/upgrade-limit")
-async def virtual_card_upgrade_limit(
-    order_id: str,
-    payload: UpgradeLimitRequest,
-    current_user: dict = Depends(get_current_user),
-):
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _virtual_cards_enabled(settings):
-        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
-
-    order = await db.virtual_card_orders.find_one(
-        {"order_id": order_id, "user_id": current_user["user_id"], "status": "approved"},
-        {"_id": 0},
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Card not found or not approved")
-    if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
-        raise HTTPException(status_code=400, detail="This card cannot be managed automatically")
-
-    cfg = _strowallet_config(settings)
-    if not cfg.get("upgrade_limit_path"):
-        raise HTTPException(status_code=400, detail="Upgrade limit endpoint not configured")
-
-    body: Dict[str, Any] = {
-        "card_id": order.get("provider_card_id"),
-        "limit": payload.limit,
-        "period": payload.period,
-        "reference": f"upgrade-{order_id}",
-    }
-    body = {k: v for k, v in body.items() if v not in (None, "")}
-    body = _with_aliases(body, "card_id", "cardId", "id")
-    resp = await _strowallet_post(settings, cfg["upgrade_limit_path"], body)
-    return {"provider": "strowallet", "order_id": order_id, "response": resp}
 
 # ==================== STROWALLET WEBHOOK (FAILED PAYMENTS AUTO-LOCK) ====================
 
@@ -5529,10 +5305,6 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
         "strowallet_set_limit_path": os.environ.get("STROWALLET_SET_LIMIT_PATH", ""),
         "strowallet_freeze_card_path": os.environ.get("STROWALLET_FREEZE_CARD_PATH", ""),
         "strowallet_unfreeze_card_path": os.environ.get("STROWALLET_UNFREEZE_CARD_PATH", ""),
-        "strowallet_freeze_unfreeze_path": os.environ.get("STROWALLET_FREEZE_UNFREEZE_PATH", ""),
-        "strowallet_full_card_history_path": os.environ.get("STROWALLET_FULL_CARD_HISTORY_PATH", ""),
-        "strowallet_withdraw_status_path": os.environ.get("STROWALLET_WITHDRAW_STATUS_PATH", ""),
-        "strowallet_upgrade_limit_path": os.environ.get("STROWALLET_UPGRADE_LIMIT_PATH", ""),
         "telegram_enabled": False,
         "telegram_bot_token": "",
         "telegram_chat_id": "",
@@ -5693,11 +5465,6 @@ async def admin_strowallet_apply_default_endpoints(admin: dict = Depends(get_adm
         "strowallet_card_transactions_path": "/api/bitvcard/card-transactions/",
         "strowallet_mode": "live",
         "strowallet_create_card_amount_usd": 5.0,
-        # Advanced endpoints vary by plan; keep empty so admin can fill in if provided by Strowallet.
-        "strowallet_freeze_unfreeze_path": "",
-        "strowallet_full_card_history_path": "",
-        "strowallet_withdraw_status_path": "",
-        "strowallet_upgrade_limit_path": "",
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 

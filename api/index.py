@@ -230,10 +230,6 @@ class AdminSettingsUpdate(BaseModel):
     strowallet_brand_name: Optional[str] = None
     strowallet_mode: Optional[str] = None
     strowallet_create_card_amount_usd: Optional[float] = None
-    strowallet_freeze_unfreeze_path: Optional[str] = None
-    strowallet_full_card_history_path: Optional[str] = None
-    strowallet_withdraw_status_path: Optional[str] = None
-    strowallet_upgrade_limit_path: Optional[str] = None
 
     # Fees & Affiliate
     card_order_fee_htg: Optional[int] = None
@@ -1590,10 +1586,6 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
         "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", "") or "KAYICOM",
         "strowallet_mode": os.environ.get("STROWALLET_MODE", "") or "live",
         "strowallet_create_card_amount_usd": float(os.environ.get("STROWALLET_CREATE_CARD_AMOUNT_USD", "5") or "5"),
-        "strowallet_freeze_unfreeze_path": os.environ.get("STROWALLET_FREEZE_UNFREEZE_PATH", ""),
-        "strowallet_full_card_history_path": os.environ.get("STROWALLET_FULL_CARD_HISTORY_PATH", ""),
-        "strowallet_withdraw_status_path": os.environ.get("STROWALLET_WITHDRAW_STATUS_PATH", ""),
-        "strowallet_upgrade_limit_path": os.environ.get("STROWALLET_UPGRADE_LIMIT_PATH", ""),
 
         # Fees & Affiliate
         "card_order_fee_htg": 500,
