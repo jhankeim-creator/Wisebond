@@ -7,22 +7,30 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Check, X, Eye, RefreshCw, UserCheck, Clock, XCircle, Users, ZoomIn, AlertCircle } from 'lucide-react';
-
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminKYC() {
   const { language } = useLanguage();
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('pending');
+  // Default to 'all' so admins see existing approvals immediately.
+  const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [stats, setStats] = useState(null);
+  const [meta, setMeta] = useState(null);
+  const [imageStorage, setImageStorage] = useState(null);
+  const [migrating, setMigrating] = useState(false);
+  const [migrationReport, setMigrationReport] = useState(null);
   const [selectedKyc, setSelectedKyc] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [reopenReason, setReopenReason] = useState('');
   const [processing, setProcessing] = useState(false);
 
   const getText = useCallback((ht, fr, en) => {
@@ -34,21 +42,63 @@ export default function AdminKYC() {
   const fetchSubmissions = useCallback(async () => {
     setLoading(true);
     try {
+      const params = new URLSearchParams();
+      if (filter !== 'all') params.set('status', filter);
+      if (query.trim()) params.set('q', query.trim());
+      params.set('page', String(page));
+      params.set('limit', '50');
       let url = `${API}/admin/kyc`;
-      if (filter !== 'all') url += `?status=${filter}`;
+      const qs = params.toString();
+      if (qs) url += `?${qs}`;
       const response = await axios.get(url);
       setSubmissions(response.data.submissions || []);
+      setStats(response.data.stats || null);
+      setMeta(response.data.meta || null);
     } catch (error) {
       console.error('Error fetching KYC:', error);
       toast.error(getText('Erè pandan chajman', 'Erreur lors du chargement', 'Error loading'));
     } finally {
       setLoading(false);
     }
-  }, [filter, getText]);
+  }, [filter, getText, page, query]);
 
   useEffect(() => {
     fetchSubmissions();
   }, [fetchSubmissions]);
+
+  const fetchImageStorageStatus = useCallback(async () => {
+    try {
+      const resp = await axios.get(`${API}/admin/kyc-image-storage-status`);
+      setImageStorage(resp.data || null);
+    } catch (e) {
+      // Not fatal for KYC workflow.
+      setImageStorage(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchImageStorageStatus();
+  }, [fetchImageStorageStatus]);
+
+  const runMigration = async ({ dryRun }) => {
+    setMigrating(true);
+    try {
+      const resp = await axios.post(`${API}/admin/kyc/migrate-images?dry_run=${dryRun ? 'true' : 'false'}&limit=25&status=all`);
+      setMigrationReport(resp.data || null);
+      if (dryRun) {
+        toast.success(getText('Dry-run fini. Gade rapò a.', 'Dry-run terminé. Voir le rapport.', 'Dry-run completed. See report.'));
+      } else {
+        toast.success(getText('Migrasyon fèt. Refresh KYC.', 'Migration faite. Rafraîchissez KYC.', 'Migration done. Refresh KYC.'));
+        fetchSubmissions();
+      }
+    } catch (e) {
+      const msg = e.response?.data?.detail || e.response?.data?.message || getText('Erè migrasyon', 'Erreur migration', 'Migration error');
+      toast.error(msg);
+    } finally {
+      setMigrating(false);
+      fetchImageStorageStatus();
+    }
+  };
 
   const viewKyc = async (kycId) => {
     try {
@@ -85,19 +135,122 @@ export default function AdminKYC() {
     }
   };
 
+  const handleReopen = async () => {
+    if (!selectedKyc?.kyc_id) return;
+    const ok = window.confirm(
+      getText(
+        'Ou vle re-ouvri KYC sa a pou kliyan an ka resoumet li?',
+        'Voulez-vous rouvrir ce KYC pour que le client puisse le resoumettre ?',
+        'Re-open this KYC so the user can resubmit?'
+      )
+    );
+    if (!ok) return;
+
+    setProcessing(true);
+    try {
+      await axios.post(`${API}/admin/kyc/${selectedKyc.kyc_id}/reopen`, { reason: reopenReason || null });
+      toast.success(getText('KYC re-ouvri (pending).', 'KYC rouvert (pending).', 'KYC reopened (pending).'));
+      setShowModal(false);
+      setRejectReason('');
+      setReopenReason('');
+      fetchSubmissions();
+    } catch (e) {
+      const msg = e.response?.data?.detail || getText('Erè pandan tretman', 'Erreur lors du traitement', 'Error processing');
+      toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const openImageModal = (imageUrl, title) => {
     setSelectedImage({ url: imageUrl, title });
     setShowImageModal(true);
   };
 
+  const formatLocation = (kyc) => {
+    if (!kyc) return '—';
+    const parts = [kyc.city, kyc.state, kyc.country].filter(Boolean).map(String);
+    return parts.length ? parts.join(', ') : '—';
+  };
+
   // Stats
-  const pendingCount = submissions.filter(s => s.status === 'pending').length;
-  const approvedCount = submissions.filter(s => s.status === 'approved').length;
-  const rejectedCount = submissions.filter(s => s.status === 'rejected').length;
+  const pendingCount = stats?.pending ?? submissions.filter(s => s.status === 'pending').length;
+  const approvedCount = stats?.approved ?? submissions.filter(s => s.status === 'approved').length;
+  const rejectedCount = stats?.rejected ?? submissions.filter(s => s.status === 'rejected').length;
+  const totalCount = stats?.total ?? submissions.length;
+  const totalMatches = meta?.total_matches ?? submissions.length;
+  const totalPages = Math.max(1, Math.ceil((totalMatches || 0) / (meta?.limit || 50)));
 
   return (
     <AdminLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
       <div className="space-y-6" data-testid="admin-kyc">
+
+        {/* KYC Image Storage / Migration */}
+        <Card>
+          <CardHeader>
+            <CardTitle>{getText('KYC Foto (Migrasyon)', 'Photos KYC (Migration)', 'KYC Photos (Migration)')}</CardTitle>
+            <CardDescription>
+              {getText(
+                'Sa ede w retire ansyen base64 yo (ki konn fè KYC kraze) epi mete yo kòm URL Cloudinary.',
+                'Permet de convertir les anciennes images base64 (qui causent des erreurs) en URLs Cloudinary.',
+                'Convert legacy base64 images (that can cause errors) into Cloudinary URLs.'
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="text-sm text-stone-600">
+                <p>
+                  <span className="font-medium">{getText('Cloudinary:', 'Cloudinary:', 'Cloudinary:')}</span>{' '}
+                  {imageStorage
+                    ? (imageStorage.cloudinary_configured
+                        ? getText('Pare (OK)', 'Prêt (OK)', 'Ready (OK)')
+                        : getText('Pa configure', 'Non configuré', 'Not configured'))
+                    : getText('Enfo pa disponib', 'Info indisponible', 'Info unavailable')}
+                  {imageStorage?.source ? ` • ${imageStorage.source}` : ''}
+                </p>
+                {imageStorage?.cloudinary_folder && (
+                  <p className="text-xs text-stone-500">Folder: <span className="font-mono">{imageStorage.cloudinary_folder}</span></p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => runMigration({ dryRun: true })}
+                  disabled={migrating}
+                >
+                  <RefreshCw size={16} className={`mr-2 ${migrating ? 'animate-spin' : ''}`} />
+                  {getText('Dry-run', 'Dry-run', 'Dry-run')}
+                </Button>
+                <Button
+                  size="sm"
+                  className="bg-[#EA580C] hover:bg-[#EA580C]/90"
+                  onClick={() => runMigration({ dryRun: false })}
+                  disabled={migrating}
+                >
+                  <RefreshCw size={16} className={`mr-2 ${migrating ? 'animate-spin' : ''}`} />
+                  {getText('Migrate 25', 'Migrer 25', 'Migrate 25')}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={fetchImageStorageStatus}
+                  disabled={migrating}
+                >
+                  {getText('Refresh', 'Rafraîchir', 'Refresh')}
+                </Button>
+              </div>
+            </div>
+
+            {migrationReport && (
+              <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3 text-xs">
+                <p className="font-medium mb-1">{getText('Rapò', 'Rapport', 'Report')}</p>
+                <pre className="whitespace-pre-wrap break-words max-h-40 overflow-auto">{JSON.stringify(migrationReport, null, 2)}</pre>
+              </div>
+            )}
+          </CardContent>
+        </Card>
         
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -147,7 +300,7 @@ export default function AdminKYC() {
                   <Users className="text-blue-600" size={20} />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{submissions.length}</p>
+                  <p className="text-2xl font-bold">{totalCount}</p>
                   <p className="text-xs text-stone-500">{getText('Total', 'Total', 'Total')}</p>
                 </div>
               </div>
@@ -158,13 +311,30 @@ export default function AdminKYC() {
         {/* Filters */}
         <Card>
           <CardContent className="p-4">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-2">
+              <div className="flex-1">
+                <input
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder={getText('Chèche: non, client id, telefòn...', 'Rechercher: nom, client id, téléphone...', 'Search: name, client id, phone...')}
+                  className="w-full rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 px-3 py-2 text-sm"
+                />
+                <p className="text-xs text-stone-500 mt-1">
+                  {getText('Rezilta:', 'Résultats:', 'Results:')} {totalMatches}
+                </p>
+              </div>
               {['pending', 'approved', 'rejected', 'all'].map((f) => (
                 <Button
                   key={f}
                   variant={filter === f ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setFilter(f)}
+                  onClick={() => {
+                    setFilter(f);
+                    setPage(1);
+                  }}
                   className={filter === f ? 'bg-[#0047AB]' : ''}
                 >
                   {f === 'pending' && <Clock size={14} className="mr-1" />}
@@ -176,10 +346,31 @@ export default function AdminKYC() {
                    getText('Tout', 'Tous', 'All')}
                 </Button>
               ))}
-              <Button variant="outline" size="sm" onClick={fetchSubmissions} className="ml-auto">
-                <RefreshCw size={16} className="mr-2" />
-                {getText('Aktyalize', 'Actualiser', 'Refresh')}
-              </Button>
+              <div className="flex items-center gap-2 md:ml-auto">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1}
+                >
+                  {getText('Anvan', 'Précédent', 'Prev')}
+                </Button>
+                <span className="text-xs text-stone-500">
+                  {getText('Paj', 'Page', 'Page')} {page} / {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages}
+                >
+                  {getText('Apre', 'Suivant', 'Next')}
+                </Button>
+                <Button variant="outline" size="sm" onClick={fetchSubmissions}>
+                  <RefreshCw size={16} className="mr-2" />
+                  {getText('Aktyalize', 'Actualiser', 'Refresh')}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -209,7 +400,10 @@ export default function AdminKYC() {
                     <thead>
                       <tr>
                         <th>Client ID</th>
+                        <th>Email</th>
                         <th>{getText('Non', 'Nom', 'Name')}</th>
+                        <th>{getText('Dat nesans', 'Date de naissance', 'DOB')}</th>
+                        <th>{getText('Adrès', 'Adresse', 'Address')}</th>
                         <th>{getText('Nasyonalite', 'Nationalité', 'Nationality')}</th>
                         <th>{getText('Tip ID', 'Type ID', 'ID Type')}</th>
                         <th>{getText('Soumèt le', 'Soumis le', 'Submitted')}</th>
@@ -221,7 +415,13 @@ export default function AdminKYC() {
                       {submissions.map((kyc) => (
                         <tr key={kyc.kyc_id}>
                           <td className="font-mono text-sm">{kyc.client_id}</td>
+                          <td className="text-sm break-all">{kyc.user_email || '—'}</td>
                           <td className="font-medium">{kyc.full_name}</td>
+                          <td className="text-sm">{kyc.date_of_birth || '—'}</td>
+                          <td className="text-sm max-w-[280px]">
+                            <div className="truncate" title={kyc.full_address || ''}>{kyc.full_address || '—'}</div>
+                            <div className="text-xs text-stone-500 truncate" title={formatLocation(kyc)}>{formatLocation(kyc)}</div>
+                          </td>
                           <td>{kyc.nationality}</td>
                           <td className="capitalize">{kyc.id_type?.replace('_', ' ')}</td>
                           <td className="text-sm">{new Date(kyc.submitted_at).toLocaleDateString()}</td>
@@ -260,6 +460,7 @@ export default function AdminKYC() {
                         <div>
                           <p className="font-semibold">{kyc.full_name}</p>
                           <p className="text-xs text-stone-500 font-mono">{kyc.client_id}</p>
+                          {kyc.user_email && <p className="text-xs text-stone-500 break-all">{kyc.user_email}</p>}
                         </div>
                         <Badge className={
                           kyc.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
@@ -295,6 +496,10 @@ export default function AdminKYC() {
               <div className="space-y-6">
                 {/* Personal Info */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2 bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('Imèl', 'Email', 'Email')}</p>
+                    <p className="font-semibold break-all">{selectedKyc.user_email || '—'}</p>
+                  </div>
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
                     <p className="text-xs text-stone-500">{getText('Non Konplè', 'Nom Complet', 'Full Name')}</p>
                     <p className="font-semibold">{selectedKyc.full_name}</p>
@@ -311,9 +516,33 @@ export default function AdminKYC() {
                     <p className="text-xs text-stone-500">{getText('Tip ID', 'Type ID', 'ID Type')}</p>
                     <p className="font-semibold capitalize">{selectedKyc.id_type?.replace('_', ' ')}</p>
                   </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('Nimewo ID', 'Numéro ID', 'ID Number')}</p>
+                    <p className="font-semibold">{selectedKyc.id_number || '—'}</p>
+                  </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('Telefòn', 'Téléphone', 'Phone')}</p>
+                    <p className="font-semibold">{selectedKyc.phone_number || '—'}</p>
+                  </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('WhatsApp', 'WhatsApp', 'WhatsApp')}</p>
+                    <p className="font-semibold">{selectedKyc.whatsapp_number || '—'}</p>
+                  </div>
                   <div className="sm:col-span-2 bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
                     <p className="text-xs text-stone-500">{getText('Adrès', 'Adresse', 'Address')}</p>
                     <p className="font-semibold">{selectedKyc.full_address}</p>
+                  </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('Vil', 'Ville', 'City')}</p>
+                    <p className="font-semibold">{selectedKyc.city || '—'}</p>
+                  </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('Eta / Depatman', 'État / Département', 'State / Department')}</p>
+                    <p className="font-semibold">{selectedKyc.state || '—'}</p>
+                  </div>
+                  <div className="sm:col-span-2 bg-stone-50 dark:bg-stone-800 rounded-lg p-3">
+                    <p className="text-xs text-stone-500">{getText('Peyi', 'Pays', 'Country')}</p>
+                    <p className="font-semibold">{selectedKyc.country || '—'}</p>
                   </div>
                 </div>
 
@@ -437,6 +666,47 @@ export default function AdminKYC() {
                       </Button>
                     </div>
                   </>
+                )}
+
+                {/* Re-open approved/rejected so user can resubmit */}
+                {selectedKyc.status !== 'pending' && (
+                  <div className="space-y-3 border-t pt-4">
+                    <div>
+                      <Label className="text-sm">
+                        {getText(
+                          'Nòt (opsyonèl): poukisa w ap re-ouvri KYC a?',
+                          'Note (optionnel) : pourquoi rouvrir le KYC ?',
+                          'Note (optional): why re-open this KYC?'
+                        )}
+                      </Label>
+                      <Textarea
+                        placeholder={getText(
+                          'Eg: Dokiman te mal; kliyan an dwe voye nouvo foto...',
+                          'Ex: Document incorrect; le client doit renvoyer de nouvelles photos...',
+                          'Ex: Wrong document; user must upload new photos...'
+                        )}
+                        value={reopenReason}
+                        onChange={(e) => setReopenReason(e.target.value)}
+                        className="mt-1"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleReopen}
+                      disabled={processing}
+                      variant="outline"
+                      className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
+                    >
+                      <RefreshCw size={18} className="mr-2" />
+                      {getText('Re-ouvri KYC (Fè li refè)', 'Rouvrir KYC (à refaire)', 'Re-open KYC (redo)')}
+                    </Button>
+                    <p className="text-xs text-stone-500">
+                      {getText(
+                        'Sa ap mete KYC a tounen "An Atant" epi kliyan an ap kapab resoumet KYC.',
+                        'Cela remet le KYC en "En attente" et le client pourra le resoumettre.',
+                        'This sets KYC back to pending so the user can resubmit.'
+                      )}
+                    </p>
+                  </div>
                 )}
 
                 {/* Show rejection reason if rejected */}

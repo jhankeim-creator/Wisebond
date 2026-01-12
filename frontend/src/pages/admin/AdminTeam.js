@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,11 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Plus, RefreshCw, UserX, CheckCircle } from 'lucide-react';
-
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminTeam() {
   const { language } = useLanguage();
@@ -27,19 +26,19 @@ export default function AdminTeam() {
     role: 'admin',
   });
 
-  const roleOptions = [
-    { value: 'admin', label: getText('Admin', 'Admin', 'Admin') },
-    { value: 'support', label: getText('Sipò', 'Support', 'Support') },
-    { value: 'finance', label: getText('Finans', 'Finance', 'Finance') },
-    { value: 'manager', label: getText('Manadjè', 'Manager', 'Manager') },
-    { value: 'superadmin', label: getText('Super Admin', 'Super Admin', 'Super Admin') },
-  ];
-
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
     if (language === 'fr') return fr;
     return en;
   }, [language]);
+
+  const roleOptions = useMemo(() => ([
+    { value: 'admin', label: getText('Admin', 'Admin', 'Admin') },
+    { value: 'support', label: getText('Sipò', 'Support', 'Support') },
+    { value: 'finance', label: getText('Finans', 'Finance', 'Finance') },
+    { value: 'manager', label: getText('Manadjè', 'Manager', 'Manager') },
+    { value: 'superadmin', label: getText('Super Admin', 'Super Admin', 'Super Admin') },
+  ]), [getText]);
 
   const fetchTeam = useCallback(async () => {
     setLoading(true);

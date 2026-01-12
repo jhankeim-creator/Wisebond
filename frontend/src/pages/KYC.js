@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { 
@@ -15,6 +16,7 @@ import {
   Check, 
   X,
   Clock,
+  RefreshCw,
   Camera,
   CreditCard,
   User,
@@ -27,18 +29,19 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
-
 export default function KYC() {
   const { language } = useLanguage();
   const { user, refreshUser } = useAuth();
   
   const [kycData, setKycData] = useState(null);
+  const [kycStatus, setKycStatus] = useState(null);
+  const [statusLoading, setStatusLoading] = useState(true);
   const [formData, setFormData] = useState({
     full_name: '',
     date_of_birth: '',
     full_address: '',
     city: '',
+    state: '',
     country: 'Haiti',
     nationality: '',
     phone_number: '',
@@ -49,7 +52,7 @@ export default function KYC() {
     id_back_image: '',
     selfie_with_id: ''
   });
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -57,18 +60,29 @@ export default function KYC() {
     return en;
   };
 
-  useEffect(() => {
-    fetchKycStatus();
-  }, []);
-
-  const fetchKycStatus = async () => {
+  const fetchKycStatus = useCallback(async () => {
+    setStatusLoading(true);
     try {
       const response = await axios.get(`${API}/kyc/status`);
-      setKycData(response.data.kyc);
+      setKycData(response.data?.kyc || null);
+      setKycStatus(response.data?.status || null);
     } catch (error) {
       console.error('Error fetching KYC status:', error);
+    } finally {
+      setStatusLoading(false);
     }
-  };
+
+    // Best-effort: refresh cached user so other pages/UI stay consistent.
+    try {
+      await refreshUser();
+    } catch {
+      // ignore
+    }
+  }, [refreshUser]);
+
+  useEffect(() => {
+    fetchKycStatus();
+  }, [fetchKycStatus]);
 
   const handleImageUpload = (field) => (e) => {
     const file = e.target.files[0];
@@ -77,9 +91,65 @@ export default function KYC() {
         toast.error(getText('Imaj la twò gwo (maks 5MB)', 'Image trop grande (max 5MB)', 'Image too large (max 5MB)'));
         return;
       }
+      const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+      if (!allowed.includes(file.type)) {
+        toast.error(getText('Tanpri chwazi yon imaj JPG/PNG/WEBP', 'Veuillez choisir une image JPG/PNG/WEBP', 'Please select a JPG/PNG/WEBP image'));
+        return;
+      }
+
+      const compressToDataUrl = async (inputFile) => {
+        const maxSide = 1280;
+        const quality = 0.82;
+        const img = await new Promise((resolve, reject) => {
+          const url = URL.createObjectURL(inputFile);
+          const i = new Image();
+          i.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve(i);
+          };
+          i.onerror = (err) => {
+            URL.revokeObjectURL(url);
+            reject(err);
+          };
+          i.src = url;
+        });
+
+        const w = img.naturalWidth || img.width;
+        const h = img.naturalHeight || img.height;
+        const scale = Math.min(1, maxSide / Math.max(w, h));
+        const cw = Math.max(1, Math.round(w * scale));
+        const ch = Math.max(1, Math.round(h * scale));
+
+        const canvas = document.createElement('canvas');
+        canvas.width = cw;
+        canvas.height = ch;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, cw, ch);
+
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+        if (!blob) throw new Error('compress_failed');
+
+        // Convert to dataURL
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        return String(dataUrl);
+      };
+
       const reader = new FileReader();
       reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, [field]: reader.result }));
+        // Prefer compressed version to keep payload small and avoid backend 500s.
+        compressToDataUrl(file)
+          .then((dataUrl) => {
+            setFormData(prev => ({ ...prev, [field]: dataUrl }));
+          })
+          .catch(() => {
+            // Fallback to original if compression fails.
+            setFormData(prev => ({ ...prev, [field]: reader.result }));
+          });
       };
       reader.readAsDataURL(file);
     }
@@ -90,7 +160,8 @@ export default function KYC() {
     
     // Validate required fields
     if (!formData.full_name || !formData.date_of_birth || !formData.full_address || 
-        !formData.phone_number || !formData.id_front_image || !formData.selfie_with_id) {
+        !formData.city || !formData.state || !formData.phone_number || !formData.id_number ||
+        !formData.id_front_image || !formData.selfie_with_id) {
       toast.error(getText(
         'Tanpri ranpli tout chan obligatwa yo',
         'Veuillez remplir tous les champs obligatoires',
@@ -99,21 +170,50 @@ export default function KYC() {
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
 
     try {
       await axios.post(`${API}/kyc/submit`, formData);
-      await refreshUser();
       await fetchKycStatus();
       toast.success(getText('Dokiman KYC soumèt siksè!', 'Documents KYC soumis avec succès!', 'KYC documents submitted successfully!'));
     } catch (error) {
       toast.error(error.response?.data?.detail || getText('Erè nan soumisyon', 'Erreur lors de la soumission', 'Submission error'));
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
-  if (user?.kyc_status === 'approved') {
+  const effectiveStatus = kycStatus || user?.kyc_status || null;
+  const reopenedAt = kycData?.reopened_at;
+  const submittedAt = kycData?.submitted_at;
+  // "Redo requested" means admin reopened AFTER the user's last submission.
+  // If the user has already re-submitted (submitted_at > reopened_at), we should show the normal pending screen.
+  const redoRequested = (() => {
+    if (!reopenedAt) return false;
+    const ra = new Date(reopenedAt).getTime();
+    if (!Number.isFinite(ra)) return false;
+    if (!submittedAt) return true;
+    const sa = new Date(submittedAt).getTime();
+    if (!Number.isFinite(sa)) return true;
+    return ra > sa;
+  })();
+
+  if (statusLoading) {
+    return (
+      <DashboardLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
+        <Card className="max-w-xl mx-auto">
+          <CardContent className="p-8 text-center">
+            <RefreshCw className="mx-auto mb-3 text-[#EA580C] animate-spin" size={28} />
+            <p className="text-stone-600">
+              {getText('Ap chaje estati KYC...', 'Chargement du statut KYC...', 'Loading KYC status...')}
+            </p>
+          </CardContent>
+        </Card>
+      </DashboardLayout>
+    );
+  }
+
+  if (effectiveStatus === 'approved') {
     return (
       <DashboardLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
         <Card className="max-w-xl mx-auto">
@@ -137,7 +237,9 @@ export default function KYC() {
     );
   }
 
-  if (user?.kyc_status === 'pending' && kycData) {
+  // Only show "pending review" screen for normal pending submissions.
+  // If admin reopened AFTER last submit (redo requested), we let the user resubmit instead.
+  if (effectiveStatus === 'pending' && kycData && !redoRequested) {
     return (
       <DashboardLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
         <Card className="max-w-xl mx-auto">
@@ -157,7 +259,9 @@ export default function KYC() {
             </p>
             <div className="bg-stone-50 rounded-xl p-4 text-left">
               <p className="text-sm text-stone-500">{getText('Soumèt le', 'Soumis le', 'Submitted on')}:</p>
-              <p className="font-medium">{new Date(kycData.submitted_at).toLocaleString()}</p>
+              <p className="font-medium">
+                {kycData?.submitted_at ? new Date(kycData.submitted_at).toLocaleString() : '—'}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -188,7 +292,7 @@ export default function KYC() {
         </div>
 
         {/* Rejection Notice */}
-        {user?.kyc_status === 'rejected' && kycData?.rejection_reason && (
+        {effectiveStatus === 'rejected' && kycData?.rejection_reason && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4">
             <div className="flex items-start gap-3">
               <X className="text-red-500 mt-0.5" size={24} />
@@ -196,6 +300,32 @@ export default function KYC() {
                 <h3 className="font-semibold text-red-800 mb-1">{getText('Demann rejte', 'Demande rejetée', 'Request rejected')}</h3>
                 <p className="text-sm text-red-700">{kycData.rejection_reason}</p>
                 <p className="text-sm text-red-600 mt-2">{getText('Tanpri soumèt dokiman yo ankò.', 'Veuillez soumettre à nouveau vos documents.', 'Please resubmit your documents.')}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Re-open notice (admin requested a redo) */}
+        {effectiveStatus === 'pending' && redoRequested && (
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="text-blue-600 mt-0.5" size={24} />
+              <div>
+                <h3 className="font-semibold text-blue-900 mb-1">
+                  {getText('KYC a re-ouvri (fè l refè)', 'KYC rouvert (à refaire)', 'KYC re-opened (redo required)')}
+                </h3>
+                <p className="text-sm text-blue-800">
+                  {getText(
+                    'Tanpri soumèt KYC ou ankò ak bon dokiman/foto yo.',
+                    'Veuillez resoumettre votre KYC avec les bons documents/photos.',
+                    'Please resubmit your KYC with the correct documents/photos.'
+                  )}
+                </p>
+                {kycData?.reopened_reason && (
+                  <p className="text-sm text-blue-700 mt-2">
+                    <span className="font-medium">{getText('Rezon:', 'Raison:', 'Reason:')}</span> {kycData.reopened_reason}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -288,15 +418,27 @@ export default function KYC() {
                 />
               </div>
 
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="city">{getText('Vil', 'Ville', 'City')}</Label>
+                  <Label htmlFor="city">{getText('Vil', 'Ville', 'City')} *</Label>
                   <Input
                     id="city"
                     placeholder={getText('Pòtoprens', 'Port-au-Prince', 'Port-au-Prince')}
                     value={formData.city}
                     onChange={(e) => setFormData({...formData, city: e.target.value})}
                     className="mt-1"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="state">{getText('Eta / Depatman', 'État / Département', 'State / Department')} *</Label>
+                  <Input
+                    id="state"
+                    placeholder={getText('Ouest', 'Ouest', 'Ouest')}
+                    value={formData.state}
+                    onChange={(e) => setFormData({...formData, state: e.target.value})}
+                    className="mt-1"
+                    required
                   />
                 </div>
                 <div>
@@ -375,7 +517,7 @@ export default function KYC() {
                 <div>
                   <Label htmlFor="id_number">
                     <FileText size={16} className="inline mr-2" />
-                    {getText('Nimewo ID', 'Numéro d\'ID', 'ID Number')}
+                    {getText('Nimewo ID', 'Numéro d\'ID', 'ID Number')} *
                   </Label>
                   <Input
                     id="id_number"
@@ -383,6 +525,7 @@ export default function KYC() {
                     value={formData.id_number}
                     onChange={(e) => setFormData({...formData, id_number: e.target.value})}
                     className="mt-1"
+                    required
                   />
                 </div>
               </div>
@@ -533,10 +676,10 @@ export default function KYC() {
           <Button 
             type="submit" 
             className="btn-primary w-full"
-            disabled={loading}
+            disabled={submitting}
             data-testid="kyc-submit"
           >
-            {loading ? getText('Ap soumèt...', 'Soumission...', 'Submitting...') : getText('Soumèt Verifikasyon', 'Soumettre la Vérification', 'Submit Verification')}
+            {submitting ? getText('Ap soumèt...', 'Soumission...', 'Submitting...') : getText('Soumèt Verifikasyon', 'Soumettre la Vérification', 'Submit Verification')}
           </Button>
         </form>
       </div>

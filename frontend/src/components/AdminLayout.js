@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { useAuth } from '@/context/AuthContext';
+import { isRoleAllowed } from '@/lib/adminRbac';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Logo } from '@/components/Logo';
@@ -24,6 +25,7 @@ import {
   Home,
   Bell,
   MessageSquare,
+  Webhook,
   Shield,
   UserPlus,
   Wallet
@@ -35,6 +37,7 @@ export const AdminLayout = ({ children, title }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const adminRole = (user?.admin_role || 'admin').toLowerCase();
 
   const getText = (ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -48,23 +51,24 @@ export const AdminLayout = ({ children, title }) => {
   };
 
   const menuItems = [
-    { path: '/admin', icon: LayoutDashboard, label: getText('Tablo de bò', 'Tableau de bord', 'Dashboard'), exact: true },
-    { path: '/admin/users', icon: Users, label: getText('Kliyan', 'Clients', 'Clients') },
-    { path: '/admin/kyc', icon: UserCheck, label: 'KYC' },
-    { path: '/admin/deposits', icon: ArrowDownCircle, label: getText('Depo', 'Dépôts', 'Deposits') },
-    { path: '/admin/withdrawals', icon: ArrowUpCircle, label: getText('Retrè', 'Retraits', 'Withdrawals') },
-    { path: '/admin/agent-deposits', icon: UserPlus, label: getText('Depo Ajan', 'Dépôts Agent', 'Agent Deposits') },
-    { path: '/admin/agent-commission-withdrawals', icon: Wallet, label: getText('Retrè Komisyon Ajan', 'Retraits Commission', 'Agent Payouts') },
-    { path: '/admin/agent-settings', icon: UserPlus, label: getText('Paramèt Ajan', 'Paramètres Agent', 'Agent Settings') },
-    { path: '/admin/virtual-cards', icon: CreditCard, label: getText('Komand Kat', 'Commandes Cartes', 'Card Orders') },
-    { path: '/admin/topup', icon: Phone, label: getText('Komand Minit', 'Commandes Minutes', 'Minute Orders') },
-    { path: '/admin/rates', icon: RefreshCw, label: getText('To chanj', 'Taux de change', 'Exchange Rates') },
-    { path: '/admin/fees', icon: DollarSign, label: getText('Frè', 'Frais', 'Fees') },
-    { path: '/admin/payment-gateway', icon: Wallet, label: getText('Payment Gateway', 'Payment Gateway', 'Payment Gateway') },
-    { path: '/admin/bulk-email', icon: Mail, label: getText('Imèl', 'Emails', 'Emails') },
-    { path: '/admin/team', icon: Shield, label: getText('Ekip', 'Équipe', 'Team') },
-    { path: '/admin/logs', icon: MessageSquare, label: getText('Mesaj', 'Journaux', 'Logs') },
-    { path: '/admin/settings', icon: Settings, label: getText('Paramèt', 'Paramètres', 'Settings') },
+    { path: '/admin', icon: LayoutDashboard, label: getText('Tablo de bò', 'Tableau de bord', 'Dashboard'), exact: true, roles: ['support','finance','manager','admin','superadmin'] },
+    { path: '/admin/users', icon: Users, label: getText('Kliyan', 'Clients', 'Clients'), roles: ['support','manager','admin','superadmin'] },
+    { path: '/admin/kyc', icon: UserCheck, label: 'KYC', roles: ['support','manager','admin','superadmin'] },
+    { path: '/admin/deposits', icon: ArrowDownCircle, label: getText('Depo', 'Dépôts', 'Deposits'), roles: ['finance','manager','admin','superadmin'] },
+    { path: '/admin/withdrawals', icon: ArrowUpCircle, label: getText('Retrè', 'Retraits', 'Withdrawals'), roles: ['finance','manager','admin','superadmin'] },
+    { path: '/admin/agent-deposits', icon: UserPlus, label: getText('Depo Ajan', 'Dépôts Agent', 'Agent Deposits'), roles: ['manager','finance','admin','superadmin'] },
+    { path: '/admin/agent-commission-withdrawals', icon: Wallet, label: getText('Retrè Komisyon Ajan', 'Retraits Commission', 'Agent Payouts'), roles: ['manager','finance','admin','superadmin'] },
+    { path: '/admin/agent-settings', icon: UserPlus, label: getText('Paramèt Ajan', 'Paramètres Agent', 'Agent Settings'), roles: ['manager','finance','admin','superadmin'] },
+    { path: '/admin/virtual-cards', icon: CreditCard, label: getText('Kat Vityèl', 'Cartes Virtuelles', 'Virtual Cards'), roles: ['support','finance','manager','admin','superadmin'] },
+    { path: '/admin/topup', icon: Phone, label: getText('Komand Minit', 'Commandes Minutes', 'Minute Orders'), roles: ['support','finance','manager','admin','superadmin'] },
+    { path: '/admin/rates', icon: RefreshCw, label: getText('To chanj', 'Taux de change', 'Exchange Rates'), roles: ['finance','admin','superadmin'] },
+    { path: '/admin/fees', icon: DollarSign, label: getText('Frè', 'Frais', 'Fees'), roles: ['finance','admin','superadmin'] },
+    { path: '/admin/payment-gateway', icon: Wallet, label: getText('Payment Gateway', 'Payment Gateway', 'Payment Gateway'), roles: ['finance','manager','admin','superadmin'] },
+    { path: '/admin/bulk-email', icon: Mail, label: getText('Imèl', 'Emails', 'Emails'), roles: ['manager','admin','superadmin'] },
+    { path: '/admin/team', icon: Shield, label: getText('Ekip', 'Équipe', 'Team'), roles: ['superadmin'] },
+    { path: '/admin/logs', icon: MessageSquare, label: getText('Mesaj', 'Journaux', 'Logs'), roles: ['manager','admin','superadmin'] },
+    { path: '/admin/webhook-events', icon: Webhook, label: getText('Webhook', 'Webhook', 'Webhook'), roles: ['manager','admin','superadmin'] },
+    { path: '/admin/settings', icon: Settings, label: getText('Paramèt', 'Paramètres', 'Settings'), roles: ['admin', 'superadmin'] },
   ];
 
   const isActive = (path, exact = false) => {
@@ -105,7 +109,7 @@ export const AdminLayout = ({ children, title }) => {
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {menuItems.map((item) => {
+          {menuItems.filter((item) => isRoleAllowed(adminRole, item.roles || [])).map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path, item.exact);
             

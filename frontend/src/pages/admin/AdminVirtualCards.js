@@ -10,11 +10,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Check, X, Eye, RefreshCw, CreditCard, Upload, Wallet, Plus, Search, Trash2, Save } from 'lucide-react';
-
-const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 // Visa and Mastercard logos
 const VISA_LOGO = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0ODAgMjAwIj48cGF0aCBmaWxsPSIjMUE1RjdBIiBkPSJNMTcxLjcgNjUuNmwtNDEuMyA2OS40aDI1LjdsNi4xLTE1LjRoMjkuNGw2LjEgMTUuNGgyNS43bC00MS4zLTY5LjRoLTEwLjR6bTMuNCAyMC4zbDkuNiAyMy4xaC0xOS4zbDkuNy0yMy4xem01Ni4yLTIwLjNsLTE1LjggNDEuNy03LTQxLjdoLTI0LjZsMjAuNiA2OS40aDI0LjZsMjkuOS02OS40aC0yNy43em02NS4yIDBsLTE1LjggNDEuNy03LTQxLjdoLTI0LjZsMjAuNiA2OS40aDI0LjZsMjkuOS02OS40aC0yNy43em03MS41IDBoLTQ0LjZ2NjkuNGgyNS43di0yMy45aDIwLjFjMTkuOCAwIDMyLjEtMTEgMzIuMS0yMi44IDAtMTEuNy0xMi4zLTIyLjctMzMuMy0yMi43em0tMi41IDE4LjdjNy44IDAgMTEuNiAzLjQgMTEuNiA3LjQgMCAzLjktMy44IDcuNS0xMS42IDcuNWgtMTYuNHYtMTUuMWgxNi40eiIvPjwvc3ZnPg==';
@@ -23,11 +22,17 @@ const MASTERCARD_LOGO = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3d
 export default function AdminVirtualCards() {
   const { language } = useLanguage();
   const [activeTab, setActiveTab] = useState('orders');
+  const [strowalletEnabled, setStrowalletEnabled] = useState(false);
+  const [autoIssueStrowallet, setAutoIssueStrowallet] = useState(true);
+  const [providerCardId, setProviderCardId] = useState('');
+  const [cardSettings, setCardSettings] = useState(null);
+  const [savingCardSettings, setSavingCardSettings] = useState(false);
   
   // Orders state
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
-  const [orderFilter, setOrderFilter] = useState('pending');
+  // Default to 'all' so admins immediately see existing cards.
+  const [orderFilter, setOrderFilter] = useState('all');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -36,7 +41,7 @@ export default function AdminVirtualCards() {
   // Top-ups state
   const [topups, setTopups] = useState([]);
   const [topupsLoading, setTopupsLoading] = useState(true);
-  const [topupFilter, setTopupFilter] = useState('pending');
+  const [topupFilter, setTopupFilter] = useState('all');
   const [selectedTopup, setSelectedTopup] = useState(null);
   const [showTopupModal, setShowTopupModal] = useState(false);
   const [deliveryInfo, setDeliveryInfo] = useState('');
@@ -47,16 +52,15 @@ export default function AdminVirtualCards() {
   const [foundClient, setFoundClient] = useState(null);
   const [searchingClient, setSearchingClient] = useState(false);
   
-  // Card details for manual entry
+  // Card details for manual entry (SECURITY: do not store PAN/CVV)
   const [cardDetails, setCardDetails] = useState({
     card_email: '', // Email for the card
+    provider_card_id: '', // Optional Strowallet card_id (links an existing provider card)
     card_brand: '',
     card_type: 'visa',
     card_holder_name: '',
-    card_number: '',
     card_last4: '',
     card_expiry: '',
-    card_cvv: '',
     billing_address: '',
     billing_city: '',
     billing_country: '',
@@ -68,12 +72,27 @@ export default function AdminVirtualCards() {
   const [savingDefaultBg, setSavingDefaultBg] = useState(false);
   const [purging, setPurging] = useState(false);
   const [purgeDays, setPurgeDays] = useState(30);
+  const [purgeProvider, setPurgeProvider] = useState('all');
+  const [stwDiag, setStwDiag] = useState(null);
+  const [testingStrowallet, setTestingStrowallet] = useState(false);
+  const [showDiagModal, setShowDiagModal] = useState(false);
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
     if (language === 'fr') return fr;
     return en;
   }, [language]);
+
+  const getErrorMessage = (e) => {
+    const detail = e?.response?.data?.detail ?? e?.response?.data?.message ?? e?.message;
+    if (!detail) return getText('Erè', 'Erreur', 'Error');
+    if (typeof detail === 'string') return detail;
+    try {
+      return JSON.stringify(detail, null, 2);
+    } catch {
+      return String(detail);
+    }
+  };
 
   // Fetch orders
   const fetchOrders = useCallback(async () => {
@@ -116,10 +135,32 @@ export default function AdminVirtualCards() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await axios.get(`${API}/public/app-config`);
-        if (res.data?.card_background_image) {
-          setDefaultCardBg(res.data.card_background_image);
-        }
+        const s = await axios.get(`${API}/admin/settings`);
+        const settings = s.data?.settings || {};
+        setStrowalletEnabled(!!settings.strowallet_enabled);
+        setCardSettings({
+          strowallet_enabled: !!settings.strowallet_enabled,
+          strowallet_brand_name: settings.strowallet_brand_name || 'KAYICOM',
+          strowallet_api_key: settings.strowallet_api_key || '',
+          strowallet_api_secret: settings.strowallet_api_secret || '',
+          strowallet_api_key_masked: settings.strowallet_api_key_masked || '',
+          strowallet_api_secret_masked: settings.strowallet_api_secret_masked || '',
+          strowallet_base_url: settings.strowallet_base_url || '',
+          strowallet_create_user_path: settings.strowallet_create_user_path || '',
+          strowallet_create_card_path: settings.strowallet_create_card_path || '',
+          strowallet_fund_card_path: settings.strowallet_fund_card_path || '',
+          strowallet_withdraw_card_path: settings.strowallet_withdraw_card_path || '',
+          strowallet_fetch_card_detail_path: settings.strowallet_fetch_card_detail_path || '',
+          strowallet_card_transactions_path: settings.strowallet_card_transactions_path || '',
+          strowallet_create_card_amount_usd: settings.strowallet_create_card_amount_usd ?? 5,
+          strowallet_freeze_unfreeze_path: settings.strowallet_freeze_unfreeze_path || '',
+          strowallet_full_card_history_path: settings.strowallet_full_card_history_path || '',
+          strowallet_withdraw_status_path: settings.strowallet_withdraw_status_path || '',
+          strowallet_upgrade_limit_path: settings.strowallet_upgrade_limit_path || '',
+          card_order_fee_htg: typeof settings.card_order_fee_htg === 'number' ? settings.card_order_fee_htg : 500,
+          card_background_image: settings.card_background_image || null,
+        });
+        if (settings.card_background_image) setDefaultCardBg(settings.card_background_image);
       } catch (e) {
         // ignore
       }
@@ -138,6 +179,91 @@ export default function AdminVirtualCards() {
     }
   };
 
+  const saveCardSettings = async () => {
+    if (!cardSettings) return;
+    setSavingCardSettings(true);
+    try {
+      const payload = {
+        strowallet_enabled: !!cardSettings.strowallet_enabled,
+        strowallet_brand_name: cardSettings.strowallet_brand_name || 'KAYICOM',
+        strowallet_api_key: cardSettings.strowallet_api_key || null,
+        strowallet_api_secret: cardSettings.strowallet_api_secret || null,
+        strowallet_base_url: cardSettings.strowallet_base_url || null,
+        strowallet_create_user_path: cardSettings.strowallet_create_user_path || null,
+        strowallet_create_card_path: cardSettings.strowallet_create_card_path || null,
+        strowallet_fund_card_path: cardSettings.strowallet_fund_card_path || null,
+        strowallet_withdraw_card_path: cardSettings.strowallet_withdraw_card_path || null,
+        strowallet_fetch_card_detail_path: cardSettings.strowallet_fetch_card_detail_path || null,
+        strowallet_card_transactions_path: cardSettings.strowallet_card_transactions_path || null,
+        strowallet_create_card_amount_usd: Number.isFinite(Number(cardSettings.strowallet_create_card_amount_usd))
+          ? Number(cardSettings.strowallet_create_card_amount_usd)
+          : 5,
+        strowallet_freeze_unfreeze_path: cardSettings.strowallet_freeze_unfreeze_path || null,
+        strowallet_full_card_history_path: cardSettings.strowallet_full_card_history_path || null,
+        strowallet_withdraw_status_path: cardSettings.strowallet_withdraw_status_path || null,
+        strowallet_upgrade_limit_path: cardSettings.strowallet_upgrade_limit_path || null,
+        card_order_fee_htg: Number.isFinite(Number(cardSettings.card_order_fee_htg)) ? Number(cardSettings.card_order_fee_htg) : 500,
+        card_background_image: defaultCardBg || null,
+      };
+      await axios.put(`${API}/admin/settings`, payload);
+      setStrowalletEnabled(!!cardSettings.strowallet_enabled);
+      toast.success(getText('Paramèt kat yo sove!', 'Paramètres cartes enregistrés!', 'Card settings saved!'));
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    } finally {
+      setSavingCardSettings(false);
+    }
+  };
+
+  const applyDefaultEndpoints = async () => {
+    setSavingCardSettings(true);
+    try {
+      const res = await axios.post(`${API}/admin/strowallet/apply-default-endpoints`);
+      const s = res.data?.settings || {};
+      setCardSettings((prev) => ({
+        ...(prev || {}),
+        strowallet_base_url: s.strowallet_base_url || 'https://strowallet.com',
+        strowallet_create_user_path: s.strowallet_create_user_path || '/api/bitvcard/create-user/',
+        strowallet_create_card_path: s.strowallet_create_card_path || '/api/bitvcard/create-card/',
+        strowallet_fund_card_path: s.strowallet_fund_card_path || '/api/bitvcard/fund-card/',
+        strowallet_fetch_card_detail_path: s.strowallet_fetch_card_detail_path || '/api/bitvcard/fetch-card-detail/',
+        strowallet_card_transactions_path: s.strowallet_card_transactions_path || '/api/bitvcard/card-transactions/',
+        strowallet_create_card_amount_usd: s.strowallet_create_card_amount_usd ?? 5,
+        strowallet_freeze_unfreeze_path: s.strowallet_freeze_unfreeze_path || '',
+        strowallet_full_card_history_path: s.strowallet_full_card_history_path || '',
+        strowallet_withdraw_status_path: s.strowallet_withdraw_status_path || '',
+        strowallet_upgrade_limit_path: s.strowallet_upgrade_limit_path || '',
+      }));
+      toast.success(getText('Default endpoints mete!', 'Endpoints par défaut appliqués!', 'Default endpoints applied!'));
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    } finally {
+      setSavingCardSettings(false);
+    }
+  };
+
+  const testStrowallet = async () => {
+    setTestingStrowallet(true);
+    try {
+      const res = await axios.get(`${API}/admin/strowallet/diagnostics`);
+      setStwDiag(res.data);
+      setShowDiagModal(true);
+      const p0 = res.data?.probes?.[0];
+      const cls = p0?.classification;
+      if (cls === 'auth_error') {
+        toast.error(getText('Kle Strowallet yo pa bon (401/403).', 'Clés Strowallet invalides (401/403).', 'Strowallet keys invalid (401/403).'));
+      } else if (cls === 'wrong_path_or_base_url') {
+        toast.error(getText('Base URL oswa path la pa bon (404).', 'Base URL ou endpoint incorrect (404).', 'Base URL or endpoint incorrect (404).'));
+      } else if (cls) {
+        toast.success(getText('Dyagnostik pare.', 'Diagnostic prêt.', 'Diagnostics ready.'));
+      }
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè dyagnostik', 'Erreur diagnostic', 'Diagnostics error'));
+    } finally {
+      setTestingStrowallet(false);
+    }
+  };
+
   const purgeOldOrders = async () => {
     const ok = window.confirm(getText(
       `Ou prè pou efase kat ki pi ansyen pase ${purgeDays} jou? Sa PA ka retounen.`,
@@ -148,11 +274,40 @@ export default function AdminVirtualCards() {
 
     setPurging(true);
     try {
-      const res = await axios.post(`${API}/admin/virtual-card-orders/purge?days=${encodeURIComponent(purgeDays)}&status=approved`);
+      const providerParam = purgeProvider !== 'all' ? `&provider=${encodeURIComponent(purgeProvider)}` : '';
+      const res = await axios.post(`${API}/admin/virtual-card-orders/purge?days=${encodeURIComponent(purgeDays)}&status=approved${providerParam}`);
       toast.success(getText(
         `${res.data?.deleted || 0} kat efase.`,
         `${res.data?.deleted || 0} cartes supprimées.`,
         `Deleted ${res.data?.deleted || 0} cards.`
+      ));
+      fetchOrders();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    } finally {
+      setPurging(false);
+    }
+  };
+
+  const purgeAllManualApproved = async () => {
+    // Convenience: old manual cards may be "recent", so 30-day purge won't remove them.
+    // 3650 days is the backend max and effectively means "all history".
+    setPurgeProvider('manual');
+    setPurgeDays(3650);
+    const ok = window.confirm(getText(
+      'Ou prè pou efase TOUT kat MANYÈL apwouve yo (tout dat)? Sa PA ka retounen.',
+      'Supprimer TOUTES les cartes MANUELLES approuvées (toutes dates) ? Action irréversible.',
+      'Delete ALL approved MANUAL cards (all dates)? This cannot be undone.'
+    ));
+    if (!ok) return;
+
+    setPurging(true);
+    try {
+      const res = await axios.post(`${API}/admin/virtual-card-orders/purge?days=3650&status=approved&provider=manual`);
+      toast.success(getText(
+        `${res.data?.deleted || 0} kat manyèl efase.`,
+        `${res.data?.deleted || 0} cartes manuelles supprimées.`,
+        `Deleted ${res.data?.deleted || 0} manual cards.`
       ));
       fetchOrders();
     } catch (e) {
@@ -210,7 +365,7 @@ export default function AdminVirtualCards() {
         client_id: foundClient.client_id,
         card_email: cardDetails.card_email,
         ...cardDetails,
-        card_last4: cardDetails.card_number ? cardDetails.card_number.slice(-4) : cardDetails.card_last4
+        card_last4: cardDetails.card_last4
       };
       
       await axios.post(`${API}/admin/virtual-card-orders/create-manual`, payload);
@@ -230,13 +385,12 @@ export default function AdminVirtualCards() {
     setFoundClient(null);
     setCardDetails({
       card_email: '',
+      provider_card_id: '',
       card_brand: '',
       card_type: 'visa',
       card_holder_name: '',
-      card_number: '',
       card_last4: '',
       card_expiry: '',
-      card_cvv: '',
       billing_address: '',
       billing_city: '',
       billing_country: '',
@@ -249,12 +403,26 @@ export default function AdminVirtualCards() {
   const handleProcessOrder = async (action) => {
     setProcessing(true);
     try {
-      const payload = {
-        action,
-        admin_notes: adminNotes,
-        ...cardDetails,
-        card_last4: cardDetails.card_number ? cardDetails.card_number.slice(-4) : cardDetails.card_last4
-      };
+      const shouldAutoIssue =
+        action === 'approve' &&
+        !!strowalletEnabled &&
+        !!autoIssueStrowallet;
+
+      // If auto-issuing via Strowallet, do NOT send manual card details.
+      // Backend will create the card via Strowallet and populate details automatically.
+      const payload = shouldAutoIssue
+        ? {
+          action,
+          admin_notes: adminNotes,
+          // Optional: if card already exists in Strowallet, link it to avoid duplicates.
+          ...(providerCardId ? { provider_card_id: String(providerCardId).trim() } : {}),
+        }
+        : {
+          action,
+          admin_notes: adminNotes,
+          ...cardDetails,
+          card_last4: cardDetails.card_last4,
+        };
       
       await axios.patch(`${API}/admin/virtual-card-orders/${selectedOrder.order_id}`, payload);
       toast.success(action === 'approve' 
@@ -264,7 +432,7 @@ export default function AdminVirtualCards() {
       resetOrderForm();
       fetchOrders();
     } catch (error) {
-      toast.error(getText('Erè nan tretman', 'Erreur lors du traitement', 'Error processing'));
+      toast.error(getErrorMessage(error));
     } finally {
       setProcessing(false);
     }
@@ -289,7 +457,7 @@ export default function AdminVirtualCards() {
       setDeliveryInfo('');
       fetchTopups();
     } catch (error) {
-      toast.error(getText('Erè nan tretman', 'Erreur lors du traitement', 'Error processing'));
+      toast.error(getErrorMessage(error));
     } finally {
       setProcessing(false);
     }
@@ -297,15 +465,15 @@ export default function AdminVirtualCards() {
 
   const resetOrderForm = () => {
     setAdminNotes('');
+    setProviderCardId('');
     setCardDetails({
       card_email: '',
+      provider_card_id: '',
       card_brand: '',
       card_type: 'visa',
       card_holder_name: '',
-      card_number: '',
       card_last4: '',
       card_expiry: '',
-      card_cvv: '',
       billing_address: '',
       billing_city: '',
       billing_country: '',
@@ -317,15 +485,17 @@ export default function AdminVirtualCards() {
   const openOrderModal = (order) => {
     setSelectedOrder(order);
     setAdminNotes(order.admin_notes || '');
+    setProviderCardId(order?.provider_card_id || '');
+    // Default to auto-issue if Strowallet is enabled and the order isn't already a provider card.
+    setAutoIssueStrowallet(!!strowalletEnabled && (order?.provider !== 'strowallet'));
     setCardDetails({
       card_email: order.card_email || '',
+      provider_card_id: order?.provider_card_id || '',
       card_brand: order.card_brand || '',
       card_type: order.card_type || 'visa',
       card_holder_name: order.card_holder_name || '',
-      card_number: order.card_number || '',
       card_last4: order.card_last4 || '',
       card_expiry: order.card_expiry || '',
-      card_cvv: order.card_cvv || '',
       billing_address: order.billing_address || '',
       billing_city: order.billing_city || '',
       billing_country: order.billing_country || '',
@@ -398,7 +568,270 @@ export default function AdminVirtualCards() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Strowallet configuration (moved here for clarity) */}
+            <div className="border rounded-xl p-4 bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="font-semibold text-purple-800 dark:text-purple-200">
+                    {getText('Kat Vityèl (Strowallet)', 'Cartes Virtuelles (Strowallet)', 'Virtual Cards (Strowallet)')}
+                  </p>
+                  <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+                    {getText(
+                      'Se isit la ou mete kle yo ak aktive otomatik kreyasyon kat la.',
+                      'Configurez ici les clés et l’activation auto-émission.',
+                      'Configure keys here and enable auto-issuing.'
+                    )}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant={cardSettings?.strowallet_enabled ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setCardSettings((s) => (s ? { ...s, strowallet_enabled: !s.strowallet_enabled } : s))}
+                  className={cardSettings?.strowallet_enabled ? 'bg-purple-600 hover:bg-purple-700' : ''}
+                >
+                  {cardSettings?.strowallet_enabled ? getText('Aktive', 'Activé', 'Enabled') : getText('Dezaktive', 'Désactivé', 'Disabled')}
+                </Button>
+              </div>
+
+              {cardSettings?.strowallet_enabled ? (
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <Label>{getText('Non mak (branding)', 'Nom de marque (branding)', 'Brand name (branding)')}</Label>
+                    <Input
+                      value={cardSettings.strowallet_brand_name || ''}
+                      onChange={(e) => setCardSettings({ ...cardSettings, strowallet_brand_name: e.target.value })}
+                      className="mt-1"
+                      placeholder="KAYICOM"
+                    />
+                    <p className="text-xs text-stone-500 mt-1">
+                      {getText(
+                        'Sa se non ki ap parèt sou kat la nan app la.',
+                        'Nom affiché sur la carte dans l’app.',
+                        'Name shown on the card in the app.'
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label>API Key</Label>
+                      <Input
+                        type="password"
+                        value={cardSettings.strowallet_api_key || ''}
+                        onChange={(e) => setCardSettings({ ...cardSettings, strowallet_api_key: e.target.value })}
+                        className="mt-1 font-mono text-sm"
+                        placeholder="••••••••"
+                      />
+                      {cardSettings.strowallet_api_key_masked ? (
+                        <p className="text-xs text-stone-500 mt-1">
+                          {getText('Kle aktyèl:', 'Clé actuelle:', 'Current key:')} <span className="font-mono">{cardSettings.strowallet_api_key_masked}</span>
+                        </p>
+                      ) : null}
+                    </div>
+                    <div>
+                      <Label>API Secret</Label>
+                      <Input
+                        type="password"
+                        value={cardSettings.strowallet_api_secret || ''}
+                        onChange={(e) => setCardSettings({ ...cardSettings, strowallet_api_secret: e.target.value })}
+                        className="mt-1 font-mono text-sm"
+                        placeholder="••••••••"
+                      />
+                      {cardSettings.strowallet_api_secret_masked ? (
+                        <p className="text-xs text-stone-500 mt-1">
+                          {getText('Sekrè aktyèl:', 'Secret actuel:', 'Current secret:')} <span className="font-mono">{cardSettings.strowallet_api_secret_masked}</span>
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <details className="rounded-lg border border-purple-200 dark:border-purple-800 p-3 bg-white/60 dark:bg-stone-900/20">
+                    <summary className="cursor-pointer text-sm font-medium">
+                      {getText('Avanse (Base URL & endpoints)', 'Avancé (Base URL & endpoints)', 'Advanced (Base URL & endpoints)')}
+                    </summary>
+                    <div className="mt-3 space-y-3">
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={applyDefaultEndpoints}
+                          disabled={savingCardSettings}
+                          className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                        >
+                          {getText('Default endpoints', 'Endpoints par défaut', 'Default endpoints')}
+                        </Button>
+                        <span className="text-xs text-stone-500 self-center">
+                          {getText(
+                            'Sa ap ranplase endpoints yo otomatikman (bitvcard).',
+                            'Remplace automatiquement les endpoints (bitvcard).',
+                            'Automatically sets the correct bitvcard endpoints.'
+                          )}
+                        </span>
+                      </div>
+                      <div>
+                        <Label>Base URL</Label>
+                        <Input
+                          value={cardSettings.strowallet_base_url || ''}
+                          onChange={(e) => setCardSettings({ ...cardSettings, strowallet_base_url: e.target.value })}
+                          className="mt-1 font-mono text-sm"
+                          placeholder="https://strowallet.com"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div>
+                          <Label>{getText('Default amount (USD)', 'Montant par défaut (USD)', 'Default amount (USD)')}</Label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={cardSettings.strowallet_create_card_amount_usd ?? 5}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_create_card_amount_usd: e.target.value })}
+                            className="mt-1"
+                          />
+                          <p className="text-xs text-stone-500 mt-1">
+                            {getText(
+                              'Strowallet create-card mande amount. Mete valè default la isit la (egzanp 5).',
+                              'Le create-card demande amount. Mettez une valeur par défaut ici (ex: 5).',
+                              'create-card requires amount. Set a default here (e.g., 5).'
+                            )}
+                          </p>
+                        </div>
+                        <div>
+                          <Label>Create card customer</Label>
+                          <Input
+                            value={cardSettings.strowallet_create_user_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_create_user_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/create-user/"
+                          />
+                        </div>
+                        <div>
+                          <Label>Create card</Label>
+                          <Input
+                            value={cardSettings.strowallet_create_card_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_create_card_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/create-card/"
+                          />
+                        </div>
+                        <div>
+                          <Label>Fund card</Label>
+                          <Input
+                            value={cardSettings.strowallet_fund_card_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_fund_card_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/fund-card/"
+                          />
+                        </div>
+                        <div>
+                          <Label>Withdraw (optional)</Label>
+                          <Input
+                            value={cardSettings.strowallet_withdraw_card_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_withdraw_card_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/withdraw-card/"
+                          />
+                        </div>
+                        <div>
+                          <Label>Fetch card detail</Label>
+                          <Input
+                            value={cardSettings.strowallet_fetch_card_detail_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_fetch_card_detail_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/fetch-card-detail/"
+                          />
+                        </div>
+                        <div>
+                          <Label>Card transactions</Label>
+                          <Input
+                            value={cardSettings.strowallet_card_transactions_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_card_transactions_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/card-transactions/"
+                          />
+                        </div>
+                        <div>
+                          <Label>Freeze/Unfreeze (single endpoint)</Label>
+                          <Input
+                            value={cardSettings.strowallet_freeze_unfreeze_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_freeze_unfreeze_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/freezeunfreeze/ (if provided)"
+                          />
+                        </div>
+                        <div>
+                          <Label>Full card history</Label>
+                          <Input
+                            value={cardSettings.strowallet_full_card_history_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_full_card_history_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/full-card-history/ (if provided)"
+                          />
+                        </div>
+                        <div>
+                          <Label>Withdraw status</Label>
+                          <Input
+                            value={cardSettings.strowallet_withdraw_status_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_withdraw_status_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/withdraw-status/ (if provided)"
+                          />
+                        </div>
+                        <div>
+                          <Label>Upgrade card limit</Label>
+                          <Input
+                            value={cardSettings.strowallet_upgrade_limit_path || ''}
+                            onChange={(e) => setCardSettings({ ...cardSettings, strowallet_upgrade_limit_path: e.target.value })}
+                            className="mt-1 font-mono text-sm"
+                            placeholder="/api/bitvcard/upgrade-card-limit/ (if provided)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={testStrowallet}
+                      disabled={testingStrowallet}
+                      className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                    >
+                      {testingStrowallet ? getText('Ap teste...', 'Test...', 'Testing...') : getText('Teste Strowallet', 'Tester Strowallet', 'Test Strowallet')}
+                    </Button>
+                    <p className="text-xs text-stone-500 self-center">
+                      {getText(
+                        'Sa ap montre si kle yo ok (401/403), path/base ok (404), oswa payload manke (400/422).',
+                        'Indique si clés OK (401/403), endpoint OK (404), ou payload manquant (400/422).',
+                        'Shows if keys are OK (401/403), endpoint OK (404), or payload missing (400/422).'
+                      )}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
             <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{getText('Frè komand kat (HTG)', 'Frais commande carte (HTG)', 'Card order fee (HTG)')}</Label>
+                <Input
+                  type="number"
+                  value={cardSettings?.card_order_fee_htg ?? 500}
+                  onChange={(e) => setCardSettings((s) => (s ? { ...s, card_order_fee_htg: parseInt(e.target.value || '500') } : s))}
+                  className="w-48"
+                  min="0"
+                />
+                <p className="text-xs text-stone-500">
+                  {getText(
+                    'Sa se frè kliyan an peye lè li komande yon kat.',
+                    'Frais payé par le client lors de la commande.',
+                    'Fee paid by the client when ordering a card.'
+                  )}
+                </p>
+              </div>
+
               <div className="space-y-2">
                 <Label>{getText('Imaj fon kat pa defo', 'Image de fond par défaut', 'Default card background')}</Label>
                 <input
@@ -447,21 +880,68 @@ export default function AdminVirtualCards() {
                   />
                   <span className="text-sm text-stone-500">{getText('jou', 'jours', 'days')}</span>
                 </div>
+                <div className="flex gap-2 items-center">
+                  <Label className="text-xs text-stone-500">{getText('Provider', 'Provider', 'Provider')}</Label>
+                  <Select value={purgeProvider} onValueChange={setPurgeProvider}>
+                    <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">{getText('Tout', 'Tous', 'All')}</SelectItem>
+                      <SelectItem value="manual">{getText('Manyèl', 'Manuel', 'Manual')}</SelectItem>
+                      <SelectItem value="strowallet">Strowallet</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <p className="text-xs text-stone-500">
                   {getText(
-                    'Sa ap efase kat ki pi ansyen pase kantite jou a (Approved). Ireversib.',
-                    'Supprime les cartes approuvées plus anciennes que ce nombre de jours. Irréversible.',
-                    'Deletes approved cards older than this many days. Irreversible.'
+                    'Sa ap efase kat apwouve ki pi ansyen pase kantite jou a. Ou ka limite sou Manyèl oswa Strowallet. Ireversib.',
+                    'Supprime les cartes approuvées plus anciennes que ce nombre de jours. Filtrable (Manuel/Strowallet). Irréversible.',
+                    'Deletes approved cards older than this many days. You can filter (Manual/Strowallet). Irreversible.'
                   )}
                 </p>
                 <Button variant="destructive" onClick={purgeOldOrders} disabled={purging}>
                   <Trash2 size={16} className="mr-2" />
                   {purging ? getText('Ap efase...', 'Suppression...', 'Deleting...') : getText('Efase ansyen kat yo', 'Supprimer', 'Delete old cards')}
                 </Button>
+
+                <Button variant="outline" onClick={purgeAllManualApproved} disabled={purging} className="border-red-200 text-red-700 hover:bg-red-50">
+                  <Trash2 size={16} className="mr-2" />
+                  {getText('Netwaye TOUT kat manyèl', 'Nettoyer TOUTES cartes manuelles', 'Clean ALL manual cards')}
+                </Button>
               </div>
+            </div>
+
+            <div className="flex justify-end">
+              <Button onClick={saveCardSettings} disabled={savingCardSettings} className="bg-purple-600 hover:bg-purple-700 text-white">
+                <Save size={16} className="mr-2" />
+                {savingCardSettings ? getText('Ap sove...', 'Sauvegarde...', 'Saving...') : getText('Sove paramèt kat yo', 'Enregistrer paramètres', 'Save card settings')}
+              </Button>
             </div>
           </CardContent>
         </Card>
+
+        {/* Diagnostics modal */}
+        <Dialog open={showDiagModal} onOpenChange={setShowDiagModal}>
+          <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{getText('Dyagnostik Strowallet', 'Diagnostic Strowallet', 'Strowallet Diagnostics')}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-xs text-stone-500">
+                {getText(
+                  'Nòt: rapò sa a pa montre kle yo; li montre sèlman status code + repons Strowallet la.',
+                  'Note: ce rapport ne montre pas les clés; seulement status code + réponse.',
+                  'Note: this report does not show keys; only status codes + responses.'
+                )}
+              </p>
+              <pre className="text-xs whitespace-pre-wrap bg-stone-50 dark:bg-stone-900 border rounded-lg p-3 overflow-x-auto">
+                {stwDiag ? JSON.stringify(stwDiag, null, 2) : ''}
+              </pre>
+              <Button variant="outline" onClick={() => setShowDiagModal(false)}>
+                {getText('Fèmen', 'Fermer', 'Close')}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -491,13 +971,15 @@ export default function AdminVirtualCards() {
           </Card>
         </div>
 
-        {/* Add Card Button */}
-        <div className="flex justify-end">
-          <Button onClick={() => setShowAddCardModal(true)} className="bg-emerald-500 hover:bg-emerald-600">
-            <Plus size={18} className="mr-2" />
-            {getText('Ajoute Kat Manyèl', 'Ajouter Carte Manuellement', 'Add Card Manually')}
-          </Button>
-        </div>
+        {/* Add Card Button (manual-only, hidden when Strowallet automation is enabled) */}
+        {!strowalletEnabled && (
+          <div className="flex justify-end">
+            <Button onClick={() => setShowAddCardModal(true)} className="bg-emerald-500 hover:bg-emerald-600">
+              <Plus size={18} className="mr-2" />
+              {getText('Ajoute Kat Manyèl', 'Ajouter Carte Manuellement', 'Add Card Manually')}
+            </Button>
+          </div>
+        )}
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -555,6 +1037,7 @@ export default function AdminVirtualCards() {
                       <tr>
                         <th>Client</th>
                         <th>Email Kat</th>
+                        <th>{getText('Provider', 'Provider', 'Provider')}</th>
                         <th>{getText('Mak', 'Marque', 'Brand')}</th>
                         <th>{getText('Frè', 'Frais', 'Fee')}</th>
                         <th>Date</th>
@@ -564,14 +1047,31 @@ export default function AdminVirtualCards() {
                     </thead>
                     <tbody>
                       {ordersLoading ? (
-                        <tr><td colSpan="7" className="text-center py-8">{getText('Chajman...', 'Chargement...', 'Loading...')}</td></tr>
+                        <tr><td colSpan="8" className="text-center py-8">{getText('Chajman...', 'Chargement...', 'Loading...')}</td></tr>
                       ) : orders.length === 0 ? (
-                        <tr><td colSpan="7" className="text-center py-8">{getText('Pa gen komand', 'Aucune commande', 'No orders')}</td></tr>
+                        <tr><td colSpan="8" className="text-center py-8">{getText('Pa gen komand', 'Aucune commande', 'No orders')}</td></tr>
                       ) : (
                         orders.map((order) => (
                           <tr key={order.order_id}>
-                            <td className="font-mono text-sm">{order.client_id}</td>
+                            <td>
+                              <div className="min-w-[180px]">
+                                <div className="font-semibold text-stone-900 dark:text-white">
+                                  {order.user_full_name || order.client_id}
+                                </div>
+                                {order.user_email ? (
+                                  <div className="text-xs text-stone-500 break-all">{order.user_email}</div>
+                                ) : null}
+                                <div className="text-xs font-mono text-stone-500">{order.client_id}</div>
+                              </div>
+                            </td>
                             <td>{order.card_email}</td>
+                            <td>
+                              {order.provider === 'strowallet' ? (
+                                <Badge className="bg-purple-100 text-purple-700">Strowallet</Badge>
+                              ) : (
+                                <Badge className="bg-stone-100 text-stone-700">{getText('Manyèl', 'Manuel', 'Manual')}</Badge>
+                              )}
+                            </td>
                             <td>
                               <div className="flex items-center gap-2">
                                 {order.card_type && (
@@ -740,8 +1240,37 @@ export default function AdminVirtualCards() {
                       </p>
                     </div>
 
+                    {/* Strowallet auto-issue option */}
+                    {strowalletEnabled && (
+                      <div className="border rounded-xl p-4 bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="font-semibold text-purple-800 dark:text-purple-200">
+                              {getText('Auto-issue via Strowallet', 'Auto-émission via Strowallet', 'Auto-issue via Strowallet')}
+                            </p>
+                            <p className="text-xs text-purple-700 dark:text-purple-300 mt-1">
+                              {getText(
+                                'Si ou aktive sa, ou PA bezwen antre nimewo kat/CVV; sistèm nan ap kreye kat la otomatikman.',
+                                'Si activé, vous n’avez PAS besoin de saisir le numéro/CVV; le système créera la carte automatiquement.',
+                                'If enabled, you do NOT need to enter card number/CVV; the system will create the card automatically.'
+                              )}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant={autoIssueStrowallet ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setAutoIssueStrowallet((v) => !v)}
+                            className={autoIssueStrowallet ? 'bg-purple-600 hover:bg-purple-700' : ''}
+                          >
+                            {autoIssueStrowallet ? getText('Aktive', 'Activé', 'Enabled') : getText('Dezaktive', 'Désactivé', 'Disabled')}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Card Details Form */}
-                    <div className="border rounded-xl p-4 space-y-4">
+                    <div className={`border rounded-xl p-4 space-y-4 ${strowalletEnabled && autoIssueStrowallet ? 'opacity-50 pointer-events-none' : ''}`}>
                       <h4 className="font-semibold flex items-center gap-2">
                         <CreditCard size={18} />
                         {getText('Enfòmasyon Kat la', 'Informations de la Carte', 'Card Information')}
@@ -783,18 +1312,24 @@ export default function AdminVirtualCards() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <Label>{getText('Nimewo Kat', 'Numéro Carte', 'Card Number')}</Label>
-                          <Input value={cardDetails.card_number} onChange={(e) => setCardDetails({...cardDetails, card_number: e.target.value})} className="mt-1 font-mono" maxLength={19} />
+                          <Label>{getText('Dènye 4 chif', '4 derniers chiffres', 'Last 4 digits')}</Label>
+                          <Input
+                            value={cardDetails.card_last4}
+                            onChange={(e) => setCardDetails({ ...cardDetails, card_last4: e.target.value })}
+                            className="mt-1 font-mono"
+                            maxLength={4}
+                            placeholder="1234"
+                          />
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
-                            <Input placeholder="MM/YY" value={cardDetails.card_expiry} onChange={(e) => setCardDetails({...cardDetails, card_expiry: e.target.value})} className="mt-1" maxLength={5} />
-                          </div>
-                          <div>
-                            <Label>CVV</Label>
-                            <Input value={cardDetails.card_cvv} onChange={(e) => setCardDetails({...cardDetails, card_cvv: e.target.value})} className="mt-1" maxLength={4} type="password" />
-                          </div>
+                        <div>
+                          <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
+                          <Input
+                            placeholder="MM/YY"
+                            value={cardDetails.card_expiry}
+                            onChange={(e) => setCardDetails({ ...cardDetails, card_expiry: e.target.value })}
+                            className="mt-1"
+                            maxLength={5}
+                          />
                         </div>
                       </div>
 
@@ -827,6 +1362,25 @@ export default function AdminVirtualCards() {
                       <Label>{getText('Nòt Admin', 'Notes Admin', 'Admin Notes')}</Label>
                       <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} rows={2} className="mt-1" />
                     </div>
+
+                    {strowalletEnabled && autoIssueStrowallet && (
+                      <div>
+                        <Label>{getText('ID Kat (Strowallet) - opsyonèl', 'ID Carte (Strowallet) - optionnel', 'Card ID (Strowallet) - optional')}</Label>
+                        <Input
+                          value={providerCardId}
+                          onChange={(e) => setProviderCardId(e.target.value)}
+                          className="mt-1 font-mono"
+                          placeholder="ex: 123456"
+                        />
+                        <p className="text-xs text-stone-500 mt-1">
+                          {getText(
+                            'Sèvi ak sa sèlman si kat la deja kreye nan Strowallet epi ou pa vle kreye yon doublon.',
+                            'Utilisez ceci seulement si la carte existe déjà dans Strowallet et vous ne voulez pas créer un doublon.',
+                            'Use this only if the card already exists in Strowallet and you want to avoid creating a duplicate.'
+                          )}
+                        </p>
+                      </div>
+                    )}
 
                     <div className="flex gap-4 pt-4 border-t">
                       <Button onClick={() => handleProcessOrder('approve')} disabled={processing} className="flex-1 bg-emerald-500 hover:bg-emerald-600">
@@ -878,18 +1432,24 @@ export default function AdminVirtualCards() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <Label>{getText('Nimewo Kat', 'Numéro Carte', 'Card Number')}</Label>
-                          <Input value={cardDetails.card_number} onChange={(e) => setCardDetails({ ...cardDetails, card_number: e.target.value })} className="mt-1 font-mono" maxLength={19} />
+                          <Label>{getText('Dènye 4 chif', '4 derniers chiffres', 'Last 4 digits')}</Label>
+                          <Input
+                            value={cardDetails.card_last4}
+                            onChange={(e) => setCardDetails({ ...cardDetails, card_last4: e.target.value })}
+                            className="mt-1 font-mono"
+                            maxLength={4}
+                            placeholder="1234"
+                          />
                         </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
-                            <Input placeholder="MM/YY" value={cardDetails.card_expiry} onChange={(e) => setCardDetails({ ...cardDetails, card_expiry: e.target.value })} className="mt-1" maxLength={5} />
-                          </div>
-                          <div>
-                            <Label>CVV</Label>
-                            <Input value={cardDetails.card_cvv} onChange={(e) => setCardDetails({ ...cardDetails, card_cvv: e.target.value })} className="mt-1" maxLength={4} type="password" />
-                          </div>
+                        <div>
+                          <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
+                          <Input
+                            placeholder="MM/YY"
+                            value={cardDetails.card_expiry}
+                            onChange={(e) => setCardDetails({ ...cardDetails, card_expiry: e.target.value })}
+                            className="mt-1"
+                            maxLength={5}
+                          />
                         </div>
                       </div>
 
@@ -1096,6 +1656,23 @@ export default function AdminVirtualCards() {
                   <p className="text-xs text-stone-500 mt-1">{getText('Email asosye ak kat la', 'Email associé à la carte', 'Email associated with the card')}</p>
                 </div>
 
+                <div>
+                  <Label>{getText('Provider Card ID (Strowallet) - opsyonèl', 'Provider Card ID (Strowallet) - optionnel', 'Provider Card ID (Strowallet) - optional')}</Label>
+                  <Input
+                    placeholder="ex: 123456"
+                    value={cardDetails.provider_card_id}
+                    onChange={(e) => setCardDetails({ ...cardDetails, provider_card_id: e.target.value })}
+                    className="mt-1 font-mono"
+                  />
+                  <p className="text-xs text-stone-500 mt-1">
+                    {getText(
+                      'Si kat la deja kreye sou Strowallet, mete card_id la pou li parèt sou app la.',
+                      'Si la carte existe déjà sur Strowallet, renseignez son card_id pour l’afficher dans l’app.',
+                      'If the card already exists in Strowallet, paste its card_id so it appears in-app.'
+                    )}
+                  </p>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label>{getText('Mak Kat', 'Marque', 'Brand')}</Label>
@@ -1120,18 +1697,24 @@ export default function AdminVirtualCards() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label>{getText('Nimewo Kat', 'Numéro Carte', 'Card Number')}</Label>
-                    <Input value={cardDetails.card_number} onChange={(e) => setCardDetails({...cardDetails, card_number: e.target.value})} className="mt-1 font-mono" maxLength={19} />
+                    <Label>{getText('Dènye 4 chif', '4 derniers chiffres', 'Last 4 digits')}</Label>
+                    <Input
+                      value={cardDetails.card_last4}
+                      onChange={(e) => setCardDetails({ ...cardDetails, card_last4: e.target.value })}
+                      className="mt-1 font-mono"
+                      maxLength={4}
+                      placeholder="1234"
+                    />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
-                      <Input placeholder="MM/YY" value={cardDetails.card_expiry} onChange={(e) => setCardDetails({...cardDetails, card_expiry: e.target.value})} className="mt-1" maxLength={5} />
-                    </div>
-                    <div>
-                      <Label>CVV</Label>
-                      <Input value={cardDetails.card_cvv} onChange={(e) => setCardDetails({...cardDetails, card_cvv: e.target.value})} className="mt-1" maxLength={4} type="password" />
-                    </div>
+                  <div>
+                    <Label>{getText('Ekspire', 'Expire', 'Expiry')}</Label>
+                    <Input
+                      placeholder="MM/YY"
+                      value={cardDetails.card_expiry}
+                      onChange={(e) => setCardDetails({ ...cardDetails, card_expiry: e.target.value })}
+                      className="mt-1"
+                      maxLength={5}
+                    />
                   </div>
                 </div>
 

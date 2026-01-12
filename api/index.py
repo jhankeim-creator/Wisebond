@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -6,8 +6,11 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import asyncio
+import base64
+import binascii
+import re
 from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone, timedelta
 import bcrypt
@@ -88,6 +91,136 @@ security = HTTPBearer()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# ==================== KYC IMAGE STORAGE (OPTIONAL CLOUDINARY) ====================
+
+_DATA_URL_IMAGE_RE = re.compile(
+    r"^data:(image/(?:png|jpe?g|webp));base64,(.+)$",
+    flags=re.IGNORECASE | re.DOTALL,
+)
+
+def _cloudinary_creds(settings: Optional[dict]) -> Dict[str, Optional[str]]:
+    s = settings or {}
+    cloud_name = (s.get("cloudinary_cloud_name") or os.environ.get("CLOUDINARY_CLOUD_NAME") or "").strip() or None
+    api_key = (s.get("cloudinary_api_key") or os.environ.get("CLOUDINARY_API_KEY") or "").strip() or None
+    api_secret = (s.get("cloudinary_api_secret") or os.environ.get("CLOUDINARY_API_SECRET") or "").strip() or None
+    folder = (s.get("cloudinary_folder") or os.environ.get("CLOUDINARY_FOLDER") or "kayicom/kyc").strip().strip("/") or "kayicom/kyc"
+    return {"cloud_name": cloud_name, "api_key": api_key, "api_secret": api_secret, "folder": folder}
+
+
+def _cloudinary_is_configured(settings: Optional[dict]) -> bool:
+    c = _cloudinary_creds(settings)
+    return bool(c.get("cloud_name") and c.get("api_key") and c.get("api_secret"))
+
+
+def _cloudinary_setup(settings: Optional[dict]) -> bool:
+    if not _cloudinary_is_configured(settings):
+        return False
+    import cloudinary  # type: ignore
+    c = _cloudinary_creds(settings)
+
+    cloudinary.config(
+        cloud_name=c["cloud_name"],
+        api_key=c["api_key"],
+        api_secret=c["api_secret"],
+        secure=True,
+    )
+    return True
+
+
+def _parse_image_data_url(value: str) -> Optional[Dict[str, Any]]:
+    if not isinstance(value, str):
+        return None
+    m = _DATA_URL_IMAGE_RE.match(value.strip())
+    if not m:
+        return None
+    mime = (m.group(1) or "").lower().replace("image/jpg", "image/jpeg")
+    b64 = m.group(2) or ""
+    try:
+        raw = base64.b64decode(b64, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid image encoding (base64)")
+    return {"mime": mime, "bytes": raw, "data_url": value.strip()}
+
+
+async def _cloudinary_upload_data_url(*, settings: Optional[dict], data_url: str, folder: str, public_id: str) -> str:
+    if not _cloudinary_setup(settings):
+        raise RuntimeError("Cloudinary not configured")
+    import cloudinary.uploader  # type: ignore
+
+    result = await asyncio.to_thread(
+        cloudinary.uploader.upload,
+        data_url,
+        folder=folder,
+        public_id=public_id,
+        overwrite=True,
+        unique_filename=False,
+        resource_type="image",
+    )
+    url = (result or {}).get("secure_url") or (result or {}).get("url")
+    if not url:
+        raise RuntimeError("Cloudinary upload did not return a URL")
+    return str(url)
+
+
+async def _kyc_store_image_value(
+    value: Optional[str],
+    *,
+    user_id: str,
+    kyc_id: str,
+    field_name: str,
+    settings: Optional[dict] = None,
+) -> Dict[str, Any]:
+    if not value:
+        return {"value": value, "meta": None}
+
+    parsed = _parse_image_data_url(value)
+    if not parsed:
+        return {
+            "value": value,
+            "meta": {
+                "storage": "external",
+                "mime": None,
+                "bytes": None,
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+            },
+        }
+
+    mime = parsed["mime"]
+    raw = parsed["bytes"]
+    max_bytes = int((settings or {}).get("kyc_max_image_bytes") or os.environ.get("KYC_MAX_IMAGE_BYTES") or 5 * 1024 * 1024)
+    if len(raw) > max_bytes:
+        raise HTTPException(status_code=413, detail="Image too large")
+    if mime not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=400, detail="Unsupported image type")
+
+    if _cloudinary_is_configured(settings):
+        folder = _cloudinary_creds(settings).get("folder") or "kayicom/kyc"
+        public_id = f"{kyc_id}_{field_name}"
+        try:
+            url = await _cloudinary_upload_data_url(settings=settings, data_url=parsed["data_url"], folder=folder, public_id=public_id)
+            return {
+                "value": url,
+                "meta": {
+                    "storage": "cloudinary",
+                    "mime": mime,
+                    "bytes": len(raw),
+                    "public_id": f"{folder}/{public_id}" if folder else public_id,
+                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                },
+            }
+        except Exception as e:
+            logger.exception("Cloudinary upload failed; falling back to inline storage: %s", e)
+
+    return {
+        "value": parsed["data_url"],
+        "meta": {
+            "storage": "inline",
+            "mime": mime,
+            "bytes": len(raw),
+            "uploaded_at": datetime.now(timezone.utc).isoformat(),
+        },
+    }
+
 # ==================== MODELS ====================
 
 class UserCreate(BaseModel):
@@ -154,6 +287,7 @@ class KYCSubmit(BaseModel):
     date_of_birth: str
     full_address: str
     city: Optional[str] = None
+    state: Optional[str] = None  # state/department/province
     country: Optional[str] = "Haiti"
     nationality: str
     phone_number: str
@@ -184,12 +318,77 @@ class WithdrawalLimitUpdate(BaseModel):
     waiting_hours: int
 
 class AdminSettingsUpdate(BaseModel):
+    """
+    Admin-configurable settings.
+    Keep this aligned with `frontend/src/pages/admin/AdminSettings.js` allowedKeys.
+    """
+
+    class Config:
+        extra = "ignore"
+
+    # Email (Resend)
+    resend_enabled: Optional[bool] = None
     resend_api_key: Optional[str] = None
     sender_email: Optional[str] = None
-    crisp_website_id: Optional[str] = None
-    whatsapp_number: Optional[str] = None
+
+    # Live Chat (Crisp)
     crisp_enabled: Optional[bool] = None
+    crisp_website_id: Optional[str] = None
+
+    # WhatsApp (CallMeBot)
     whatsapp_enabled: Optional[bool] = None
+    whatsapp_number: Optional[str] = None
+    callmebot_api_key: Optional[str] = None
+
+    # Telegram
+    telegram_enabled: Optional[bool] = None
+    telegram_bot_token: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+
+    # USDT (Plisio)
+    plisio_enabled: Optional[bool] = None
+    plisio_api_key: Optional[str] = None
+    plisio_secret_key: Optional[str] = None
+
+    # Virtual Cards (Strowallet)
+    strowallet_enabled: Optional[bool] = None
+    strowallet_base_url: Optional[str] = None
+    strowallet_api_key: Optional[str] = None
+    strowallet_api_secret: Optional[str] = None
+    strowallet_create_user_path: Optional[str] = None
+    strowallet_create_card_path: Optional[str] = None
+    strowallet_fund_card_path: Optional[str] = None
+    strowallet_withdraw_card_path: Optional[str] = None
+    strowallet_fetch_card_detail_path: Optional[str] = None
+    strowallet_card_transactions_path: Optional[str] = None
+    strowallet_brand_name: Optional[str] = None
+    strowallet_mode: Optional[str] = None
+    strowallet_create_card_amount_usd: Optional[float] = None
+    strowallet_freeze_unfreeze_path: Optional[str] = None
+    strowallet_full_card_history_path: Optional[str] = None
+    strowallet_withdraw_status_path: Optional[str] = None
+    strowallet_upgrade_limit_path: Optional[str] = None
+
+    # Fees & Affiliate
+    card_order_fee_htg: Optional[int] = None
+    affiliate_reward_htg: Optional[int] = None
+    affiliate_cards_required: Optional[int] = None
+    card_background_image: Optional[str] = None
+    topup_fee_tiers: Optional[List[Dict[str, Any]]] = None
+
+    # Announcement bar
+    announcement_enabled: Optional[bool] = None
+    announcement_text_ht: Optional[str] = None
+    announcement_text_fr: Optional[str] = None
+    announcement_text_en: Optional[str] = None
+    announcement_link: Optional[str] = None
+
+    # KYC image storage (recommended)
+    cloudinary_cloud_name: Optional[str] = None
+    cloudinary_api_key: Optional[str] = None
+    cloudinary_api_secret: Optional[str] = None
+    cloudinary_folder: Optional[str] = None
+    kyc_max_image_bytes: Optional[int] = None
 
 class BulkEmailRequest(BaseModel):
     subject: str
@@ -253,9 +452,138 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-async def get_admin_user(current_user: dict = Depends(get_current_user)):
+def _normalize_admin_role(user: dict) -> str:
+    if not user or not user.get("is_admin"):
+        return ""
+    role = str(user.get("admin_role") or "").strip().lower()
+    return role or "admin"
+
+
+def _rbac_is_allowed(*, role: str, path: str) -> bool:
+    """
+    Server-side RBAC for /api/admin/* endpoints.
+    Keep frontend route/menu permissions aligned with this.
+    """
+    if not role:
+        return False
+    if role == "superadmin":
+        return True
+
+    allow: Dict[str, List[str]] = {
+        "support": [
+            "/api/admin/dashboard",
+            "/api/admin/users",
+            "/api/admin/kyc",
+            "/api/admin/kyc-image-storage-status",
+            "/api/admin/virtual-card-orders",
+            "/api/admin/card-topups",
+            "/api/admin/topup-orders",
+        ],
+        "finance": [
+            "/api/admin/dashboard",
+            "/api/admin/deposits",
+            "/api/admin/withdrawals",
+            "/api/admin/exchange-rates",
+            "/api/admin/rates",
+            "/api/admin/fees",
+            "/api/admin/card-fees",
+            "/api/admin/withdrawal-limits",
+            "/api/admin/payment-gateway",
+            "/api/admin/virtual-card-orders",
+            "/api/admin/card-topups",
+            "/api/admin/topup-orders",
+            "/api/admin/agent-deposits",
+            "/api/admin/agent-settings",
+            "/api/admin/agent-commission-withdrawals",
+            "/api/admin/agent-requests",
+            "/api/admin/agents",
+            "/api/admin/recharge-agent",
+            "/api/admin/client-reports",
+        ],
+        "manager": [
+            "/api/admin/dashboard",
+            "/api/admin/users",
+            "/api/admin/kyc",
+            "/api/admin/kyc-image-storage-status",
+            "/api/admin/deposits",
+            "/api/admin/withdrawals",
+            "/api/admin/virtual-card-orders",
+            "/api/admin/card-topups",
+            "/api/admin/topup-orders",
+            "/api/admin/bulk-email",
+            "/api/admin/logs",
+            "/api/admin/webhook-events",
+            "/api/admin/payment-gateway",
+            "/api/admin/agent-deposits",
+            "/api/admin/agent-settings",
+            "/api/admin/agent-commission-withdrawals",
+            "/api/admin/agent-requests",
+            "/api/admin/agents",
+            "/api/admin/recharge-agent",
+            "/api/admin/client-reports",
+            "/api/admin/whatsapp-notifications",
+            "/api/admin/test-whatsapp",
+            "/api/admin/test-telegram",
+            "/api/admin/telegram/setup-webhook",
+        ],
+        "admin": [
+            "/api/admin/dashboard",
+            "/api/admin/users",
+            "/api/admin/kyc",
+            "/api/admin/kyc-image-storage-status",
+            "/api/admin/deposits",
+            "/api/admin/withdrawals",
+            "/api/admin/exchange-rates",
+            "/api/admin/rates",
+            "/api/admin/fees",
+            "/api/admin/card-fees",
+            "/api/admin/withdrawal-limits",
+            "/api/admin/payment-gateway",
+            "/api/admin/settings",
+            "/api/admin/virtual-card-orders",
+            "/api/admin/card-topups",
+            "/api/admin/topup-orders",
+            "/api/admin/bulk-email",
+            "/api/admin/logs",
+            "/api/admin/webhook-events",
+            "/api/admin/agent-deposits",
+            "/api/admin/agent-settings",
+            "/api/admin/agent-commission-withdrawals",
+            "/api/admin/agent-requests",
+            "/api/admin/agents",
+            "/api/admin/recharge-agent",
+            "/api/admin/client-reports",
+            "/api/admin/whatsapp-notifications",
+            "/api/admin/test-whatsapp",
+            "/api/admin/test-telegram",
+            "/api/admin/telegram/setup-webhook",
+            "/api/admin/strowallet",
+        ],
+    }
+
+    blocked_prefixes = [
+        "/api/admin/team",
+        "/api/admin/purge-old-records",
+    ]
+    for bp in blocked_prefixes:
+        if path.startswith(bp):
+            return False
+
+    prefixes = allow.get(role, [])
+    return any(path == p or path.startswith(p + "/") for p in prefixes)
+
+
+async def get_admin_user(request: Request, current_user: dict = Depends(get_current_user)):
     if not current_user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
+
+    role = _normalize_admin_role(current_user)
+    path = str(request.url.path or "")
+
+    if path.startswith("/api/admin"):
+        if not _rbac_is_allowed(role=role, path=path):
+            raise HTTPException(status_code=403, detail="Insufficient role permissions")
+
     return current_user
 
 async def log_action(user_id: str, action: str, details: dict):
@@ -294,6 +622,23 @@ async def send_email(to_email: str, subject: str, html_content: str):
     except Exception as e:
         logger.error(f"Failed to send email: {e}")
         return False
+
+
+async def notify_admin(subject: str, html: str):
+    """
+    Notify all active admins by email.
+    """
+    db = get_db()
+    try:
+        admins = await db.users.find(
+            {"is_admin": True, "is_active": True},
+            {"_id": 0, "email": 1},
+        ).to_list(50)
+        for a in admins:
+            if a.get("email"):
+                await send_email(a["email"], subject, html)
+    except Exception as e:
+        logger.error(f"Admin email notify error: {e}")
 
 # ==================== AUTH ROUTES ====================
 
@@ -463,6 +808,21 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
     }
     
     await db.deposits.insert_one(deposit)
+    # Notify admins by email
+    try:
+        await notify_admin(
+            subject="KAYICOM - New Deposit Request",
+            html=f"""
+            <h2>New Deposit Request</h2>
+            <p><strong>Client:</strong> {current_user.get('full_name', '')} ({current_user.get('client_id', '')})</p>
+            <p><strong>Amount:</strong> {deposit['amount']} {deposit['currency']}</p>
+            <p><strong>Method:</strong> {deposit.get('method') or ''}</p>
+            <p><strong>Status:</strong> pending</p>
+            <p>Deposit ID: <code>{deposit['deposit_id']}</code></p>
+            """,
+        )
+    except Exception as e:
+        logger.error(f"Failed to notify admins for deposit: {e}")
     await log_action(current_user["user_id"], "deposit_request", {"amount": request.amount, "method": request.method})
     
     if "_id" in deposit:
@@ -780,23 +1140,54 @@ async def submit_kyc(request: KYCSubmit, current_user: dict = Depends(get_curren
     if existing and existing.get("status") == "approved":
         raise HTTPException(status_code=400, detail="KYC already approved")
     
+    kyc_id = str(uuid.uuid4())
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+
+    id_front = await _kyc_store_image_value(
+        request.id_front_image,
+        user_id=current_user["user_id"],
+        kyc_id=kyc_id,
+        field_name="id_front_image",
+        settings=settings,
+    )
+    id_back = await _kyc_store_image_value(
+        request.id_back_image,
+        user_id=current_user["user_id"],
+        kyc_id=kyc_id,
+        field_name="id_back_image",
+        settings=settings,
+    )
+    selfie = await _kyc_store_image_value(
+        request.selfie_with_id,
+        user_id=current_user["user_id"],
+        kyc_id=kyc_id,
+        field_name="selfie_with_id",
+        settings=settings,
+    )
+
     kyc_doc = {
-        "kyc_id": str(uuid.uuid4()),
+        "kyc_id": kyc_id,
         "user_id": current_user["user_id"],
         "client_id": current_user["client_id"],
         "full_name": request.full_name,
         "date_of_birth": request.date_of_birth,
         "full_address": request.full_address,
         "city": request.city,
+        "state": request.state,
         "country": request.country,
         "nationality": request.nationality,
         "phone_number": request.phone_number,
         "whatsapp_number": request.whatsapp_number,
         "id_type": request.id_type,
         "id_number": request.id_number,
-        "id_front_image": request.id_front_image,
-        "id_back_image": request.id_back_image,
-        "selfie_with_id": request.selfie_with_id,
+        "id_front_image": id_front["value"],
+        "id_back_image": id_back["value"],
+        "selfie_with_id": selfie["value"],
+        "image_meta": {
+            "id_front_image": id_front["meta"],
+            "id_back_image": id_back["meta"],
+            "selfie_with_id": selfie["meta"],
+        },
         "status": "pending",
         "submitted_at": datetime.now(timezone.utc).isoformat(),
         "reviewed_at": None,
@@ -1214,15 +1605,98 @@ async def admin_adjust_balance(user_id: str, adjustment: BalanceAdjustment, admi
 async def admin_get_kyc_submissions(
     status: Optional[str] = None,
     limit: int = Query(default=50, le=200),
+    page: int = Query(default=1, ge=1),
+    q: Optional[str] = None,
     admin: dict = Depends(get_admin_user)
 ):
     db = get_db()
     query = {}
-    if status:
+    # Frontend uses `all` as a sentinel for "no status filter".
+    if status and status != "all":
         query["status"] = status
+
+    if q and q.strip():
+        s = re.escape(q.strip())
+        query["$or"] = [
+            {"full_name": {"$regex": s, "$options": "i"}},
+            {"client_id": {"$regex": s, "$options": "i"}},
+            {"phone_number": {"$regex": s, "$options": "i"}},
+            {"whatsapp_number": {"$regex": s, "$options": "i"}},
+        ]
     
-    submissions = await db.kyc.find(query, {"_id": 0}).sort("submitted_at", -1).limit(limit).to_list(limit)
-    return {"submissions": submissions}
+    # List view must be lightweight and stable: only include fields the admin table needs.
+    # (Older records may contain large base64 blobs under different keys; projecting-in avoids 500s.)
+    skip = (page - 1) * limit
+    total_matches = await db.kyc.count_documents(query)
+    submissions = await db.kyc.find(
+        query,
+        {
+            "_id": 0,
+            "kyc_id": 1,
+            "user_id": 1,
+            "client_id": 1,
+            "full_name": 1,
+            "date_of_birth": 1,
+            "full_address": 1,
+            "city": 1,
+            "state": 1,
+            "country": 1,
+            "nationality": 1,
+            "id_type": 1,
+            "id_number": 1,
+            "phone_number": 1,
+            "whatsapp_number": 1,
+            "submitted_at": 1,
+            "status": 1,
+        },
+    ).sort("submitted_at", -1).skip(skip).limit(limit).to_list(limit)
+
+    user_ids = list({s.get("user_id") for s in submissions if s.get("user_id")})
+    users_by_id: Dict[str, Dict[str, Any]] = {}
+    if user_ids:
+        users = await db.users.find(
+            {"user_id": {"$in": user_ids}},
+            {"_id": 0, "user_id": 1, "email": 1},
+        ).to_list(len(user_ids))
+        users_by_id = {u["user_id"]: u for u in users if u.get("user_id")}
+    for s in submissions:
+        u = users_by_id.get(s.get("user_id"))
+        if u:
+            s["user_email"] = u.get("email")
+    stats = {
+        "pending": await db.kyc.count_documents({"status": "pending"}),
+        "approved": await db.kyc.count_documents({"status": "approved"}),
+        "rejected": await db.kyc.count_documents({"status": "rejected"}),
+        "total": await db.kyc.count_documents({}),
+    }
+    return {
+        "submissions": submissions,
+        "stats": stats,
+        "meta": {
+            "page": page,
+            "limit": limit,
+            "total_matches": total_matches,
+            "query": (q or "").strip() or None,
+        },
+    }
+
+@api_router.get("/admin/kyc/{kyc_id}")
+async def admin_get_kyc(
+    kyc_id: str,
+    admin: dict = Depends(get_admin_user)
+):
+    """
+    Get a single KYC submission by id.
+    Required by `frontend/src/pages/admin/AdminKYC.js` (View action).
+    """
+    db = get_db()
+    kyc = await db.kyc.find_one({"kyc_id": kyc_id}, {"_id": 0})
+    if not kyc:
+        raise HTTPException(status_code=404, detail="KYC submission not found")
+    user = await db.users.find_one({"user_id": kyc.get("user_id")}, {"_id": 0, "email": 1})
+    if user and user.get("email"):
+        kyc["user_email"] = user["email"]
+    return {"kyc": kyc}
 
 @api_router.patch("/admin/kyc/{kyc_id}")
 async def admin_review_kyc(
@@ -1265,6 +1739,109 @@ async def admin_review_kyc(
         await send_email(user["email"], subject, content)
     
     return {"message": f"KYC {action}d successfully"}
+
+
+@api_router.post("/admin/kyc/migrate-images")
+async def admin_migrate_kyc_images(
+    limit: int = Query(default=25, le=100),
+    dry_run: bool = Query(default=True),
+    status: Optional[str] = None,
+    admin: dict = Depends(get_admin_user),
+):
+    db = get_db()
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not _cloudinary_is_configured(settings):
+        raise HTTPException(status_code=400, detail="Cloudinary is not configured (set in Admin Settings or CLOUDINARY_* env vars)")
+
+    base_filter: Dict[str, Any] = {}
+    if status and status != "all":
+        base_filter["status"] = status
+
+    needs_migrate = {
+        "$or": [
+            {"id_front_image": {"$regex": r"^data:image/", "$options": "i"}},
+            {"id_back_image": {"$regex": r"^data:image/", "$options": "i"}},
+            {"selfie_with_id": {"$regex": r"^data:image/", "$options": "i"}},
+        ]
+    }
+
+    query: Dict[str, Any]
+    if base_filter:
+        query = {"$and": [base_filter, needs_migrate]}
+    else:
+        query = needs_migrate
+
+    cursor = db.kyc.find(
+        query,
+        {
+            "_id": 0,
+            "kyc_id": 1,
+            "user_id": 1,
+            "id_front_image": 1,
+            "id_back_image": 1,
+            "selfie_with_id": 1,
+            "image_meta": 1,
+        },
+    ).sort("submitted_at", -1).limit(limit)
+
+    processed = 0
+    migrated = 0
+    errors: List[Dict[str, Any]] = []
+
+    async for doc in cursor:
+        processed += 1
+        kyc_id = doc.get("kyc_id")
+        user_id = doc.get("user_id")
+        if not kyc_id or not user_id:
+            continue
+
+        update_fields: Dict[str, Any] = {}
+        meta = dict(doc.get("image_meta") or {})
+
+        for field_name in ("id_front_image", "id_back_image", "selfie_with_id"):
+            val = doc.get(field_name)
+            if not isinstance(val, str) or not val.lower().startswith("data:image/"):
+                continue
+            try:
+                stored = await _kyc_store_image_value(val, user_id=user_id, kyc_id=kyc_id, field_name=field_name, settings=settings)
+                if stored["value"] and stored["value"] != val:
+                    update_fields[field_name] = stored["value"]
+                    meta[field_name] = stored["meta"]
+            except Exception as e:
+                errors.append({"kyc_id": kyc_id, "field": field_name, "error": str(e)})
+
+        if update_fields:
+            update_fields["image_meta"] = meta
+            update_fields["images_migrated_at"] = datetime.now(timezone.utc).isoformat()
+            if not dry_run:
+                await db.kyc.update_one({"kyc_id": kyc_id}, {"$set": update_fields})
+            migrated += 1
+
+    return {
+        "dry_run": dry_run,
+        "processed": processed,
+        "migrated": migrated,
+        "errors": errors[:20],
+        "note": "Run again to continue migrating remaining records.",
+    }
+
+
+@api_router.get("/admin/kyc-image-storage-status")
+async def admin_kyc_image_storage_status(admin: dict = Depends(get_admin_user)):
+    db = get_db()
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    c = _cloudinary_creds(settings)
+    source = "none"
+    if settings and any((settings.get("cloudinary_cloud_name"), settings.get("cloudinary_api_key"), settings.get("cloudinary_api_secret"))):
+        source = "settings"
+    elif any((os.environ.get("CLOUDINARY_CLOUD_NAME"), os.environ.get("CLOUDINARY_API_KEY"), os.environ.get("CLOUDINARY_API_SECRET"))):
+        source = "env"
+    return {
+        "cloudinary_configured": _cloudinary_is_configured(settings),
+        "source": source,
+        "cloudinary_folder": c.get("folder"),
+        "kyc_max_image_bytes": int((settings or {}).get("kyc_max_image_bytes") or os.environ.get("KYC_MAX_IMAGE_BYTES") or 5242880),
+    }
 
 @api_router.get("/admin/deposits")
 async def admin_get_deposits(
@@ -1462,17 +2039,79 @@ async def admin_update_withdrawal_limit(limit: WithdrawalLimitUpdate, admin: dic
 async def admin_get_settings(admin: dict = Depends(get_admin_user)):
     db = get_db()
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not settings:
-        settings = {
-            "setting_id": "main",
-            "resend_enabled": False,
-            "resend_api_key": "",
-            "sender_email": "",
-            "crisp_enabled": False,
-            "crisp_website_id": "",
-            "whatsapp_enabled": False,
-            "whatsapp_number": ""
-        }
+    defaults = {
+        "setting_id": "main",
+        # Email (Resend)
+        "resend_enabled": False,
+        "resend_api_key": "",
+        "sender_email": "",
+
+        # Live Chat (Crisp)
+        "crisp_enabled": False,
+        "crisp_website_id": "",
+
+        # WhatsApp (CallMeBot)
+        "whatsapp_enabled": False,
+        "whatsapp_number": "",
+        "callmebot_api_key": "",
+
+        # Telegram
+        "telegram_enabled": False,
+        "telegram_bot_token": "",
+        "telegram_chat_id": "",
+
+        # USDT (Plisio)
+        "plisio_enabled": False,
+        "plisio_api_key": "",
+        "plisio_secret_key": "",
+
+        # Virtual Cards (Strowallet)
+        "strowallet_enabled": False,
+        "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", "") or "https://strowallet.com",
+        "strowallet_api_key": "",
+        "strowallet_api_secret": "",
+        "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/card-user",
+        "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", ""),
+        "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", ""),
+        "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", ""),
+        "strowallet_fetch_card_detail_path": os.environ.get("STROWALLET_FETCH_CARD_DETAIL_PATH", "") or "/api/bitvcard/fetch-card-detail/",
+        "strowallet_card_transactions_path": os.environ.get("STROWALLET_CARD_TRANSACTIONS_PATH", "") or "/api/bitvcard/card-transactions/",
+        "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", "") or "KAYICOM",
+        "strowallet_mode": os.environ.get("STROWALLET_MODE", "") or "live",
+        "strowallet_create_card_amount_usd": float(os.environ.get("STROWALLET_CREATE_CARD_AMOUNT_USD", "5") or "5"),
+        "strowallet_freeze_unfreeze_path": os.environ.get("STROWALLET_FREEZE_UNFREEZE_PATH", ""),
+        "strowallet_full_card_history_path": os.environ.get("STROWALLET_FULL_CARD_HISTORY_PATH", ""),
+        "strowallet_withdraw_status_path": os.environ.get("STROWALLET_WITHDRAW_STATUS_PATH", ""),
+        "strowallet_upgrade_limit_path": os.environ.get("STROWALLET_UPGRADE_LIMIT_PATH", ""),
+
+        # Fees & Affiliate
+        "card_order_fee_htg": 500,
+        "affiliate_reward_htg": 2000,
+        "affiliate_cards_required": 5,
+        "card_background_image": None,
+        "topup_fee_tiers": [],
+
+        # Announcement bar
+        "announcement_enabled": False,
+        "announcement_text_ht": "",
+        "announcement_text_fr": "",
+        "announcement_text_en": "",
+        "announcement_link": ""
+        ,
+        # KYC image storage (recommended)
+        "cloudinary_cloud_name": os.environ.get("CLOUDINARY_CLOUD_NAME", "") or "",
+        "cloudinary_api_key": "",
+        "cloudinary_api_secret": "",
+        "cloudinary_folder": os.environ.get("CLOUDINARY_FOLDER", "") or "kayicom/kyc",
+        "kyc_max_image_bytes": int(os.environ.get("KYC_MAX_IMAGE_BYTES", "5242880") or "5242880"),
+    }
+
+    if settings:
+        for k, v in defaults.items():
+            if k not in settings:
+                settings[k] = v
+    else:
+        settings = defaults
     return {"settings": settings}
 
 @api_router.put("/admin/settings")
@@ -1529,24 +2168,144 @@ async def admin_get_card_orders(
 ):
     db = get_db()
     query = {}
-    if status:
+    # Treat `all` as "no filter" sentinel for admin UI.
+    if status and status != "all":
         query["status"] = status
     
-    orders = await db.virtual_card_orders.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    orders = await db.virtual_card_orders.find(
+        query,
+        {
+            "_id": 0,
+            "card_image": 0,
+            "card_number": 0,
+            "card_cvv": 0,
+        },
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+    # Enrich with basic user info (name/email) for admin UX
+    user_ids = list({o.get("user_id") for o in orders if o.get("user_id")})
+    if user_ids:
+        users = await db.users.find(
+            {"user_id": {"$in": user_ids}},
+            {"_id": 0, "user_id": 1, "full_name": 1, "email": 1},
+        ).to_list(len(user_ids))
+        users_by_id = {u["user_id"]: u for u in users if u.get("user_id")}
+        for o in orders:
+            u = users_by_id.get(o.get("user_id"))
+            if u:
+                o["user_full_name"] = u.get("full_name")
+                o["user_email"] = u.get("email")
     return {"orders": orders}
+
+class CardDetailsPayload(BaseModel):
+    action: Optional[str] = None  # approve or reject
+    admin_notes: Optional[str] = None
+    card_brand: Optional[str] = None
+    card_type: Optional[str] = None  # visa/mastercard
+    card_holder_name: Optional[str] = None
+    card_last4: Optional[str] = None
+    card_expiry: Optional[str] = None
+    billing_address: Optional[str] = None
+    billing_city: Optional[str] = None
+    billing_country: Optional[str] = None
+    billing_zip: Optional[str] = None
+    card_image: Optional[str] = None
+
+
+class ManualCardCreate(BaseModel):
+    user_id: str
+    client_id: str
+    card_email: str
+    card_brand: Optional[str] = None
+    card_type: Optional[str] = "visa"
+    card_holder_name: Optional[str] = None
+    card_last4: Optional[str] = None
+    card_expiry: Optional[str] = None
+    billing_address: Optional[str] = None
+    billing_city: Optional[str] = None
+    billing_country: Optional[str] = None
+    billing_zip: Optional[str] = None
+    card_image: Optional[str] = None
+
+
+@api_router.post("/admin/virtual-card-orders/create-manual")
+async def admin_create_card_manually(
+    payload: ManualCardCreate,
+    admin: dict = Depends(get_admin_user),
+):
+    db = get_db()
+    user = await db.users.find_one({"user_id": payload.user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    default_card_bg = settings.get("card_background_image") if settings else None
+    card_image = payload.card_image or default_card_bg
+
+    order = {
+        "order_id": str(uuid.uuid4()),
+        "user_id": payload.user_id,
+        "client_id": payload.client_id,
+        "card_email": payload.card_email.lower(),
+        "card_brand": payload.card_brand,
+        "card_type": payload.card_type,
+        "card_holder_name": payload.card_holder_name,
+        "card_last4": payload.card_last4,
+        "card_expiry": payload.card_expiry,
+        "billing_address": payload.billing_address,
+        "billing_city": payload.billing_city,
+        "billing_country": payload.billing_country,
+        "billing_zip": payload.billing_zip,
+        "card_image": card_image,
+        "provider": "manual",
+        "fee": 0,
+        "status": "approved",
+        "card_status": "active",
+        "failed_payment_count": 0,
+        "admin_notes": "Created manually by admin",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_by": admin["user_id"],
+    }
+
+    await db.virtual_card_orders.insert_one(order)
+
+    if user.get("email"):
+        subject = "KAYICOM - Virtual Card Created"
+        content = f"""
+        <h2>Virtual Card Created</h2>
+        <p>Hello {user.get('full_name', 'User')},</p>
+        <p>Your virtual card has been created successfully by our admin team.</p>
+        <p><strong>Card Email:</strong> {payload.card_email}</p>
+        <p><strong>Brand:</strong> {payload.card_brand or 'N/A'}</p>
+        <p><strong>Type:</strong> {payload.card_type or 'N/A'}</p>
+        <p><strong>Last 4:</strong> {payload.card_last4 or 'N/A'}</p>
+        <p><strong>Expiry:</strong> {payload.card_expiry or 'N/A'}</p>
+        <p style="font-size:12px;color:#6b7280;">Security: we do not display or store the full card number or CVV in the app.</p>
+        <p>Order ID: <code>{order['order_id']}</code></p>
+        """
+        await send_email(user["email"], subject, content)
+
+    await log_action(admin["user_id"], "card_manual_create", {"order_id": order["order_id"], "user_id": payload.user_id})
+    if "_id" in order:
+        del order["_id"]
+    return {"order": order, "message": "Card created successfully"}
+
 
 @api_router.patch("/admin/virtual-card-orders/{order_id}")
 async def admin_process_card_order(
     order_id: str,
-    action: str,
-    admin_notes: Optional[str] = None,
-    admin: dict = Depends(get_admin_user)
+    payload: CardDetailsPayload,
+    admin: dict = Depends(get_admin_user),
 ):
     db = get_db()
     order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
+    action = payload.action
+    if not action:
+        raise HTTPException(status_code=400, detail="Action required")
+
     if order["status"] != "pending":
         raise HTTPException(status_code=400, detail="Order already processed")
     
@@ -1554,53 +2313,246 @@ async def admin_process_card_order(
         raise HTTPException(status_code=400, detail="Invalid action")
     
     new_status = "approved" if action == "approve" else "rejected"
-    
-    await db.virtual_card_orders.update_one(
-        {"order_id": order_id},
-        {"$set": {
-            "status": new_status,
-            "admin_notes": admin_notes,
-            "processed_at": datetime.now(timezone.utc).isoformat(),
-            "processed_by": admin["user_id"]
-        }}
-    )
-    
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    default_card_bg = settings.get("card_background_image") if settings else None
+
+    update_doc: Dict[str, Any] = {
+        "status": new_status,
+        "admin_notes": payload.admin_notes,
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_by": admin["user_id"],
+    }
+
     if action == "approve":
-        await db.users.update_one(
-            {"user_id": order["user_id"]},
-            {"$inc": {"wallet_usd": CARD_BONUS_USD}}
-        )
-        
-        await db.transactions.insert_one({
-            "transaction_id": str(uuid.uuid4()),
-            "user_id": order["user_id"],
-            "type": "card_bonus",
-            "amount": CARD_BONUS_USD,
-            "currency": "USD",
-            "status": "completed",
-            "description": "Virtual card approval bonus",
-            "created_at": datetime.now(timezone.utc).isoformat()
+        # Save non-sensitive card details (no PAN/CVV)
+        update_doc.update({
+            "provider": order.get("provider") or "manual",
+            "card_status": order.get("card_status") or "active",
         })
+        for k in [
+            "card_brand",
+            "card_type",
+            "card_holder_name",
+            "card_last4",
+            "card_expiry",
+            "billing_address",
+            "billing_city",
+            "billing_country",
+            "billing_zip",
+        ]:
+            v = getattr(payload, k)
+            if v not in (None, ""):
+                update_doc[k] = v
+        if payload.card_image:
+            update_doc["card_image"] = payload.card_image
+        elif not order.get("card_image") and default_card_bg:
+            update_doc["card_image"] = default_card_bg
+
+    await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": update_doc})
+
+    user = await db.users.find_one({"user_id": order.get("user_id")}, {"_id": 0})
+    if action == "reject":
+        # Refund fee (use fee on order if present)
+        refund_fee = float(order.get("fee", CARD_FEE_HTG) or 0)
+        if refund_fee > 0:
+            await db.users.update_one({"user_id": order["user_id"]}, {"$inc": {"wallet_htg": refund_fee}})
+            await db.transactions.insert_one({
+                "transaction_id": str(uuid.uuid4()),
+                "user_id": order["user_id"],
+                "type": "card_order_refund",
+                "amount": refund_fee,
+                "currency": "HTG",
+                "status": "completed",
+                "description": "Virtual card order refund (rejected)",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+        if user and user.get("email"):
+            subject = "KAYICOM - Virtual Card Order Rejected"
+            content = f"""
+            <h2>Virtual Card Order Rejected</h2>
+            <p>Hello {user.get('full_name','User')},</p>
+            <p>Your virtual card order has been rejected.</p>
+            <p><strong>Order ID:</strong> <code>{order_id}</code></p>
+            {'<p><strong>Reason:</strong> ' + str(payload.admin_notes) + '</p>' if payload.admin_notes else ''}
+            """
+            await send_email(user["email"], subject, content)
     else:
-        await db.users.update_one(
-            {"user_id": order["user_id"]},
-            {"$inc": {"wallet_htg": CARD_FEE_HTG}}
-        )
-        
-        await db.transactions.insert_one({
-            "transaction_id": str(uuid.uuid4()),
-            "user_id": order["user_id"],
-            "type": "card_order_refund",
-            "amount": CARD_FEE_HTG,
-            "currency": "HTG",
-            "status": "completed",
-            "description": "Virtual card order refund (rejected)",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
-    
+        if user and user.get("email"):
+            subject = "KAYICOM - Virtual Card Approved"
+            content = f"""
+            <h2>Virtual Card Approved</h2>
+            <p>Hello {user.get('full_name','User')},</p>
+            <p>Your virtual card request has been approved.</p>
+            <p><strong>Card Email:</strong> {order.get('card_email','')}</p>
+            <p><strong>Brand:</strong> {update_doc.get('card_brand') or order.get('card_brand') or 'N/A'}</p>
+            <p><strong>Type:</strong> {update_doc.get('card_type') or order.get('card_type') or 'N/A'}</p>
+            <p><strong>Last 4:</strong> {update_doc.get('card_last4') or order.get('card_last4') or 'N/A'}</p>
+            <p><strong>Expiry:</strong> {update_doc.get('card_expiry') or order.get('card_expiry') or 'N/A'}</p>
+            <p style="font-size:12px;color:#6b7280;">Security: the app does not display or store the full card number or CVV.</p>
+            <p><strong>Order ID:</strong> <code>{order_id}</code></p>
+            """
+            await send_email(user["email"], subject, content)
+
     await log_action(admin["user_id"], "card_order_process", {"order_id": order_id, "action": action})
-    
     return {"message": f"Card order {action}d successfully"}
+
+
+@api_router.patch("/admin/virtual-card-orders/{order_id}/details")
+async def admin_update_card_details(
+    order_id: str,
+    payload: CardDetailsPayload,
+    admin: dict = Depends(get_admin_user),
+):
+    db = get_db()
+    order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    default_card_bg = settings.get("card_background_image") if settings else None
+
+    update_doc: Dict[str, Any] = {}
+    for k in [
+        "card_brand",
+        "card_type",
+        "card_holder_name",
+        "card_last4",
+        "card_expiry",
+        "billing_address",
+        "billing_city",
+        "billing_country",
+        "billing_zip",
+    ]:
+        v = getattr(payload, k)
+        if v not in (None, ""):
+            update_doc[k] = v
+    if payload.card_image:
+        update_doc["card_image"] = payload.card_image
+    elif not order.get("card_image") and default_card_bg:
+        update_doc["card_image"] = default_card_bg
+    if payload.admin_notes is not None:
+        update_doc["admin_notes"] = payload.admin_notes
+
+    if update_doc:
+        await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": update_doc})
+        await log_action(admin["user_id"], "virtual_card_order_update_details", {"order_id": order_id, "fields": list(update_doc.keys())})
+
+    return {"message": "Card details updated"}
+
+
+@api_router.delete("/admin/virtual-card-orders/{order_id}")
+async def admin_delete_virtual_card_order(
+    order_id: str,
+    admin: dict = Depends(get_admin_user),
+):
+    db = get_db()
+    order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    result = await db.virtual_card_orders.delete_one({"order_id": order_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+    await log_action(admin["user_id"], "virtual_card_order_delete", {"order_id": order_id, "user_id": order.get("user_id"), "status": order.get("status")})
+    return {"message": "Order deleted", "order_id": order_id}
+
+
+@api_router.post("/admin/virtual-card-orders/purge")
+async def admin_purge_virtual_card_orders(
+    days: int = 30,
+    status: str = "approved",
+    provider: Optional[str] = None,
+    admin: dict = Depends(get_admin_user),
+):
+    """
+    Delete old virtual card orders (typically approved). Irreversible.
+    Mirrors the admin UI cleanup action.
+    """
+    db = get_db()
+    days = int(days)
+    if days < 1:
+        raise HTTPException(status_code=400, detail="days must be >= 1")
+    if days > 3650:
+        days = 3650
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    q: Dict[str, Any] = {"status": status, "created_at": {"$lt": cutoff.isoformat()}}
+    if provider and provider != "all":
+        q["provider"] = provider
+
+    res = await db.virtual_card_orders.delete_many(q)
+    await log_action(admin["user_id"], "virtual_card_order_purge", {"days": days, "status": status, "provider": provider, "deleted": res.deleted_count})
+    return {"deleted": res.deleted_count}
+
+
+@api_router.get("/admin/card-topups")
+async def admin_get_card_topups(
+    status: Optional[str] = None,
+    limit: int = Query(default=50, le=200),
+    admin: dict = Depends(get_admin_user),
+):
+    db = get_db()
+    query: Dict[str, Any] = {}
+    if status and status != "all":
+        query["status"] = status
+    deposits = await db.virtual_card_deposits.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    return {"deposits": deposits}
+
+
+class CardTopUpProcessPayload(BaseModel):
+    action: str  # approve or reject
+    admin_notes: Optional[str] = None
+    delivery_info: Optional[str] = None
+
+
+@api_router.patch("/admin/card-topups/{deposit_id}")
+async def admin_process_card_topup(
+    deposit_id: str,
+    payload: CardTopUpProcessPayload,
+    admin: dict = Depends(get_admin_user),
+):
+    db = get_db()
+    deposit = await db.virtual_card_deposits.find_one({"deposit_id": deposit_id}, {"_id": 0})
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Top-up request not found")
+    if deposit.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="Top-up already processed")
+    if payload.action not in ["approve", "reject"]:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    new_status = "approved" if payload.action == "approve" else "rejected"
+    update_doc = {
+        "status": new_status,
+        "admin_notes": payload.admin_notes,
+        "delivery_info": payload.delivery_info,
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "processed_by": admin["user_id"],
+    }
+    await db.virtual_card_deposits.update_one({"deposit_id": deposit_id}, {"$set": update_doc})
+
+    await db.transactions.update_one(
+        {"reference_id": deposit_id},
+        {"$set": {"status": "completed" if payload.action == "approve" else "refunded"}},
+    )
+
+    if payload.action == "reject":
+        refund_amount = float(deposit.get("total_amount", deposit.get("amount", 0)) or 0)
+        if refund_amount > 0:
+            await db.users.update_one({"user_id": deposit["user_id"]}, {"$inc": {"wallet_usd": refund_amount}})
+            await db.transactions.insert_one({
+                "transaction_id": str(uuid.uuid4()),
+                "user_id": deposit["user_id"],
+                "type": "card_topup_refund",
+                "amount": refund_amount,
+                "currency": "USD",
+                "status": "completed",
+                "description": "Card top-up refund (rejected)",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+    await log_action(admin["user_id"], "card_topup_process", {"deposit_id": deposit_id, "action": payload.action})
+    return {"message": f"Top-up {payload.action}d successfully"}
 
 @api_router.get("/admin/topup-orders")
 async def admin_get_topup_orders(
@@ -1725,38 +2677,37 @@ async def startup():
     await db.withdrawals.create_index([("user_id", 1), ("status", 1)])
     await db.kyc.create_index("user_id", unique=True)
     
-    # Create default admin if not exists, or update existing admin email
-    admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
-    if not admin:
-        admin_doc = {
-            "user_id": str(uuid.uuid4()),
-            "client_id": "KCADMIN001",
-            "email": "kayicom509@gmail.com",
-            "password_hash": hash_password("Admin123!"),
-            "full_name": "System Admin",
-            "phone": "+509 0000 0000",
-            "language": "fr",
-            "kyc_status": "approved",
-            "wallet_htg": 0.0,
-            "wallet_usd": 0.0,
-            "affiliate_code": "ADMINCODE",
-            "affiliate_earnings": 0.0,
-            "referred_by": None,
-            "is_active": True,
-            "is_admin": True,
-            "two_factor_enabled": False,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db.users.insert_one(admin_doc)
-        logger.info("Default admin created: kayicom509@gmail.com / Admin123!")
-    else:
-        # Update admin email if it's the old one
-        if admin.get("email") == "admin@kayicom.com":
-            await db.users.update_one(
-                {"user_id": admin["user_id"]},
-                {"$set": {"email": "kayicom509@gmail.com"}}
-            )
-            logger.info("Admin email updated from admin@kayicom.com to kayicom509@gmail.com")
+    # Optional: create a first admin via env (disabled by default).
+    # SECURITY: never ship hardcoded default credentials.
+    if os.environ.get("CREATE_DEFAULT_ADMIN", "").strip().lower() in ("1", "true", "yes", "on"):
+        existing_admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
+        if not existing_admin:
+            email = (os.environ.get("DEFAULT_ADMIN_EMAIL") or "").strip().lower()
+            password = (os.environ.get("DEFAULT_ADMIN_PASSWORD") or "").strip()
+            if not email or not password:
+                logger.warning("CREATE_DEFAULT_ADMIN is true but DEFAULT_ADMIN_EMAIL/DEFAULT_ADMIN_PASSWORD not set; skipping admin creation")
+            else:
+                admin_doc = {
+                    "user_id": str(uuid.uuid4()),
+                    "client_id": "KCADMIN001",
+                    "email": email,
+                    "password_hash": hash_password(password),
+                    "full_name": "System Admin",
+                    "phone": "+509 0000 0000",
+                    "language": "fr",
+                    "kyc_status": "approved",
+                    "wallet_htg": 0.0,
+                    "wallet_usd": 0.0,
+                    "affiliate_code": generate_affiliate_code(),
+                    "affiliate_earnings": 0.0,
+                    "referred_by": None,
+                    "is_active": True,
+                    "is_admin": True,
+                    "two_factor_enabled": False,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await db.users.insert_one(admin_doc)
+                logger.info("Default admin created via DEFAULT_ADMIN_EMAIL (password not logged)")
     
     # Create default exchange rates
     rates = await db.exchange_rates.find_one({"rate_id": "main"}, {"_id": 0})
