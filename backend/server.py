@@ -248,6 +248,18 @@ def _virtual_cards_enabled(settings: Optional[dict]) -> bool:
     """
     return _strowallet_enabled(settings)
 
+def _default_card_billing() -> Dict[str, str]:
+    """
+    Default billing address for virtual cards.
+    NOTE: We deliberately do not depend on KYC here; some card programs require a fixed billing address.
+    """
+    return {
+        "billing_address": "3401 N. Miami, Ave. Ste 230",
+        "billing_city": "Miami, Florida",
+        "billing_zip": "33127",
+        "billing_country": "United States",
+    }
+
 def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
     # Default to strowallet.com to avoid silent "enabled but no base_url" misconfig.
     base_url = ((settings or {}).get("strowallet_base_url") or os.environ.get("STROWALLET_BASE_URL") or "https://strowallet.com").strip()
@@ -3924,6 +3936,7 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
         raise HTTPException(status_code=400, detail="Card email is required (missing user email)")
 
     # Create card order (manual process - admin will approve/reject)
+    billing_default = _default_card_billing()
     order = {
         "order_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
@@ -3935,6 +3948,11 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
         "failed_payment_count": 0,
         "spending_limit_usd": 500.0,  # default limit (white-label program policy)
         "spending_limit_period": "monthly",  # daily|monthly
+        # Default billing address (program default)
+        "billing_address": billing_default.get("billing_address"),
+        "billing_city": billing_default.get("billing_city"),
+        "billing_country": billing_default.get("billing_country"),
+        "billing_zip": billing_default.get("billing_zip"),
         "admin_notes": None,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "processed_at": None,
@@ -4641,6 +4659,21 @@ async def virtual_card_reveal(
 
     await log_action(user["user_id"], "card_reveal", {"order_id": order_id, "provider": "strowallet"})
 
+    # Best-effort balance/currency (some providers include it in fetch-card-detail).
+    bal = _extract_float_first(
+        detail,
+        "data.balance",
+        "data.available_balance",
+        "data.availableBalance",
+        "balance",
+        "available_balance",
+        "availableBalance",
+        "data.card.balance",
+        "data.card.available_balance",
+        "data.card.availableBalance",
+    )
+    cur = _extract_first(detail, "data.currency", "currency", "data.card.currency")
+
     return {
         "card": {
             "order_id": order_id,
@@ -4649,6 +4682,13 @@ async def virtual_card_reveal(
             "cvv": str(cvv) if cvv is not None else None,
             "expiry": expiry_norm,
             "card_holder_name": order.get("card_holder_name") or (user.get("full_name") or ""),
+            # Convenience fields for the UI (do not store PAN/CVV in DB).
+            "card_balance": bal,
+            "card_currency": (str(cur).upper() if cur else None),
+            "billing_address": order.get("billing_address"),
+            "billing_city": order.get("billing_city"),
+            "billing_country": order.get("billing_country"),
+            "billing_zip": order.get("billing_zip"),
         },
         "warning": "Sensitive data: do not share or screenshot.",
     }
