@@ -183,19 +183,7 @@ export default function KYC() {
   };
 
   const effectiveStatus = kycStatus || user?.kyc_status || null;
-  const reopenedAt = kycData?.reopened_at;
-  const submittedAt = kycData?.submitted_at;
-  // "Redo requested" means admin reopened AFTER the user's last submission.
-  // If the user has already re-submitted (submitted_at > reopened_at), we should show the normal pending screen.
-  const redoRequested = (() => {
-    if (!reopenedAt) return false;
-    const ra = new Date(reopenedAt).getTime();
-    if (!Number.isFinite(ra)) return false;
-    if (!submittedAt) return true;
-    const sa = new Date(submittedAt).getTime();
-    if (!Number.isFinite(sa)) return true;
-    return ra > sa;
-  })();
+  const isReopened = Boolean(kycData?.reopened_at);
 
   if (statusLoading) {
     return (
@@ -237,8 +225,8 @@ export default function KYC() {
   }
 
   // Only show "pending review" screen for normal pending submissions.
-  // If admin reopened AFTER last submit (redo requested), we let the user resubmit instead.
-  if (effectiveStatus === 'pending' && kycData && !redoRequested) {
+  // If the admin "re-opened" the KYC, we let the user resubmit instead.
+  if (effectiveStatus === 'pending' && kycData && !isReopened) {
     return (
       <DashboardLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
         <Card className="max-w-xl mx-auto">
@@ -305,7 +293,7 @@ export default function KYC() {
         )}
 
         {/* Re-open notice (admin requested a redo) */}
-        {effectiveStatus === 'pending' && redoRequested && (
+        {effectiveStatus === 'pending' && isReopened && (
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
             <div className="flex items-start gap-3">
               <AlertTriangle className="text-blue-600 mt-0.5" size={24} />
