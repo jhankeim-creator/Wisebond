@@ -5430,22 +5430,8 @@ async def admin_strowallet_diagnostics(admin: dict = Depends(get_admin_user)):
         return "unexpected"
 
     for p in probes:
-        res = p.get("result") or {}
-        sc = res.get("status_code")
-        cls = classify(sc)
-
-        # Some providers return HTTP 200 with success=false for auth issues.
-        body = res.get("body")
-        if cls == "ok" and isinstance(body, dict):
-            success = body.get("success")
-            msg = str(body.get("message") or body.get("error") or "").lower()
-            if success is False:
-                if "invalid public key" in msg or "invalid key" in msg or "unauthorized" in msg:
-                    cls = "auth_error"
-                else:
-                    cls = "provider_error"
-
-        p["classification"] = cls
+        sc = p["result"].get("status_code")
+        p["classification"] = classify(sc)
 
     return {"summary": summary, "probes": probes}
 
