@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Check, X, Eye, RefreshCw, CreditCard, Upload, Wallet, Plus, Search, Trash2, Save } from 'lucide-react';
+import { Check, X, Eye, EyeOff, RefreshCw, CreditCard, Upload, Wallet, Plus, Search, Trash2, Save, Link2, MapPin } from 'lucide-react';
 
 // Visa and Mastercard logos
 const VISA_LOGO = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0ODAgMjAwIj48cGF0aCBmaWxsPSIjMUE1RjdBIiBkPSJNMTcxLjcgNjUuNmwtNDEuMyA2OS40aDI1LjdsNi4xLTE1LjRoMjkuNGw2LjEgMTUuNGgyNS43bC00MS4zLTY5LjRoLTEwLjR6bTMuNCAyMC4zbDkuNiAyMy4xaC0xOS4zbDkuNy0yMy4xem01Ni4yLTIwLjNsLTE1LjggNDEuNy03LTQxLjdoLTI0LjZsMjAuNiA2OS40aDI0LjZsMjkuOS02OS40aC0yNy43em02NS4yIDBsLTE1LjggNDEuNy03LTQxLjdoLTI0LjZsMjAuNiA2OS40aDI0LjZsMjkuOS02OS40aC0yNy43em03MS41IDBoLTQ0LjZ2NjkuNGgyNS43di0yMy45aDIwLjFjMTkuOCAwIDMyLjEtMTEgMzIuMS0yMi44IDAtMTEuNy0xMi4zLTIyLjctMzMuMy0yMi43em0tMi41IDE4LjdjNy44IDAgMTEuNiAzLjQgMTEuNiA3LjQgMCAzLjktMy44IDcuNS0xMS42IDcuNWgtMTYuNHYtMTUuMWgxNi40eiIvPjwvc3ZnPg==';
@@ -74,6 +74,18 @@ export default function AdminVirtualCards() {
   const [stwDiag, setStwDiag] = useState(null);
   const [testingStrowallet, setTestingStrowallet] = useState(false);
   const [showDiagModal, setShowDiagModal] = useState(false);
+
+  // Link External Card Modal state
+  const [showLinkExternalModal, setShowLinkExternalModal] = useState(false);
+  const [externalCardId, setExternalCardId] = useState('');
+  const [fetchingExternalCard, setFetchingExternalCard] = useState(false);
+  const [fetchedExternalCard, setFetchedExternalCard] = useState(null);
+  const [linkingExternalCard, setLinkingExternalCard] = useState(false);
+  const [linkCardEmail, setLinkCardEmail] = useState('');
+  const [linkTargetUser, setLinkTargetUser] = useState(null);
+  const [searchLinkUserId, setSearchLinkUserId] = useState('');
+  const [searchingLinkUser, setSearchingLinkUser] = useState(false);
+  const [showExternalCardSensitive, setShowExternalCardSensitive] = useState(false);
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -344,6 +356,89 @@ export default function AdminVirtualCards() {
     } finally {
       setSearchingClient(false);
     }
+  };
+
+  // Search for user to link external card
+  const searchLinkUser = async () => {
+    if (!searchLinkUserId.trim()) return;
+    setSearchingLinkUser(true);
+    setLinkTargetUser(null);
+    try {
+      const response = await axios.get(`${API}/admin/users?search=${searchLinkUserId}&limit=1`);
+      if (response.data.users && response.data.users.length > 0) {
+        setLinkTargetUser(response.data.users[0]);
+        setLinkCardEmail(response.data.users[0].email || '');
+      } else {
+        toast.error(getText('Itilizatè pa jwenn', 'Utilisateur non trouvé', 'User not found'));
+      }
+    } catch (error) {
+      toast.error(getText('Erè nan rechèch', 'Erreur de recherche', 'Search error'));
+    } finally {
+      setSearchingLinkUser(false);
+    }
+  };
+
+  // Fetch external card details from Strowallet
+  const fetchExternalCard = async () => {
+    if (!externalCardId.trim()) {
+      toast.error(getText('Antre ID kat la', 'Entrez l\'ID de la carte', 'Enter the card ID'));
+      return;
+    }
+    setFetchingExternalCard(true);
+    setFetchedExternalCard(null);
+    try {
+      const res = await axios.post(`${API}/admin/virtual-cards/fetch-external`, { card_id: externalCardId.trim() });
+      setFetchedExternalCard(res.data);
+      toast.success(getText('Kat jwenn!', 'Carte trouvée!', 'Card found!'));
+    } catch (err) {
+      const msg = err.response?.data?.detail || getText('Kat la pa jwenn oswa ID la pa bon', 'Carte non trouvée ou ID invalide', 'Card not found or invalid ID');
+      toast.error(msg);
+      setFetchedExternalCard(null);
+    } finally {
+      setFetchingExternalCard(false);
+    }
+  };
+
+  // Link external card to user
+  const linkExternalCardToUser = async () => {
+    if (!fetchedExternalCard) {
+      toast.error(getText('Ou dwe chèche kat la anvan', 'Recherchez d\'abord la carte', 'Search for the card first'));
+      return;
+    }
+    if (!linkTargetUser) {
+      toast.error(getText('Chwazi yon itilizatè', 'Choisissez un utilisateur', 'Choose a user'));
+      return;
+    }
+    setLinkingExternalCard(true);
+    try {
+      await axios.post(`${API}/admin/virtual-cards/link-external`, { 
+        card_id: externalCardId.trim(),
+        user_id: linkTargetUser.user_id,
+        card_email: linkCardEmail.trim() || linkTargetUser.email || ''
+      });
+      toast.success(getText('Kat la lye ak kont itilizatè a!', 'Carte liée au compte!', 'Card linked to user account!'));
+      setShowLinkExternalModal(false);
+      resetLinkExternalForm();
+      fetchOrders();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || getText('Erè nan lyaj kat la', 'Erreur de liaison', 'Error linking card'));
+    } finally {
+      setLinkingExternalCard(false);
+    }
+  };
+
+  const resetLinkExternalForm = () => {
+    setExternalCardId('');
+    setFetchedExternalCard(null);
+    setLinkTargetUser(null);
+    setSearchLinkUserId('');
+    setLinkCardEmail('');
+    setShowExternalCardSensitive(false);
+  };
+
+  const formatFullCardNumber = (num) => {
+    if (!num) return '•••• •••• •••• ••••';
+    return String(num).replace(/(.{4})/g, '$1 ').trim();
   };
 
   // Create card manually for client
@@ -972,15 +1067,25 @@ export default function AdminVirtualCards() {
           </Card>
         </div>
 
-        {/* Add Card Button (manual-only, hidden when Strowallet automation is enabled) */}
-        {!strowalletEnabled && (
-          <div className="flex justify-end">
+        {/* Add Card Buttons */}
+        <div className="flex justify-end gap-3">
+          <Button 
+            onClick={() => {
+              setShowLinkExternalModal(true);
+              resetLinkExternalForm();
+            }} 
+            className="bg-purple-500 hover:bg-purple-600"
+          >
+            <Link2 size={18} className="mr-2" />
+            {getText('Lye Kat Strowallet', 'Lier Carte Strowallet', 'Link Strowallet Card')}
+          </Button>
+          {!strowalletEnabled && (
             <Button onClick={() => setShowAddCardModal(true)} className="bg-emerald-500 hover:bg-emerald-600">
               <Plus size={18} className="mr-2" />
               {getText('Ajoute Kat Manyèl', 'Ajouter Carte Manuellement', 'Add Card Manually')}
             </Button>
-          </div>
-        )}
+          )}
+        </div>
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -1720,6 +1825,227 @@ export default function AdminVirtualCards() {
                 >
                   <Plus size={18} className="mr-2" />
                   {processing ? getText('Kreyasyon...', 'Création...', 'Creating...') : getText('Kreye Kat', 'Créer Carte', 'Create Card')}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Link External Strowallet Card Modal */}
+        <Dialog open={showLinkExternalModal} onOpenChange={setShowLinkExternalModal}>
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Link2 className="text-purple-600" size={24} />
+                {getText('Lye Kat Strowallet Egzistan', 'Lier Carte Strowallet Existante', 'Link Existing Strowallet Card')}
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-6 py-4">
+              {/* Info Banner */}
+              <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-4">
+                <p className="text-sm text-purple-700 dark:text-purple-300">
+                  {getText(
+                    'Sa pèmèt ou lye yon kat Strowallet ki deja egziste ak yon kont itilizatè. Antre ID kat la pou wè detay yo.',
+                    'Permet de lier une carte Strowallet existante au compte d\'un utilisateur. Entrez l\'ID pour voir les détails.',
+                    'Link an existing Strowallet card to a user account. Enter the card ID to see the details.'
+                  )}
+                </p>
+              </div>
+
+              {/* Card ID Input */}
+              <div className="p-4 bg-stone-50 dark:bg-stone-800 rounded-xl">
+                <Label>{getText('ID Kat Strowallet', 'ID Carte Strowallet', 'Strowallet Card ID')}</Label>
+                <div className="flex gap-2 mt-2">
+                  <Input
+                    placeholder="ex: 49f7c414-1b6f-4509-aeb3-9bfa55654f62"
+                    value={externalCardId}
+                    onChange={(e) => setExternalCardId(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && fetchExternalCard()}
+                    className="flex-1 font-mono text-sm"
+                  />
+                  <Button 
+                    onClick={fetchExternalCard} 
+                    disabled={fetchingExternalCard || !externalCardId.trim()}
+                    className="bg-purple-600 hover:bg-purple-700"
+                  >
+                    {fetchingExternalCard ? (
+                      <RefreshCw size={18} className="animate-spin" />
+                    ) : (
+                      <Search size={18} />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Fetched Card Preview */}
+              {fetchedExternalCard && (
+                <div className="space-y-4 border-t pt-4">
+                  <h4 className="font-semibold text-stone-900 dark:text-white flex items-center gap-2">
+                    <Check size={18} className="text-emerald-600" />
+                    {getText('Kat Jwenn', 'Carte Trouvée', 'Card Found')}
+                  </h4>
+                  
+                  {/* Card Visual */}
+                  <div className={`relative rounded-2xl p-4 sm:p-6 text-white overflow-hidden ${
+                    fetchedExternalCard.card_type === 'mastercard' 
+                      ? 'bg-gradient-to-br from-orange-500 via-red-500 to-pink-600' 
+                      : 'bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800'
+                  }`}>
+                    <div className="relative z-10">
+                      <div className="flex justify-between items-start mb-4">
+                        <span className="text-white/90 font-bold text-sm">Strowallet</span>
+                        <img 
+                          src={fetchedExternalCard.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
+                          alt={fetchedExternalCard.card_type}
+                          className="h-8 w-auto"
+                        />
+                      </div>
+                      
+                      <div className="mb-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-lg tracking-wider">
+                            {showExternalCardSensitive 
+                              ? formatFullCardNumber(fetchedExternalCard.card_number)
+                              : '•••• •••• •••• ' + (fetchedExternalCard.card_number?.slice(-4) || '••••')
+                            }
+                          </span>
+                          <button 
+                            onClick={() => setShowExternalCardSensitive(!showExternalCardSensitive)}
+                            className="text-white/70 hover:text-white"
+                          >
+                            {showExternalCardSensitive ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-between items-end">
+                        <div>
+                          <p className="text-white/60 text-xs uppercase mb-1">{getText('Pòtè Kat', 'Titulaire', 'Card Holder')}</p>
+                          <p className="font-medium tracking-wide text-sm">
+                            {fetchedExternalCard.card_holder_name || 'N/A'}
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/60 text-xs uppercase mb-1">EXP</p>
+                          <p className="font-mono font-medium text-sm">
+                            {fetchedExternalCard.card_expiry || `${fetchedExternalCard.expiry_month}/${fetchedExternalCard.expiry_year}`}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-white/60 text-xs uppercase mb-1">CVV</p>
+                          <p className="font-mono font-medium text-sm">
+                            {showExternalCardSensitive ? (fetchedExternalCard.cvv || '•••') : '•••'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Balance */}
+                  {fetchedExternalCard.balance !== null && fetchedExternalCard.balance !== undefined && (
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-emerald-700 dark:text-emerald-400 text-sm">
+                          {getText('Balans', 'Solde', 'Balance')}
+                        </span>
+                        <span className="font-bold text-emerald-800 dark:text-emerald-300">
+                          ${Number(fetchedExternalCard.balance).toFixed(2)} {fetchedExternalCard.currency}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Billing Address */}
+                  {(fetchedExternalCard.billing_address || fetchedExternalCard.billing_city) && (
+                    <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
+                      <div className="flex items-start gap-2">
+                        <MapPin className="text-stone-500 mt-0.5" size={14} />
+                        <div>
+                          <p className="text-stone-500 text-xs mb-1">{getText('Adrès Faktirasyon', 'Adresse de Facturation', 'Billing Address')}</p>
+                          <p className="text-sm text-stone-700 dark:text-stone-300">
+                            {[fetchedExternalCard.billing_address, fetchedExternalCard.billing_city, fetchedExternalCard.billing_country, fetchedExternalCard.billing_zip].filter(Boolean).join(', ')}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* User Selection */}
+              {fetchedExternalCard && (
+                <div className="border-t pt-4 space-y-4">
+                  <h4 className="font-semibold text-stone-900 dark:text-white">
+                    {getText('Chwazi Itilizatè', 'Choisir Utilisateur', 'Choose User')}
+                  </h4>
+                  
+                  <div className="p-4 bg-stone-50 dark:bg-stone-800 rounded-xl">
+                    <Label>{getText('Rechèch Itilizatè (ID oswa Email)', 'Rechercher Utilisateur (ID ou Email)', 'Search User (ID or Email)')}</Label>
+                    <div className="flex gap-2 mt-2">
+                      <Input
+                        placeholder="KYC-XXXXXX ou email@example.com"
+                        value={searchLinkUserId}
+                        onChange={(e) => setSearchLinkUserId(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && searchLinkUser()}
+                      />
+                      <Button onClick={searchLinkUser} disabled={searchingLinkUser} variant="outline">
+                        {searchingLinkUser ? <RefreshCw size={18} className="animate-spin" /> : <Search size={18} />}
+                      </Button>
+                    </div>
+                    
+                    {linkTargetUser && (
+                      <div className="mt-3 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-emerald-800 dark:text-emerald-300">{linkTargetUser.full_name}</p>
+                            <p className="text-sm text-emerald-600">{linkTargetUser.email}</p>
+                            <p className="text-xs font-mono text-stone-500">{linkTargetUser.client_id}</p>
+                          </div>
+                          <Badge className="bg-emerald-500">
+                            <Check size={14} className="mr-1" />
+                            {getText('Jwenn', 'Trouvé', 'Found')}
+                          </Badge>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Email for Card */}
+                  <div>
+                    <Label>{getText('Email pou kat la', 'Email pour la carte', 'Email for card')}</Label>
+                    <Input
+                      type="email"
+                      value={linkCardEmail}
+                      onChange={(e) => setLinkCardEmail(e.target.value)}
+                      placeholder={linkTargetUser?.email || 'email@example.com'}
+                      className="mt-2"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-4 pt-4 border-t">
+                <Button variant="outline" onClick={() => { setShowLinkExternalModal(false); resetLinkExternalForm(); }} className="flex-1">
+                  {getText('Anile', 'Annuler', 'Cancel')}
+                </Button>
+                <Button 
+                  onClick={linkExternalCardToUser} 
+                  disabled={linkingExternalCard || !fetchedExternalCard || !linkTargetUser} 
+                  className="flex-1 bg-purple-600 hover:bg-purple-700"
+                >
+                  {linkingExternalCard ? (
+                    <>
+                      <RefreshCw size={18} className="mr-2 animate-spin" />
+                      {getText('Ap lye...', 'Liaison...', 'Linking...')}
+                    </>
+                  ) : (
+                    <>
+                      <Link2 size={18} className="mr-2" />
+                      {getText('Lye Kat la', 'Lier la Carte', 'Link Card')}
+                    </>
+                  )}
                 </Button>
               </div>
             </div>

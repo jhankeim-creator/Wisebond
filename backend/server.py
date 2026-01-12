@@ -3885,21 +3885,17 @@ class FetchExternalCardRequest(BaseModel):
     card_id: str
 
 
-@api_router.post("/virtual-cards/fetch-external")
-async def fetch_external_card_details(
+@api_router.post("/admin/virtual-cards/fetch-external")
+async def admin_fetch_external_card_details(
     request: FetchExternalCardRequest,
-    current_user: dict = Depends(get_current_user),
+    admin: dict = Depends(get_admin_user),
 ):
     """
-    Fetch card details from Strowallet API by card_id.
-    This allows users to preview a card before linking it to their account.
+    [ADMIN ONLY] Fetch card details from Strowallet API by card_id.
+    This allows admins to preview a card before linking it to a user's account.
     Returns card_number, expiry, cvv, holder_name for display.
     """
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _virtual_cards_enabled(settings):
-        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
-    if current_user.get("kyc_status") != "approved":
-        raise HTTPException(status_code=403, detail="KYC verification required to link cards")
 
     if not request.card_id or not request.card_id.strip():
         raise HTTPException(status_code=400, detail="Card ID is required")
@@ -4050,30 +4046,37 @@ async def fetch_external_card_details(
     }
 
 
-class LinkExternalCardRequest(BaseModel):
+class AdminLinkExternalCardRequest(BaseModel):
     card_id: str
-    card_email: Optional[str] = None  # User can override the email for the card
+    user_id: str  # Admin specifies which user to link the card to
+    card_email: Optional[str] = None
 
 
-@api_router.post("/virtual-cards/link-external")
-async def link_external_card(
-    request: LinkExternalCardRequest,
-    current_user: dict = Depends(get_current_user),
+@api_router.post("/admin/virtual-cards/link-external")
+async def admin_link_external_card(
+    request: AdminLinkExternalCardRequest,
+    admin: dict = Depends(get_admin_user),
 ):
     """
-    Link an existing Strowallet card to the user's account.
+    [ADMIN ONLY] Link an existing Strowallet card to a user's account.
     The card_id must be valid and the card must not already be linked.
     """
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _virtual_cards_enabled(settings):
-        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
-    if current_user.get("kyc_status") != "approved":
-        raise HTTPException(status_code=403, detail="KYC verification required to link cards")
 
     if not request.card_id or not request.card_id.strip():
         raise HTTPException(status_code=400, detail="Card ID is required")
+    if not request.user_id or not request.user_id.strip():
+        raise HTTPException(status_code=400, detail="User ID is required")
 
     card_id = request.card_id.strip()
+
+    # Find the target user
+    target_user = await db.users.find_one(
+        {"user_id": request.user_id.strip()},
+        {"_id": 0, "user_id": 1, "client_id": 1, "email": 1, "full_name": 1}
+    )
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
 
     # Check if card is already linked to any user
     existing = await db.virtual_card_orders.find_one(
@@ -4081,8 +4084,8 @@ async def link_external_card(
         {"_id": 0, "user_id": 1, "order_id": 1},
     )
     if existing:
-        if existing.get("user_id") == current_user["user_id"]:
-            raise HTTPException(status_code=400, detail="This card is already linked to your account")
+        if existing.get("user_id") == target_user["user_id"]:
+            raise HTTPException(status_code=400, detail="This card is already linked to this user's account")
         raise HTTPException(status_code=400, detail="This card is already linked to another account")
 
     # Fetch card details from provider (try multiple endpoints)
@@ -4105,7 +4108,7 @@ async def link_external_card(
             "card_id": card_id,
             "public_key": cfg.get("api_key", ""),
             "mode": cfg.get("mode", "live"),
-            "reference": f"link-{current_user['user_id']}-{card_id[:8]}",
+            "reference": f"link-{target_user['user_id']}-{card_id[:8]}",
         }
         if cfg.get("api_secret"):
             payload["secret_key"] = cfg["api_secret"]
@@ -4189,19 +4192,19 @@ async def link_external_card(
         card_expiry = f"{em}/{ey}"
 
     # Use provided email or user's email
-    card_email = (request.card_email or "").strip() or current_user.get("email") or ""
+    card_email = (request.card_email or "").strip() or target_user.get("email") or ""
     brand_name = cfg.get("brand_name") or "Strowallet"
 
     # Create the card order entry (already approved since card exists)
     order_id = str(uuid.uuid4())
     order_doc = {
         "order_id": order_id,
-        "user_id": current_user["user_id"],
-        "client_id": current_user.get("client_id"),
+        "user_id": target_user["user_id"],
+        "client_id": target_user.get("client_id"),
         "card_email": card_email,
         "card_brand": brand_name,
         "card_type": str(card_type).lower() if card_type else "visa",
-        "card_holder_name": str(holder_name).upper() if holder_name else (current_user.get("full_name") or "").upper(),
+        "card_holder_name": str(holder_name).upper() if holder_name else (target_user.get("full_name") or "").upper(),
         "card_last4": card_last4,
         "card_expiry": card_expiry,
         "billing_address": str(billing_address) if billing_address else None,
@@ -4213,14 +4216,14 @@ async def link_external_card(
         "provider": "strowallet",
         "provider_card_id": card_id,
         "card_status": "active",
-        "admin_notes": "Linked by user via manual integration",
+        "admin_notes": f"Linked by admin {admin.get('email', admin.get('user_id'))} via manual integration",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "approved_at": datetime.now(timezone.utc).isoformat(),
-        "approved_by": "user_self_link",
+        "approved_by": admin.get("user_id"),
     }
 
     await db.virtual_card_orders.insert_one(order_doc)
-    await log_action(current_user["user_id"], "card_linked", {"order_id": order_id, "card_id": card_id})
+    await log_action(admin["user_id"], "admin_card_linked", {"order_id": order_id, "card_id": card_id, "target_user_id": target_user["user_id"]})
 
     # Remove _id for response
     if "_id" in order_doc:
