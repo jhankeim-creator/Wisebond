@@ -68,7 +68,7 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/team', icon: Shield, label: getText('Ekip', 'Équipe', 'Team'), roles: ['superadmin'] },
     { path: '/admin/logs', icon: MessageSquare, label: getText('Mesaj', 'Journaux', 'Logs'), roles: ['manager','admin','superadmin'] },
     { path: '/admin/webhook-events', icon: Webhook, label: getText('Webhook', 'Webhook', 'Webhook'), roles: ['manager','admin','superadmin'] },
-    { path: '/admin/settings', icon: Settings, label: getText('Paramèt', 'Paramètres', 'Settings'), roles: ['admin', 'superadmin'] },
+    { path: '/admin/settings', icon: Settings, label: getText('Paramèt', 'Paramètres', 'Settings'), roles: ['superadmin'] },
   ];
 
   const isActive = (path, exact = false) => {

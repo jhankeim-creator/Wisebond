@@ -135,7 +135,7 @@ function AppRoutes() {
       <Route path="/admin/withdrawals" element={<ProtectedRoute adminOnly requiredRoles={['finance','manager','admin','superadmin']}><AdminWithdrawals /></ProtectedRoute>} />
       <Route path="/admin/rates" element={<ProtectedRoute adminOnly requiredRoles={['finance','admin','superadmin']}><AdminRates /></ProtectedRoute>} />
       <Route path="/admin/fees" element={<ProtectedRoute adminOnly requiredRoles={['finance','admin','superadmin']}><AdminFees /></ProtectedRoute>} />
-      <Route path="/admin/settings" element={<ProtectedRoute adminOnly requiredRoles={['admin','superadmin']}><AdminSettings /></ProtectedRoute>} />
+      <Route path="/admin/settings" element={<ProtectedRoute adminOnly requiredRoles={['superadmin']}><AdminSettings /></ProtectedRoute>} />
       <Route path="/admin/bulk-email" element={<ProtectedRoute adminOnly requiredRoles={['manager','admin','superadmin']}><AdminBulkEmail /></ProtectedRoute>} />
       <Route path="/admin/virtual-cards" element={<ProtectedRoute adminOnly requiredRoles={['support','finance','manager','admin','superadmin']}><AdminVirtualCards /></ProtectedRoute>} />
       <Route path="/admin/topup" element={<ProtectedRoute adminOnly requiredRoles={['support','finance','manager','admin','superadmin']}><AdminTopUp /></ProtectedRoute>} />
