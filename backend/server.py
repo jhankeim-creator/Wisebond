@@ -483,40 +483,6 @@ async def _strowallet_post(settings: Optional[dict], path: str, payload: Dict[st
     return data
 
 
-async def _strowallet_get(settings: Optional[dict], path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    cfg = _strowallet_config(settings)
-    url = cfg["base_url"].rstrip("/") + "/" + str(path or "").lstrip("/")
-    headers = {
-        "x-api-key": cfg["api_key"],
-        "api-key": cfg["api_key"],
-        "public_key": cfg["api_key"],
-        "Accept": "application/json",
-    }
-    if cfg.get("api_secret"):
-        headers["X-API-Secret"] = cfg["api_secret"]
-        headers["x-api-secret"] = cfg["api_secret"]
-        headers["api-secret"] = cfg["api_secret"]
-        headers["secret_key"] = cfg["api_secret"]
-
-    async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
-        resp = await client.get(url, params=(params or {}), headers=headers)
-        try:
-            data = resp.json()
-        except Exception:
-            data = {"raw": resp.text}
-
-    if resp.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Strowallet API error ({resp.status_code}): {data}")
-
-    success = _extract_first(data, "success", "status", "data.status")
-    if isinstance(success, bool) and success is False:
-        raise HTTPException(status_code=502, detail=f"Strowallet API error: {data}")
-    if isinstance(success, str) and success.lower() in {"failed", "error", "false"}:
-        raise HTTPException(status_code=502, detail=f"Strowallet API error: {data}")
-
-    return data
-
-
 async def _strowallet_create_customer_id(
     *,
     settings: Optional[dict],
@@ -764,45 +730,6 @@ async def _strowallet_create_customer_id(
         if customer_id:
             return str(customer_id)
         last_result = {"path": p, "response": resp}
-
-    # Special-case: customer already exists at provider (email taken). Attempt to look up an existing customer id.
-    last_err_text = ""
-    try:
-        last_err_text = str((last_result or {}).get("error") or "").lower()
-    except Exception:
-        last_err_text = ""
-    email_taken = ("already been taken" in last_err_text) or ("email has already been taken" in last_err_text)
-    if email_taken:
-        lookup_candidates = [
-            "/api/bitvcard/card-user",
-            "/api/bitvcard/card-user/",
-        ]
-        for lp in lookup_candidates:
-            try:
-                resp = await _strowallet_get(
-                    settings,
-                    lp,
-                    {"customerEmail": customer_email_final, "email": customer_email_final},
-                )
-                customer_id = _extract_first(
-                    resp,
-                    "data.customer_id",
-                    "data.user_id",
-                    "data.card_user_id",
-                    "customer_id",
-                    "user_id",
-                    "card_user_id",
-                    "data.id",
-                    "id",
-                )
-                if customer_id:
-                    return str(customer_id)
-            except Exception:
-                continue
-
-        # If we cannot discover the id, allow caller to proceed without it.
-        # Many Strowallet create-card setups accept customerEmail only.
-        return ""
 
     raise HTTPException(
         status_code=502,
@@ -4040,18 +3967,20 @@ async def admin_process_card_order(
                     settings=settings,
                     cfg=cfg,
                     user=user,
-                    # Use the user's actual email for provider customer identity (avoid collisions with card_email).
-                    customer_email=(user.get("email") or ""),
+                    customer_email=(order.get("card_email") or user.get("email")),
                     kyc=kyc,
                 )
-                if stw_customer_id:
-                    await db.users.update_one(
-                        {"user_id": user["user_id"]},
-                        {"$set": {"strowallet_customer_id": stw_customer_id}},
-                    )
+                await db.users.update_one(
+                    {"user_id": user["user_id"]},
+                    {"$set": {"strowallet_customer_id": stw_customer_id}},
+                )
 
-            # If customer id is still missing, continue best-effort.
-            # Many Strowallet create-card setups accept customerEmail only.
+            # If configured and still missing, fail fast. This is required by some plans.
+            if cfg.get("create_user_path") and not stw_customer_id:
+                raise HTTPException(
+                    status_code=502,
+                    detail="Strowallet customer id is required but could not be created.",
+                )
 
             create_payload: Dict[str, Any] = {
                 # Common fields across many Strowallet deployments (best-effort).
