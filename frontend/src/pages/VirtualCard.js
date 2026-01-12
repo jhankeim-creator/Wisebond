@@ -49,9 +49,6 @@ export default function VirtualCard() {
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showCardDetails, setShowCardDetails] = useState(false);
   const [selectedCard, setSelectedCard] = useState(null);
-  const [showTxModal, setShowTxModal] = useState(false);
-  const [txLoading, setTxLoading] = useState(false);
-  const [txData, setTxData] = useState(null);
   const [ordering, setOrdering] = useState(false);
   const [cardEmail, setCardEmail] = useState('');
   const [cardFee, setCardFee] = useState(500);
@@ -259,25 +256,9 @@ export default function VirtualCard() {
     setSelectedCard(order);
     setShowCVV(false);
     setShowFullNumber(false);
-    setTxData(null);
     setSpendingLimit(order?.spending_limit_usd != null ? String(order.spending_limit_usd) : '');
     setSpendingPeriod(order?.spending_limit_period || 'monthly');
     setShowCardDetails(true);
-  };
-
-  const openTransactions = async (order) => {
-    if (!order?.order_id) return;
-    setTxLoading(true);
-    setTxData(null);
-    setShowTxModal(true);
-    try {
-      const resp = await axios.get(`${API}/virtual-cards/${order.order_id}/transactions?page=1&take=50`);
-      setTxData(resp.data);
-    } catch (e) {
-      setTxData({ error: e.response?.data?.detail || e.message || 'Error' });
-    } finally {
-      setTxLoading(false);
-    }
   };
 
   const updateControls = async (updates) => {
@@ -542,17 +523,6 @@ export default function VirtualCard() {
                             >
                               <Eye size={16} className="mr-1" />
                               {getText('Wè Detay', 'Voir Détails', 'View Details')}
-                            </Button>
-                          )}
-                          {order.status === 'approved' && order.provider === 'strowallet' && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openTransactions(order)}
-                              className="text-purple-700 border-purple-300 hover:bg-purple-50"
-                            >
-                              <History size={16} className="mr-1" />
-                              {getText('Tranzaksyon', 'Transactions', 'Transactions')}
                             </Button>
                           )}
                           {getStatusBadge(order.status)}
@@ -1166,14 +1136,6 @@ export default function VirtualCard() {
                     >
                       {getText('Sove limit', 'Enregistrer limite', 'Save limit')}
                     </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => openTransactions(selectedCard)}
-                      disabled={txLoading}
-                      className="border-purple-300 text-purple-700 hover:bg-purple-50"
-                    >
-                      {getText('Wè tranzaksyon', 'Voir transactions', 'View transactions')}
-                    </Button>
                     {selectedCard?.card_status === 'locked' ? (
                       <Button
                         variant="outline"
@@ -1206,47 +1168,6 @@ export default function VirtualCard() {
                   ) : null}
                 </div>
               ) : null}
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-
-        {/* Transactions Modal (Strowallet) */}
-        <Dialog open={showTxModal} onOpenChange={setShowTxModal}>
-          <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <History className="text-purple-700" size={20} />
-                {getText('Tranzaksyon Kat', 'Transactions Carte', 'Card Transactions')}
-              </DialogTitle>
-            </DialogHeader>
-            {txLoading ? (
-              <div className="py-8 text-center text-stone-500">{getText('Chajman...', 'Chargement...', 'Loading...')}</div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-xs text-stone-500">
-                  {getText(
-                    'Nòt: sa montre repons Strowallet la (si IP whitelist la pa fèt, li ka bay 403).',
-                    'Note: affiche la réponse Strowallet (si IP non whitelist, peut retourner 403).',
-                    'Note: shows Strowallet response (may return 403 if IP is not whitelisted).'
-                  )}
-                </p>
-                <pre className="text-xs whitespace-pre-wrap bg-stone-50 dark:bg-stone-900 border rounded-lg p-3 overflow-x-auto">
-                  {txData ? JSON.stringify(txData, null, 2) : ''}
-                </pre>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => selectedCard ? openTransactions(selectedCard) : null}
-                    disabled={txLoading || !selectedCard}
-                  >
-                    <RefreshCw size={16} className="mr-2" />
-                    {getText('Rechaje', 'Recharger', 'Reload')}
-                  </Button>
-                  <Button variant="outline" onClick={() => setShowTxModal(false)}>
-                    {getText('Fèmen', 'Fermer', 'Close')}
-                  </Button>
-                </div>
               </div>
             )}
           </DialogContent>

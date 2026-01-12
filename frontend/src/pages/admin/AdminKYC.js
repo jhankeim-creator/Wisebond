@@ -16,8 +16,7 @@ export default function AdminKYC() {
   const { language } = useLanguage();
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
-  // Default to 'all' so admins see existing approvals immediately.
-  const [filter, setFilter] = useState('all');
+  const [filter, setFilter] = useState('pending');
   const [stats, setStats] = useState(null);
   const [selectedKyc, setSelectedKyc] = useState(null);
   const [showModal, setShowModal] = useState(false);
