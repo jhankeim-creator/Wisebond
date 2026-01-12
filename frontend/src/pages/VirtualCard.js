@@ -1343,6 +1343,12 @@ export default function VirtualCard() {
                       {getText('Klike “Refresh” pou ajou li.', 'Cliquez “Rafraîchir” pour le mettre à jour.', 'Use “Refresh” to update.')}
                     </p>
                   </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
+                    <p className="text-xs text-stone-500">{getText('Echèk Peman', 'Échecs Paiement', 'Payment fails')}</p>
+                    <p className="font-semibold">
+                      {typeof selectedCard.failed_payment_count === 'number' ? `${selectedCard.failed_payment_count}/3` : '—'}
+                    </p>
+                  </div>
                 </div>
 
                 {selectedCard.card_status === 'locked' && selectedCard.locked_reason ? (

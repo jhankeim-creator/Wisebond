@@ -4896,29 +4896,39 @@ async def strowallet_webhook(request: Request):
         return {"ok": True}
 
     # If the card is already locked/frozen, ignore further failed events.
+    # Goal: auto-freeze on first failure to prevent the card reaching a "3 failures" hard-block state.
     if str(order.get("card_status") or "").lower() == "locked":
         return {"ok": True, "note": "Card already locked; ignoring failed-payment event"}
+
+    # First failure -> set failed count to 1 and lock/freeze.
+    await db.virtual_card_orders.update_one(
+        {"order_id": order["order_id"]},
+        {"$set": {"failed_payment_count": 1}},
+    )
+    updated = await db.virtual_card_orders.find_one({"order_id": order["order_id"]}, {"_id": 0})
+    failed_count = int((updated or {}).get("failed_payment_count", 0) or 0)
 
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     cfg = _strowallet_config(settings)
 
-    # Auto-freeze on FIRST failed payment (do NOT count failures).
-    await db.virtual_card_orders.update_one(
-        {"order_id": order["order_id"]},
-        {"$set": {
-            "card_status": "locked",
-            "locked_reason": "Auto-frozen after a failed payment",
-            "locked_at": datetime.now(timezone.utc).isoformat(),
-        }}
-    )
-    try:
-        if _strowallet_enabled(settings) and cfg.get("freeze_path"):
-            await _strowallet_post(settings, cfg["freeze_path"], {"card_id": card_id, "reference": f"autofreeze-{order['order_id']}"})
-    except Exception as e:
-        logger.warning(f"Failed to freeze Strowallet card {card_id} after failed payment: {e}")
+    # Auto-freeze on FIRST failed payment to prevent provider-side hard blocks.
+    if failed_count >= 1:
+        await db.virtual_card_orders.update_one(
+            {"order_id": order["order_id"]},
+            {"$set": {
+                "card_status": "locked",
+                "locked_reason": "Auto-frozen after first failed payment (to prevent 3-fail block)",
+                "locked_at": datetime.now(timezone.utc).isoformat(),
+            }}
+        )
+        try:
+            if _strowallet_enabled(settings) and cfg.get("freeze_path"):
+                await _strowallet_post(settings, cfg["freeze_path"], {"card_id": card_id, "reference": f"autofreeze-1-{order['order_id']}"})
+        except Exception as e:
+            logger.warning(f"Failed to freeze Strowallet card {card_id} after first failed payment: {e}")
 
-    await log_action(order.get("user_id") or "system", "strowallet_failed_payment", {"order_id": order["order_id"], "card_id": card_id})
-    return {"ok": True, "card_status": "locked"}
+    await log_action(order.get("user_id") or "system", "strowallet_failed_payment", {"order_id": order["order_id"], "card_id": card_id, "failed_count": failed_count})
+    return {"ok": True, "failed_count": failed_count}
 
 # Admin: Get all card orders
 @api_router.get("/admin/virtual-card-orders")
