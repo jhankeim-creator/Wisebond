@@ -221,7 +221,7 @@ export default function AdminVirtualCards() {
       setCardSettings((prev) => ({
         ...(prev || {}),
         strowallet_base_url: s.strowallet_base_url || 'https://strowallet.com',
-        strowallet_create_user_path: s.strowallet_create_user_path || '/api/bitvcard/create-user/',
+        strowallet_create_user_path: s.strowallet_create_user_path || '/api/bitvcard/card-user',
         strowallet_create_card_path: s.strowallet_create_card_path || '/api/bitvcard/create-card/',
         strowallet_fund_card_path: s.strowallet_fund_card_path || '/api/bitvcard/fund-card/',
         strowallet_fetch_card_detail_path: s.strowallet_fetch_card_detail_path || '/api/bitvcard/fetch-card-detail/',
@@ -704,7 +704,7 @@ export default function AdminVirtualCards() {
                             value={cardSettings.strowallet_create_user_path || ''}
                             onChange={(e) => setCardSettings({ ...cardSettings, strowallet_create_user_path: e.target.value })}
                             className="mt-1 font-mono text-sm"
-                            placeholder="/api/bitvcard/create-user/"
+                            placeholder="/api/bitvcard/card-user"
                           />
                         </div>
                         <div>

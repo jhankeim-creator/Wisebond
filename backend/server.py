@@ -692,9 +692,9 @@ async def _strowallet_create_customer_id(
         cfg.get("create_user_path") or "",
         "/api/bitvcard/create-user/",
         "/api/bitvcard/create-user",
+        "/api/bitvcard/card-user",
     ]
     tried_paths: List[str] = []
-    attempts: List[Dict[str, Any]] = []
     last_result: Any = None
 
     for raw in candidates:
@@ -704,15 +704,11 @@ async def _strowallet_create_customer_id(
         tried_paths.append(p)
         try:
             resp = await _strowallet_post(settings, p, create_user_payload)
-            attempts.append({"path": p, "ok": True, "response": resp})
         except HTTPException as e:
             # Continue trying other known endpoints; keep the last error for debugging.
-            err = getattr(e, "detail", str(e))
-            attempts.append({"path": p, "ok": False, "error": err})
-            last_result = {"path": p, "error": err}
+            last_result = {"path": p, "error": getattr(e, "detail", str(e))}
             continue
         except Exception as e:
-            attempts.append({"path": p, "ok": False, "error": str(e)})
             last_result = {"path": p, "error": str(e)}
             continue
 
@@ -737,7 +733,6 @@ async def _strowallet_create_customer_id(
             "message": "Strowallet create-user/customer failed; cannot proceed to create-card.",
             "tried_paths": tried_paths,
             "last_result": last_result,
-            "attempts": attempts,
         },
     )
 
