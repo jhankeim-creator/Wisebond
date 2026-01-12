@@ -3905,27 +3905,65 @@ async def fetch_external_card_details(
         raise HTTPException(status_code=400, detail="Card ID is required")
 
     cfg = _strowallet_config(settings)
-    if not cfg.get("api_key") or not cfg.get("base_url"):
+    if not cfg.get("api_key"):
         raise HTTPException(status_code=400, detail="Card provider not configured")
-    if not cfg.get("fetch_detail_path"):
-        raise HTTPException(status_code=400, detail="Card detail endpoint not configured")
 
-    payload: Dict[str, Any] = {
-        "card_id": request.card_id.strip(),
-        "reference": f"fetch-ext-{current_user['user_id']}-{request.card_id[:8]}",
-    }
-    payload = _with_aliases(payload, "card_id", "cardId", "id")
+    card_id = request.card_id.strip()
+    stw_detail = None
+    last_error = None
 
-    try:
-        stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
-    except HTTPException as e:
-        if "401" in str(e.detail) or "403" in str(e.detail):
-            raise HTTPException(status_code=400, detail="Card provider authentication failed")
-        if "404" in str(e.detail):
-            raise HTTPException(status_code=404, detail="Card not found")
-        raise HTTPException(status_code=400, detail=f"Failed to fetch card: {e.detail}")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to fetch card: {str(e)}")
+    # Try multiple endpoint formats (Strowallet has different API versions)
+    endpoints_to_try = []
+    
+    # 1. Configured endpoint (if any)
+    if cfg.get("fetch_detail_path"):
+        endpoints_to_try.append(("configured", cfg.get("base_url", "https://strowallet.com"), cfg["fetch_detail_path"]))
+    
+    # 2. Alternative Strowallet API (api.strowallet.com)
+    endpoints_to_try.append(("api_v1", "https://api.strowallet.com", "/card/fetch-details/"))
+    
+    # 3. Standard bitvcard endpoint
+    endpoints_to_try.append(("bitvcard", cfg.get("base_url", "https://strowallet.com"), "/api/bitvcard/fetch-card-detail/"))
+
+    for endpoint_name, base_url, path in endpoints_to_try:
+        payload: Dict[str, Any] = {
+            "card_id": card_id,
+            "public_key": cfg.get("api_key", ""),
+            "mode": cfg.get("mode", "live"),
+            "reference": f"fetch-ext-{current_user['user_id']}-{card_id[:8]}",
+        }
+        # Add secret if available
+        if cfg.get("api_secret"):
+            payload["secret_key"] = cfg["api_secret"]
+
+        try:
+            url = base_url.rstrip("/") + "/" + path.lstrip("/")
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            if cfg.get("api_key"):
+                headers["x-api-key"] = cfg["api_key"]
+                headers["public_key"] = cfg["api_key"]
+            if cfg.get("api_secret"):
+                headers["secret_key"] = cfg["api_secret"]
+
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                data = resp.json()
+                
+                # Check if successful
+                if resp.status_code == 200 and data.get("status") != "error":
+                    stw_detail = data
+                    break
+                else:
+                    last_error = data.get("message") or data.get("detail") or f"Status {resp.status_code}"
+        except Exception as e:
+            last_error = str(e)
+            continue
+
+    if not stw_detail:
+        raise HTTPException(status_code=404, detail=f"Card not found or API error: {last_error}")
 
     # Extract card details from the provider response
     card_number = _extract_first(
@@ -4047,25 +4085,58 @@ async def link_external_card(
             raise HTTPException(status_code=400, detail="This card is already linked to your account")
         raise HTTPException(status_code=400, detail="This card is already linked to another account")
 
-    # Fetch card details from provider
+    # Fetch card details from provider (try multiple endpoints)
     cfg = _strowallet_config(settings)
-    if not cfg.get("api_key") or not cfg.get("base_url"):
+    if not cfg.get("api_key"):
         raise HTTPException(status_code=400, detail="Card provider not configured")
-    if not cfg.get("fetch_detail_path"):
-        raise HTTPException(status_code=400, detail="Card detail endpoint not configured")
 
-    payload: Dict[str, Any] = {
-        "card_id": card_id,
-        "reference": f"link-{current_user['user_id']}-{card_id[:8]}",
-    }
-    payload = _with_aliases(payload, "card_id", "cardId", "id")
+    stw_detail = None
+    last_error = None
 
-    try:
-        stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
-    except HTTPException as e:
-        raise HTTPException(status_code=400, detail=f"Failed to verify card: {e.detail}")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to verify card: {str(e)}")
+    # Try multiple endpoint formats (Strowallet has different API versions)
+    endpoints_to_try = []
+    if cfg.get("fetch_detail_path"):
+        endpoints_to_try.append(("configured", cfg.get("base_url", "https://strowallet.com"), cfg["fetch_detail_path"]))
+    endpoints_to_try.append(("api_v1", "https://api.strowallet.com", "/card/fetch-details/"))
+    endpoints_to_try.append(("bitvcard", cfg.get("base_url", "https://strowallet.com"), "/api/bitvcard/fetch-card-detail/"))
+
+    for endpoint_name, base_url, path in endpoints_to_try:
+        payload: Dict[str, Any] = {
+            "card_id": card_id,
+            "public_key": cfg.get("api_key", ""),
+            "mode": cfg.get("mode", "live"),
+            "reference": f"link-{current_user['user_id']}-{card_id[:8]}",
+        }
+        if cfg.get("api_secret"):
+            payload["secret_key"] = cfg["api_secret"]
+
+        try:
+            url = base_url.rstrip("/") + "/" + path.lstrip("/")
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            if cfg.get("api_key"):
+                headers["x-api-key"] = cfg["api_key"]
+                headers["public_key"] = cfg["api_key"]
+            if cfg.get("api_secret"):
+                headers["secret_key"] = cfg["api_secret"]
+
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                data = resp.json()
+                
+                if resp.status_code == 200 and data.get("status") != "error":
+                    stw_detail = data
+                    break
+                else:
+                    last_error = data.get("message") or data.get("detail") or f"Status {resp.status_code}"
+        except Exception as e:
+            last_error = str(e)
+            continue
+
+    if not stw_detail:
+        raise HTTPException(status_code=400, detail=f"Failed to verify card: {last_error}")
 
     # Extract card details
     card_number = _extract_first(
