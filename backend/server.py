@@ -97,8 +97,6 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
     base_url = ((settings or {}).get("strowallet_base_url") or os.environ.get("STROWALLET_BASE_URL") or "").strip()
     api_key = ((settings or {}).get("strowallet_api_key") or os.environ.get("STROWALLET_API_KEY") or "").strip()
     brand_name = ((settings or {}).get("strowallet_brand_name") or os.environ.get("STROWALLET_BRAND_NAME") or "").strip()
-    if not brand_name:
-        brand_name = "KAYICOM"
 
     # Endpoint paths can vary by Strowallet plan; allow overrides.
     create_path = ((settings or {}).get("strowallet_create_card_path") or os.environ.get("STROWALLET_CREATE_CARD_PATH") or "/api/virtualcards/create-card").strip()
@@ -4818,7 +4816,7 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
             "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", ""),
             "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", ""),
             "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", ""),
-            "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", "") or "KAYICOM",
+            "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", ""),
             "telegram_enabled": False,
             "telegram_bot_token": "",
             "telegram_chat_id": "",
