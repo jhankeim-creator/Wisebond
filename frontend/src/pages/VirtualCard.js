@@ -442,8 +442,6 @@ export default function VirtualCard() {
       resp?.data ||
       resp?.transactions ||
       resp?.message?.transactions ||
-      resp?.response?.card_transactions ||
-      resp?.response?.transactions ||
       resp?.result?.transactions ||
       resp?.result ||
       [];
