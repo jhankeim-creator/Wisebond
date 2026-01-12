@@ -30,9 +30,6 @@ resend==2.19.0
 # HTTP Client (for WhatsApp API)
 httpx==0.28.1
 
-# KYC image storage (optional; enabled when CLOUDINARY_* env vars are set)
-cloudinary==1.44.1
-
 # PDF Generation
 reportlab==4.2.5
 

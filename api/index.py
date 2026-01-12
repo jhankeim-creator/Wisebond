@@ -6,9 +6,6 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 import asyncio
-import base64
-import binascii
-import re
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
 import uuid
@@ -90,134 +87,6 @@ security = HTTPBearer()
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# ==================== KYC IMAGE STORAGE (OPTIONAL CLOUDINARY) ====================
-
-_DATA_URL_IMAGE_RE = re.compile(
-    r"^data:(image/(?:png|jpe?g|webp));base64,(.+)$",
-    flags=re.IGNORECASE | re.DOTALL,
-)
-
-_CLOUDINARY_CONFIGURED: Optional[bool] = None
-
-
-def _cloudinary_is_configured() -> bool:
-    global _CLOUDINARY_CONFIGURED
-    if _CLOUDINARY_CONFIGURED is not None:
-        return _CLOUDINARY_CONFIGURED
-    cloud_name = (os.environ.get("CLOUDINARY_CLOUD_NAME") or "").strip()
-    api_key = (os.environ.get("CLOUDINARY_API_KEY") or "").strip()
-    api_secret = (os.environ.get("CLOUDINARY_API_SECRET") or "").strip()
-    _CLOUDINARY_CONFIGURED = bool(cloud_name and api_key and api_secret)
-    return _CLOUDINARY_CONFIGURED
-
-
-def _cloudinary_setup() -> bool:
-    if not _cloudinary_is_configured():
-        return False
-    import cloudinary  # type: ignore
-
-    cloudinary.config(
-        cloud_name=(os.environ.get("CLOUDINARY_CLOUD_NAME") or "").strip(),
-        api_key=(os.environ.get("CLOUDINARY_API_KEY") or "").strip(),
-        api_secret=(os.environ.get("CLOUDINARY_API_SECRET") or "").strip(),
-        secure=True,
-    )
-    return True
-
-
-def _parse_image_data_url(value: str) -> Optional[Dict[str, Any]]:
-    if not isinstance(value, str):
-        return None
-    m = _DATA_URL_IMAGE_RE.match(value.strip())
-    if not m:
-        return None
-    mime = (m.group(1) or "").lower().replace("image/jpg", "image/jpeg")
-    b64 = m.group(2) or ""
-    try:
-        raw = base64.b64decode(b64, validate=True)
-    except (binascii.Error, ValueError):
-        raise HTTPException(status_code=400, detail="Invalid image encoding (base64)")
-    return {"mime": mime, "bytes": raw, "data_url": value.strip()}
-
-
-async def _cloudinary_upload_data_url(*, data_url: str, folder: str, public_id: str) -> str:
-    if not _cloudinary_setup():
-        raise RuntimeError("Cloudinary not configured")
-    import cloudinary.uploader  # type: ignore
-
-    result = await asyncio.to_thread(
-        cloudinary.uploader.upload,
-        data_url,
-        folder=folder,
-        public_id=public_id,
-        overwrite=True,
-        unique_filename=False,
-        resource_type="image",
-    )
-    url = (result or {}).get("secure_url") or (result or {}).get("url")
-    if not url:
-        raise RuntimeError("Cloudinary upload did not return a URL")
-    return str(url)
-
-
-async def _kyc_store_image_value(
-    value: Optional[str],
-    *,
-    user_id: str,
-    kyc_id: str,
-    field_name: str,
-) -> Dict[str, Any]:
-    if not value:
-        return {"value": value, "meta": None}
-
-    parsed = _parse_image_data_url(value)
-    if not parsed:
-        return {
-            "value": value,
-            "meta": {
-                "storage": "external",
-                "mime": None,
-                "bytes": None,
-                "uploaded_at": datetime.now(timezone.utc).isoformat(),
-            },
-        }
-
-    mime = parsed["mime"]
-    raw = parsed["bytes"]
-    max_bytes = int(os.environ.get("KYC_MAX_IMAGE_BYTES") or 5 * 1024 * 1024)
-    if len(raw) > max_bytes:
-        raise HTTPException(status_code=413, detail="Image too large")
-    if mime not in {"image/jpeg", "image/png", "image/webp"}:
-        raise HTTPException(status_code=400, detail="Unsupported image type")
-
-    if _cloudinary_is_configured():
-        folder = (os.environ.get("CLOUDINARY_FOLDER") or "kayicom/kyc").strip().strip("/")
-        public_id = f"{kyc_id}_{field_name}"
-        try:
-            url = await _cloudinary_upload_data_url(data_url=parsed["data_url"], folder=folder, public_id=public_id)
-            return {
-                "value": url,
-                "meta": {
-                    "storage": "cloudinary",
-                    "mime": mime,
-                    "bytes": len(raw),
-                    "public_id": f"{folder}/{public_id}" if folder else public_id,
-                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
-                },
-            }
-        except Exception as e:
-            logger.exception("Cloudinary upload failed; falling back to inline storage: %s", e)
-
-    return {
-        "value": parsed["data_url"],
-        "meta": {
-            "storage": "inline",
-            "mime": mime,
-            "bytes": len(raw),
-            "uploaded_at": datetime.now(timezone.utc).isoformat(),
-        },
-    }
 
 # ==================== MODELS ====================
 
@@ -969,29 +838,8 @@ async def submit_kyc(request: KYCSubmit, current_user: dict = Depends(get_curren
     if existing and existing.get("status") == "approved":
         raise HTTPException(status_code=400, detail="KYC already approved")
     
-    kyc_id = str(uuid.uuid4())
-
-    id_front = await _kyc_store_image_value(
-        request.id_front_image,
-        user_id=current_user["user_id"],
-        kyc_id=kyc_id,
-        field_name="id_front_image",
-    )
-    id_back = await _kyc_store_image_value(
-        request.id_back_image,
-        user_id=current_user["user_id"],
-        kyc_id=kyc_id,
-        field_name="id_back_image",
-    )
-    selfie = await _kyc_store_image_value(
-        request.selfie_with_id,
-        user_id=current_user["user_id"],
-        kyc_id=kyc_id,
-        field_name="selfie_with_id",
-    )
-
     kyc_doc = {
-        "kyc_id": kyc_id,
+        "kyc_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
         "client_id": current_user["client_id"],
         "full_name": request.full_name,
@@ -1004,14 +852,9 @@ async def submit_kyc(request: KYCSubmit, current_user: dict = Depends(get_curren
         "whatsapp_number": request.whatsapp_number,
         "id_type": request.id_type,
         "id_number": request.id_number,
-        "id_front_image": id_front["value"],
-        "id_back_image": id_back["value"],
-        "selfie_with_id": selfie["value"],
-        "image_meta": {
-            "id_front_image": id_front["meta"],
-            "id_back_image": id_back["meta"],
-            "selfie_with_id": selfie["meta"],
-        },
+        "id_front_image": request.id_front_image,
+        "id_back_image": request.id_back_image,
+        "selfie_with_id": request.selfie_with_id,
         "status": "pending",
         "submitted_at": datetime.now(timezone.utc).isoformat(),
         "reviewed_at": None,
@@ -1429,8 +1272,6 @@ async def admin_adjust_balance(user_id: str, adjustment: BalanceAdjustment, admi
 async def admin_get_kyc_submissions(
     status: Optional[str] = None,
     limit: int = Query(default=50, le=200),
-    page: int = Query(default=1, ge=1),
-    q: Optional[str] = None,
     admin: dict = Depends(get_admin_user)
 ):
     db = get_db()
@@ -1438,20 +1279,9 @@ async def admin_get_kyc_submissions(
     # Frontend uses `all` as a sentinel for "no status filter".
     if status and status != "all":
         query["status"] = status
-
-    if q and q.strip():
-        s = re.escape(q.strip())
-        query["$or"] = [
-            {"full_name": {"$regex": s, "$options": "i"}},
-            {"client_id": {"$regex": s, "$options": "i"}},
-            {"phone_number": {"$regex": s, "$options": "i"}},
-            {"whatsapp_number": {"$regex": s, "$options": "i"}},
-        ]
     
     # List view must be lightweight and stable: only include fields the admin table needs.
     # (Older records may contain large base64 blobs under different keys; projecting-in avoids 500s.)
-    skip = (page - 1) * limit
-    total_matches = await db.kyc.count_documents(query)
     submissions = await db.kyc.find(
         query,
         {
@@ -1465,23 +1295,14 @@ async def admin_get_kyc_submissions(
             "submitted_at": 1,
             "status": 1,
         },
-    ).sort("submitted_at", -1).skip(skip).limit(limit).to_list(limit)
+    ).sort("submitted_at", -1).limit(limit).to_list(limit)
     stats = {
         "pending": await db.kyc.count_documents({"status": "pending"}),
         "approved": await db.kyc.count_documents({"status": "approved"}),
         "rejected": await db.kyc.count_documents({"status": "rejected"}),
         "total": await db.kyc.count_documents({}),
     }
-    return {
-        "submissions": submissions,
-        "stats": stats,
-        "meta": {
-            "page": page,
-            "limit": limit,
-            "total_matches": total_matches,
-            "query": (q or "").strip() or None,
-        },
-    }
+    return {"submissions": submissions, "stats": stats}
 
 @api_router.get("/admin/kyc/{kyc_id}")
 async def admin_get_kyc(
@@ -1539,90 +1360,6 @@ async def admin_review_kyc(
         await send_email(user["email"], subject, content)
     
     return {"message": f"KYC {action}d successfully"}
-
-
-@api_router.post("/admin/kyc/migrate-images")
-async def admin_migrate_kyc_images(
-    limit: int = Query(default=25, le=100),
-    dry_run: bool = Query(default=True),
-    status: Optional[str] = None,
-    admin: dict = Depends(get_admin_user),
-):
-    db = get_db()
-    if not _cloudinary_is_configured():
-        raise HTTPException(status_code=400, detail="Cloudinary is not configured (set CLOUDINARY_* env vars)")
-
-    base_filter: Dict[str, Any] = {}
-    if status and status != "all":
-        base_filter["status"] = status
-
-    needs_migrate = {
-        "$or": [
-            {"id_front_image": {"$regex": r"^data:image/", "$options": "i"}},
-            {"id_back_image": {"$regex": r"^data:image/", "$options": "i"}},
-            {"selfie_with_id": {"$regex": r"^data:image/", "$options": "i"}},
-        ]
-    }
-
-    query: Dict[str, Any]
-    if base_filter:
-        query = {"$and": [base_filter, needs_migrate]}
-    else:
-        query = needs_migrate
-
-    cursor = db.kyc.find(
-        query,
-        {
-            "_id": 0,
-            "kyc_id": 1,
-            "user_id": 1,
-            "id_front_image": 1,
-            "id_back_image": 1,
-            "selfie_with_id": 1,
-            "image_meta": 1,
-        },
-    ).sort("submitted_at", -1).limit(limit)
-
-    processed = 0
-    migrated = 0
-    errors: List[Dict[str, Any]] = []
-
-    async for doc in cursor:
-        processed += 1
-        kyc_id = doc.get("kyc_id")
-        user_id = doc.get("user_id")
-        if not kyc_id or not user_id:
-            continue
-
-        update_fields: Dict[str, Any] = {}
-        meta = dict(doc.get("image_meta") or {})
-
-        for field_name in ("id_front_image", "id_back_image", "selfie_with_id"):
-            val = doc.get(field_name)
-            if not isinstance(val, str) or not val.lower().startswith("data:image/"):
-                continue
-            try:
-                stored = await _kyc_store_image_value(val, user_id=user_id, kyc_id=kyc_id, field_name=field_name)
-                if stored["value"] and stored["value"] != val:
-                    update_fields[field_name] = stored["value"]
-                    meta[field_name] = stored["meta"]
-            except Exception as e:
-                errors.append({"kyc_id": kyc_id, "field": field_name, "error": str(e)})
-
-        if update_fields:
-            update_fields["image_meta"] = meta
-            update_fields["images_migrated_at"] = datetime.now(timezone.utc).isoformat()
-            if not dry_run:
-                await db.kyc.update_one({"kyc_id": kyc_id}, {"$set": update_fields})
-            migrated += 1
-
-    return {
-        "dry_run": dry_run,
-        "processed": processed,
-        "migrated": migrated,
-        "errors": errors[:20],
-        "note": "Run again to continue migrating remaining records.",
-    }
 
 @api_router.get("/admin/deposits")
 async def admin_get_deposits(

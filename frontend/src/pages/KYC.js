@@ -76,65 +76,9 @@ export default function KYC() {
         toast.error(getText('Imaj la twò gwo (maks 5MB)', 'Image trop grande (max 5MB)', 'Image too large (max 5MB)'));
         return;
       }
-      const allowed = ['image/jpeg', 'image/png', 'image/webp'];
-      if (!allowed.includes(file.type)) {
-        toast.error(getText('Tanpri chwazi yon imaj JPG/PNG/WEBP', 'Veuillez choisir une image JPG/PNG/WEBP', 'Please select a JPG/PNG/WEBP image'));
-        return;
-      }
-
-      const compressToDataUrl = async (inputFile) => {
-        const maxSide = 1280;
-        const quality = 0.82;
-        const img = await new Promise((resolve, reject) => {
-          const url = URL.createObjectURL(inputFile);
-          const i = new Image();
-          i.onload = () => {
-            URL.revokeObjectURL(url);
-            resolve(i);
-          };
-          i.onerror = (err) => {
-            URL.revokeObjectURL(url);
-            reject(err);
-          };
-          i.src = url;
-        });
-
-        const w = img.naturalWidth || img.width;
-        const h = img.naturalHeight || img.height;
-        const scale = Math.min(1, maxSide / Math.max(w, h));
-        const cw = Math.max(1, Math.round(w * scale));
-        const ch = Math.max(1, Math.round(h * scale));
-
-        const canvas = document.createElement('canvas');
-        canvas.width = cw;
-        canvas.height = ch;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, cw, ch);
-
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
-        if (!blob) throw new Error('compress_failed');
-
-        // Convert to dataURL
-        const dataUrl = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result);
-          reader.onerror = reject;
-          reader.readAsDataURL(blob);
-        });
-        return String(dataUrl);
-      };
-
       const reader = new FileReader();
       reader.onloadend = () => {
-        // Prefer compressed version to keep payload small and avoid backend 500s.
-        compressToDataUrl(file)
-          .then((dataUrl) => {
-            setFormData(prev => ({ ...prev, [field]: dataUrl }));
-          })
-          .catch(() => {
-            // Fallback to original if compression fails.
-            setFormData(prev => ({ ...prev, [field]: reader.result }));
-          });
+        setFormData(prev => ({ ...prev, [field]: reader.result }));
       };
       reader.readAsDataURL(file);
     }

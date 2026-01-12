@@ -18,10 +18,7 @@ export default function AdminKYC() {
   const [loading, setLoading] = useState(true);
   // Default to 'all' so admins see existing approvals immediately.
   const [filter, setFilter] = useState('all');
-  const [query, setQuery] = useState('');
-  const [page, setPage] = useState(1);
   const [stats, setStats] = useState(null);
-  const [meta, setMeta] = useState(null);
   const [selectedKyc, setSelectedKyc] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
@@ -38,25 +35,18 @@ export default function AdminKYC() {
   const fetchSubmissions = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (filter !== 'all') params.set('status', filter);
-      if (query.trim()) params.set('q', query.trim());
-      params.set('page', String(page));
-      params.set('limit', '50');
       let url = `${API}/admin/kyc`;
-      const qs = params.toString();
-      if (qs) url += `?${qs}`;
+      if (filter !== 'all') url += `?status=${filter}`;
       const response = await axios.get(url);
       setSubmissions(response.data.submissions || []);
       setStats(response.data.stats || null);
-      setMeta(response.data.meta || null);
     } catch (error) {
       console.error('Error fetching KYC:', error);
       toast.error(getText('Erè pandan chajman', 'Erreur lors du chargement', 'Error loading'));
     } finally {
       setLoading(false);
     }
-  }, [filter, getText, page, query]);
+  }, [filter, getText]);
 
   useEffect(() => {
     fetchSubmissions();
@@ -107,8 +97,6 @@ export default function AdminKYC() {
   const approvedCount = stats?.approved ?? submissions.filter(s => s.status === 'approved').length;
   const rejectedCount = stats?.rejected ?? submissions.filter(s => s.status === 'rejected').length;
   const totalCount = stats?.total ?? submissions.length;
-  const totalMatches = meta?.total_matches ?? submissions.length;
-  const totalPages = Math.max(1, Math.ceil((totalMatches || 0) / (meta?.limit || 50)));
 
   return (
     <AdminLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
@@ -173,30 +161,13 @@ export default function AdminKYC() {
         {/* Filters */}
         <Card>
           <CardContent className="p-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-2">
-              <div className="flex-1">
-                <input
-                  value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    setPage(1);
-                  }}
-                  placeholder={getText('Chèche: non, client id, telefòn...', 'Rechercher: nom, client id, téléphone...', 'Search: name, client id, phone...')}
-                  className="w-full rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 px-3 py-2 text-sm"
-                />
-                <p className="text-xs text-stone-500 mt-1">
-                  {getText('Rezilta:', 'Résultats:', 'Results:')} {totalMatches}
-                </p>
-              </div>
+            <div className="flex flex-wrap gap-2">
               {['pending', 'approved', 'rejected', 'all'].map((f) => (
                 <Button
                   key={f}
                   variant={filter === f ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => {
-                    setFilter(f);
-                    setPage(1);
-                  }}
+                  onClick={() => setFilter(f)}
                   className={filter === f ? 'bg-[#0047AB]' : ''}
                 >
                   {f === 'pending' && <Clock size={14} className="mr-1" />}
@@ -208,31 +179,10 @@ export default function AdminKYC() {
                    getText('Tout', 'Tous', 'All')}
                 </Button>
               ))}
-              <div className="flex items-center gap-2 md:ml-auto">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                >
-                  {getText('Anvan', 'Précédent', 'Prev')}
-                </Button>
-                <span className="text-xs text-stone-500">
-                  {getText('Paj', 'Page', 'Page')} {page} / {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                >
-                  {getText('Apre', 'Suivant', 'Next')}
-                </Button>
-                <Button variant="outline" size="sm" onClick={fetchSubmissions}>
-                  <RefreshCw size={16} className="mr-2" />
-                  {getText('Aktyalize', 'Actualiser', 'Refresh')}
-                </Button>
-              </div>
+              <Button variant="outline" size="sm" onClick={fetchSubmissions} className="ml-auto">
+                <RefreshCw size={16} className="mr-2" />
+                {getText('Aktyalize', 'Actualiser', 'Refresh')}
+              </Button>
             </div>
           </CardContent>
         </Card>
