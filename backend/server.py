@@ -3311,6 +3311,266 @@ async def get_card_deposits(current_user: dict = Depends(get_current_user)):
     ).sort("created_at", -1).to_list(50)
     return {"deposits": deposits}
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Virtual Card PIN Management
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SetCardPinRequest(BaseModel):
+    pin: str  # 4-6 digit PIN
+
+class VerifyCardPinRequest(BaseModel):
+    order_id: str
+    pin: str
+
+class ChangeCardPinRequest(BaseModel):
+    old_pin: str
+    new_pin: str
+
+
+@api_router.get("/virtual-cards/pin-status")
+async def get_card_pin_status(current_user: dict = Depends(get_current_user)):
+    """Check if user has set up a card PIN"""
+    user = await db.users.find_one(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0, "card_pin_hash": 1}
+    )
+    has_pin = bool(user and user.get("card_pin_hash"))
+    return {"has_pin": has_pin}
+
+
+@api_router.post("/virtual-cards/set-pin")
+async def set_card_pin(request: SetCardPinRequest, current_user: dict = Depends(get_current_user)):
+    """Set up a card PIN for the first time"""
+    # Validate PIN format (4-6 digits)
+    pin = request.pin.strip()
+    if not pin.isdigit() or len(pin) < 4 or len(pin) > 6:
+        raise HTTPException(status_code=400, detail="PIN dwe gen 4-6 chif")
+    
+    # Check if user already has a PIN
+    user = await db.users.find_one(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0, "card_pin_hash": 1}
+    )
+    if user and user.get("card_pin_hash"):
+        raise HTTPException(status_code=400, detail="Ou deja gen yon PIN. Itilize chanje PIN pou modifye l.")
+    
+    # Hash the PIN
+    import hashlib
+    pin_hash = hashlib.sha256(pin.encode()).hexdigest()
+    
+    # Save PIN hash
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {"$set": {"card_pin_hash": pin_hash}}
+    )
+    
+    await log_action(current_user["user_id"], "card_pin_set", {})
+    return {"success": True, "message": "PIN kreye avèk siksè"}
+
+
+@api_router.post("/virtual-cards/change-pin")
+async def change_card_pin(request: ChangeCardPinRequest, current_user: dict = Depends(get_current_user)):
+    """Change existing card PIN"""
+    import hashlib
+    
+    old_pin = request.old_pin.strip()
+    new_pin = request.new_pin.strip()
+    
+    # Validate new PIN format
+    if not new_pin.isdigit() or len(new_pin) < 4 or len(new_pin) > 6:
+        raise HTTPException(status_code=400, detail="Nouvo PIN dwe gen 4-6 chif")
+    
+    # Get current PIN hash
+    user = await db.users.find_one(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0, "card_pin_hash": 1}
+    )
+    
+    if not user or not user.get("card_pin_hash"):
+        raise HTTPException(status_code=400, detail="Ou poko gen PIN. Kreye youn anvan.")
+    
+    # Verify old PIN
+    old_pin_hash = hashlib.sha256(old_pin.encode()).hexdigest()
+    if old_pin_hash != user["card_pin_hash"]:
+        raise HTTPException(status_code=400, detail="Ansyen PIN pa kòrèk")
+    
+    # Set new PIN
+    new_pin_hash = hashlib.sha256(new_pin.encode()).hexdigest()
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {"$set": {"card_pin_hash": new_pin_hash}}
+    )
+    
+    await log_action(current_user["user_id"], "card_pin_changed", {})
+    return {"success": True, "message": "PIN chanje avèk siksè"}
+
+
+@api_router.post("/virtual-cards/verify-pin")
+async def verify_card_pin_and_get_details(request: VerifyCardPinRequest, current_user: dict = Depends(get_current_user)):
+    """Verify PIN and return full card details including card number and CVV"""
+    import hashlib
+    
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not _virtual_cards_enabled(settings):
+        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
+    
+    pin = request.pin.strip()
+    
+    # Get user with PIN hash
+    user = await db.users.find_one(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0, "card_pin_hash": 1}
+    )
+    
+    if not user or not user.get("card_pin_hash"):
+        raise HTTPException(status_code=400, detail="Ou poko gen PIN. Ale nan Settings pou kreye youn.")
+    
+    # Verify PIN
+    pin_hash = hashlib.sha256(pin.encode()).hexdigest()
+    if pin_hash != user["card_pin_hash"]:
+        await log_action(current_user["user_id"], "card_pin_failed", {"order_id": request.order_id})
+        raise HTTPException(status_code=400, detail="PIN pa kòrèk")
+    
+    # Get card order WITH sensitive data
+    order = await db.virtual_card_orders.find_one(
+        {"order_id": request.order_id, "user_id": current_user["user_id"], "status": "approved"},
+        {"_id": 0}
+    )
+    if not order:
+        raise HTTPException(status_code=404, detail="Kat la pa jwenn oswa li poko apwouve")
+    
+    # If provider is strowallet and we have provider_card_id, fetch fresh details
+    if order.get("provider") == "strowallet" and order.get("provider_card_id"):
+        cfg = _strowallet_config(settings)
+        if cfg.get("api_key"):
+            try:
+                card_id = order["provider_card_id"]
+                payload = {
+                    "card_id": card_id,
+                    "public_key": cfg.get("api_key", ""),
+                    "mode": "live",
+                    "show_cvv": True,
+                    "show_pan": True,
+                    "include_cvv": True,
+                    "include_pan": True,
+                }
+                if cfg.get("api_secret"):
+                    payload["secret_key"] = cfg["api_secret"]
+                
+                # Try to fetch from Strowallet
+                endpoints_to_try = []
+                if cfg.get("fetch_detail_path"):
+                    endpoints_to_try.append((cfg.get("base_url", "https://strowallet.com"), cfg["fetch_detail_path"]))
+                endpoints_to_try.append(("https://api.strowallet.com", "/card/fetch-details/"))
+                endpoints_to_try.append((cfg.get("base_url", "https://strowallet.com"), "/api/bitvcard/fetch-card-detail/"))
+                
+                for base_url, path in endpoints_to_try:
+                    try:
+                        url = base_url.rstrip("/") + "/" + path.lstrip("/")
+                        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+                        if cfg.get("api_key"):
+                            headers["x-api-key"] = cfg["api_key"]
+                        
+                        async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+                            resp = await client.post(url, json=payload, headers=headers)
+                            if resp.status_code == 200:
+                                data = resp.json()
+                                if data.get("success") or data.get("status") == "success":
+                                    # Extract card data from response.card_detail
+                                    card_data = None
+                                    if isinstance(data.get("response"), dict):
+                                        r = data["response"]
+                                        if isinstance(r.get("card_detail"), dict):
+                                            card_data = r["card_detail"]
+                                        elif r.get("card_number") or r.get("pan"):
+                                            card_data = r
+                                    if not card_data:
+                                        card_data = data.get("data") or data
+                                    
+                                    if isinstance(card_data, dict):
+                                        # Extract sensitive data
+                                        card_number = (
+                                            card_data.get("card_number") or card_data.get("cardNumber") or 
+                                            card_data.get("pan") or card_data.get("unmasked_pan") or
+                                            card_data.get("number")
+                                        )
+                                        cvv = (
+                                            card_data.get("cvv") or card_data.get("cvc") or 
+                                            card_data.get("cvv2") or card_data.get("security_code")
+                                        )
+                                        
+                                        # Extract expiry
+                                        expiry_month = (
+                                            card_data.get("expiry_month") or card_data.get("expiryMonth") or
+                                            card_data.get("exp_month") or card_data.get("validity_month")
+                                        )
+                                        expiry_year = (
+                                            card_data.get("expiry_year") or card_data.get("expiryYear") or
+                                            card_data.get("exp_year") or card_data.get("validity_year")
+                                        )
+                                        
+                                        # Also check combined expiry
+                                        combined_expiry = card_data.get("expiry") or card_data.get("expiry_date") or card_data.get("validity")
+                                        if combined_expiry and not (expiry_month and expiry_year):
+                                            exp_str = str(combined_expiry)
+                                            if "/" in exp_str:
+                                                parts = exp_str.split("/")
+                                                if len(parts) == 2:
+                                                    expiry_month = parts[0]
+                                                    expiry_year = parts[1]
+                                        
+                                        card_expiry = None
+                                        if expiry_month and expiry_year:
+                                            em = str(expiry_month).zfill(2)
+                                            ey = str(expiry_year)[-2:] if len(str(expiry_year)) == 4 else str(expiry_year)
+                                            card_expiry = f"{em}/{ey}"
+                                        
+                                        balance = card_data.get("balance") or card_data.get("card_balance")
+                                        
+                                        # Return the fresh data
+                                        return {
+                                            "success": True,
+                                            "order_id": order["order_id"],
+                                            "card_number": str(card_number) if card_number else order.get("card_number"),
+                                            "cvv": str(cvv) if cvv else order.get("card_cvv"),
+                                            "card_expiry": card_expiry or order.get("card_expiry"),
+                                            "card_holder_name": order.get("card_holder_name"),
+                                            "card_type": order.get("card_type", "visa"),
+                                            "card_status": order.get("card_status", "active"),
+                                            "balance": float(balance) if balance else order.get("balance"),
+                                            "billing_address": order.get("billing_address") or "3401 N. Miami, Ave. Ste 230",
+                                            "billing_city": order.get("billing_city") or "Miami",
+                                            "billing_state": order.get("billing_state") or "Florida",
+                                            "billing_country": order.get("billing_country") or "United States",
+                                            "billing_zip": order.get("billing_zip") or "33127",
+                                        }
+                                    break
+                    except Exception as e:
+                        logger.warning(f"Failed to fetch card details from Strowallet: {e}")
+                        continue
+            except Exception as e:
+                logger.error(f"Error fetching Strowallet card details: {e}")
+    
+    # Fall back to stored data
+    return {
+        "success": True,
+        "order_id": order["order_id"],
+        "card_number": order.get("card_number") or order.get("card_last4", "****"),
+        "cvv": order.get("card_cvv"),
+        "card_expiry": order.get("card_expiry"),
+        "card_holder_name": order.get("card_holder_name"),
+        "card_type": order.get("card_type", "visa"),
+        "card_status": order.get("card_status", "active"),
+        "balance": order.get("balance"),
+        "billing_address": order.get("billing_address") or "3401 N. Miami, Ave. Ste 230",
+        "billing_city": order.get("billing_city") or "Miami",
+        "billing_state": order.get("billing_state") or "Florida",
+        "billing_country": order.get("billing_country") or "United States",
+        "billing_zip": order.get("billing_zip") or "33127",
+    }
+
+
 @api_router.post("/virtual-cards/order")
 async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Depends(get_current_user)):
     """Submit a manual card order request"""
@@ -4212,6 +4472,24 @@ async def admin_fetch_external_card_details(
     # Log what we found
     logger.info(f"Billing: address={billing_address}, city={billing_city}, state={billing_state}, country={billing_country}, zip={billing_zip}")
 
+    # Set default billing address if none found
+    DEFAULT_BILLING_ADDRESS = "3401 N. Miami, Ave. Ste 230"
+    DEFAULT_BILLING_CITY = "Miami"
+    DEFAULT_BILLING_STATE = "Florida"
+    DEFAULT_BILLING_COUNTRY = "United States"
+    DEFAULT_BILLING_ZIP = "33127"
+    
+    if not billing_address:
+        billing_address = DEFAULT_BILLING_ADDRESS
+    if not billing_city:
+        billing_city = DEFAULT_BILLING_CITY
+    if not billing_state:
+        billing_state = DEFAULT_BILLING_STATE
+    if not billing_country:
+        billing_country = DEFAULT_BILLING_COUNTRY
+    if not billing_zip:
+        billing_zip = DEFAULT_BILLING_ZIP
+
     if not card_number:
         # Return the full response for debugging
         import json
@@ -4491,6 +4769,24 @@ async def admin_link_external_card(
         )
     
     logger.info(f"[link] Billing: address={billing_address}, city={billing_city}, state={billing_state}, country={billing_country}, zip={billing_zip}")
+
+    # Set default billing address if none found
+    DEFAULT_BILLING_ADDRESS = "3401 N. Miami, Ave. Ste 230"
+    DEFAULT_BILLING_CITY = "Miami"
+    DEFAULT_BILLING_STATE = "Florida"
+    DEFAULT_BILLING_COUNTRY = "United States"
+    DEFAULT_BILLING_ZIP = "33127"
+    
+    if not billing_address:
+        billing_address = DEFAULT_BILLING_ADDRESS
+    if not billing_city:
+        billing_city = DEFAULT_BILLING_CITY
+    if not billing_state:
+        billing_state = DEFAULT_BILLING_STATE
+    if not billing_country:
+        billing_country = DEFAULT_BILLING_COUNTRY
+    if not billing_zip:
+        billing_zip = DEFAULT_BILLING_ZIP
 
     # Format card details
     card_last4 = str(card_number)[-4:] if card_number else None
