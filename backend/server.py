@@ -3969,53 +3969,92 @@ async def admin_fetch_external_card_details(
         raise HTTPException(status_code=404, detail=f"Kat pa jwenn: {last_error}")
 
     # Log the response for debugging
-    logger.info(f"Strowallet fetch-external full response: {stw_detail}")
+    logger.info(f"Strowallet API raw response: {stw_detail}")
     
-    # Check for response wrapper - Strowallet may put card data in 'response' directly
-    response_obj = stw_detail.get("response") if isinstance(stw_detail.get("response"), dict) else {}
-    data_obj = stw_detail.get("data") if isinstance(stw_detail.get("data"), dict) else {}
-    message_obj = stw_detail.get("message") if isinstance(stw_detail.get("message"), dict) else {}
+    # Try to find card data in various locations
+    # Strowallet API can return data in: response, data, message, or directly in root
+    card_data = None
     
-    # If response/data/message is a dict with card fields, use it
-    card_source = response_obj or data_obj or message_obj or stw_detail
-    logger.info(f"Strowallet card_source keys: {list(card_source.keys()) if isinstance(card_source, dict) else type(card_source)}")
-
-    # Extract card details from the provider response
-    # First, try to get card data from response/data/message wrapper
-    card_data = stw_detail
-    if isinstance(stw_detail.get("response"), dict) and stw_detail.get("response"):
-        card_data = stw_detail["response"]
-    elif isinstance(stw_detail.get("data"), dict) and stw_detail.get("data"):
-        card_data = stw_detail["data"]
-    elif isinstance(stw_detail.get("message"), dict) and stw_detail.get("message"):
-        card_data = stw_detail["message"]
+    # Option 1: response is a dict with card_number
+    if isinstance(stw_detail.get("response"), dict):
+        r = stw_detail["response"]
+        if r.get("card_number") or r.get("cardNumber") or r.get("pan"):
+            card_data = r
+            logger.info(f"Found card data in 'response': {list(r.keys())}")
     
-    logger.info(f"Strowallet card_data type: {type(card_data)}, keys: {list(card_data.keys()) if isinstance(card_data, dict) else 'N/A'}")
+    # Option 2: data is a dict with card_number
+    if not card_data and isinstance(stw_detail.get("data"), dict):
+        d = stw_detail["data"]
+        if d.get("card_number") or d.get("cardNumber") or d.get("pan"):
+            card_data = d
+            logger.info(f"Found card data in 'data': {list(d.keys())}")
     
-    # Extract from card_data directly (most common case)
-    card_number = _extract_first(
-        card_data,
-        "card_number", "cardNumber", "pan", "card_pan", "masked_pan",
-    ) or _extract_first(
-        stw_detail,
-        "response.card_number", "data.card_number", "card_number",
+    # Option 3: message is a dict with card_number
+    if not card_data and isinstance(stw_detail.get("message"), dict):
+        m = stw_detail["message"]
+        if m.get("card_number") or m.get("cardNumber") or m.get("pan"):
+            card_data = m
+            logger.info(f"Found card data in 'message': {list(m.keys())}")
+    
+    # Option 4: card_number is directly in root
+    if not card_data:
+        if stw_detail.get("card_number") or stw_detail.get("cardNumber") or stw_detail.get("pan"):
+            card_data = stw_detail
+            logger.info(f"Found card data in root: {list(stw_detail.keys())}")
+    
+    # Option 5: message might be a JSON string
+    if not card_data and isinstance(stw_detail.get("message"), str):
+        try:
+            import json
+            m = json.loads(stw_detail["message"])
+            if isinstance(m, dict) and (m.get("card_number") or m.get("cardNumber")):
+                card_data = m
+                logger.info(f"Found card data in message (JSON string): {list(m.keys())}")
+        except:
+            pass
+    
+    # Option 6: response might be a JSON string
+    if not card_data and isinstance(stw_detail.get("response"), str):
+        try:
+            import json
+            r = json.loads(stw_detail["response"])
+            if isinstance(r, dict) and (r.get("card_number") or r.get("cardNumber")):
+                card_data = r
+                logger.info(f"Found card data in response (JSON string): {list(r.keys())}")
+        except:
+            pass
+    
+    # If still no card_data, use the full response for extraction
+    if not card_data:
+        card_data = stw_detail
+        logger.warning(f"Could not find card data wrapper, using full response")
+    
+    # Extract card fields
+    card_number = (
+        card_data.get("card_number") or card_data.get("cardNumber") or 
+        card_data.get("pan") or card_data.get("card_pan") or
+        _extract_first(stw_detail, "response.card_number", "data.card_number", "message.card_number")
     )
-    expiry_month = _extract_first(
-        card_data,
-        "expiry_month", "expiryMonth", "exp_month",
-    ) or _extract_first(stw_detail, "response.expiry_month", "data.expiry_month")
-    expiry_year = _extract_first(
-        card_data,
-        "expiry_year", "expiryYear", "exp_year",
-    ) or _extract_first(stw_detail, "response.expiry_year", "data.expiry_year")
-    cvv = _extract_first(
-        card_data,
-        "cvv", "cvc", "cvv2", "security_code",
-    ) or _extract_first(stw_detail, "response.cvv", "data.cvv")
-    holder_name = _extract_first(
-        card_data,
-        "card_holder_name", "cardHolderName", "name_on_card", "cardholder_name", "holder_name",
-    ) or _extract_first(stw_detail, "response.card_holder_name", "data.card_holder_name")
+    expiry_month = (
+        card_data.get("expiry_month") or card_data.get("expiryMonth") or 
+        card_data.get("exp_month") or
+        _extract_first(stw_detail, "response.expiry_month", "data.expiry_month")
+    )
+    expiry_year = (
+        card_data.get("expiry_year") or card_data.get("expiryYear") or 
+        card_data.get("exp_year") or
+        _extract_first(stw_detail, "response.expiry_year", "data.expiry_year")
+    )
+    cvv = (
+        card_data.get("cvv") or card_data.get("cvc") or 
+        card_data.get("cvv2") or
+        _extract_first(stw_detail, "response.cvv", "data.cvv")
+    )
+    holder_name = (
+        card_data.get("card_holder_name") or card_data.get("cardHolderName") or 
+        card_data.get("name_on_card") or card_data.get("cardholder_name") or
+        _extract_first(stw_detail, "response.card_holder_name", "data.card_holder_name")
+    )
     balance = _extract_first(
         stw_detail,
         "data.balance", "data.card.balance", "balance",
@@ -4047,9 +4086,13 @@ async def admin_fetch_external_card_details(
     )
 
     if not card_number:
-        # Return debug info so admin can see what the API returned
-        card_data_keys = list(card_data.keys())[:15] if isinstance(card_data, dict) else []
-        raise HTTPException(status_code=400, detail=f"Pa ka jwenn nimewo kat. card_data_keys: {card_data_keys}. Tcheke log yo pou plis detay.")
+        # Return the full response for debugging
+        import json
+        try:
+            debug_info = json.dumps(stw_detail, indent=2, default=str)[:500]
+        except:
+            debug_info = str(stw_detail)[:500]
+        raise HTTPException(status_code=400, detail=f"Pa ka jwenn nimewo kat. Repons API: {debug_info}")
 
     # Format expiry
     card_expiry = None
