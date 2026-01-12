@@ -914,15 +914,18 @@ async def _strowallet_issue_card_for_order(
         "data.card.id",
     )
 
-    # Fetch detail best-effort (with retries) to populate last4/expiry/etc.
-    stw_detail = await _strowallet_fetch_detail_with_retry(
-        settings=settings,
-        cfg=cfg,
-        provider_card_id=str(provider_card_id),
-        stw_customer_id=stw_customer_id,
-        reference=f"detail-{order.get('order_id')}",
-        attempts=4,
-    )
+    # Fetch detail best-effort to populate last4/expiry/etc.
+    stw_detail = None
+    if provider_card_id and cfg.get("fetch_detail_path"):
+        try:
+            detail_payload: Dict[str, Any] = {"card_id": provider_card_id, "reference": f"detail-{order.get('order_id')}"}
+            if stw_customer_id:
+                detail_payload["customer_id"] = stw_customer_id
+                detail_payload["card_user_id"] = stw_customer_id
+            detail_payload = _with_aliases(detail_payload, "card_id", "cardId", "id")
+            stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], detail_payload)
+        except Exception:
+            stw_detail = None
 
     src = stw_detail or stw_resp
     card_number = _extract_first(src, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
@@ -966,41 +969,6 @@ async def _strowallet_issue_card_for_order(
         update_doc["card_expiry"] = str(card_expiry)
 
     return update_doc
-
-
-async def _strowallet_fetch_detail_with_retry(
-    *,
-    settings: Optional[dict],
-    cfg: Dict[str, str],
-    provider_card_id: str,
-    stw_customer_id: Optional[str],
-    reference: str,
-    attempts: int = 4,
-) -> Optional[Dict[str, Any]]:
-    """
-    Best-effort fetch-card-detail with short retries.
-    Some providers need a few seconds after create-card before detail is available.
-    """
-    if not provider_card_id or not cfg.get("fetch_detail_path"):
-        return None
-
-    last_err: Optional[Exception] = None
-    for i in range(max(1, int(attempts or 1))):
-        try:
-            detail_payload: Dict[str, Any] = {"card_id": provider_card_id, "reference": reference}
-            if stw_customer_id:
-                detail_payload["customer_id"] = stw_customer_id
-                detail_payload["card_user_id"] = stw_customer_id
-            detail_payload = _with_aliases(detail_payload, "card_id", "cardId", "id")
-            return await _strowallet_post(settings, cfg["fetch_detail_path"], detail_payload)
-        except Exception as e:
-            last_err = e
-            # Backoff: 0.6s, 1.2s, 2.4s, 4.8s (max ~9s)
-            await asyncio.sleep(0.6 * (2**i))
-            continue
-
-    # Keep fully best-effort; caller should proceed with create response.
-    return None
 
 # ==================== MODELS ====================
 
@@ -4338,16 +4306,13 @@ async def admin_process_card_order(
                 if cfg.get("fetch_detail_path"):
                     try:
                         stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
-                        stw_detail = await _strowallet_fetch_detail_with_retry(
-                            settings=settings,
-                            cfg=cfg,
-                            provider_card_id=str(provider_card_id),
-                            stw_customer_id=stw_customer_id,
-                            reference=f"detail-{order_id}",
-                            attempts=4,
-                        )
-                        if stw_detail:
-                            update_doc["provider_raw"] = {"linked": True, "detail": stw_detail}
+                        detail_payload: Dict[str, Any] = {"card_id": provider_card_id, "reference": f"detail-{order_id}"}
+                        if stw_customer_id:
+                            detail_payload["customer_id"] = stw_customer_id
+                            detail_payload["card_user_id"] = stw_customer_id
+                        detail_payload = _with_aliases(detail_payload, "card_id", "cardId", "id")
+                        stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], detail_payload)
+                        update_doc["provider_raw"] = {"linked": True, "detail": stw_detail}
 
                         card_number = _extract_first(stw_detail, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
                         card_expiry = _extract_first(stw_detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
@@ -4467,16 +4432,13 @@ async def admin_process_card_order(
                 stw_detail_error: Optional[str] = None
                 if provider_card_id and cfg.get("fetch_detail_path"):
                     try:
-                        stw_detail = await _strowallet_fetch_detail_with_retry(
-                            settings=settings,
-                            cfg=cfg,
-                            provider_card_id=str(provider_card_id),
-                            stw_customer_id=stw_customer_id,
-                            reference=f"detail-{order_id}",
-                            attempts=4,
-                        )
-                        if stw_detail:
-                            update_doc["provider_raw"] = {"create": stw_resp, "detail": stw_detail}
+                        detail_payload: Dict[str, Any] = {"card_id": provider_card_id, "reference": f"detail-{order_id}"}
+                        if stw_customer_id:
+                            detail_payload["customer_id"] = stw_customer_id
+                            detail_payload["card_user_id"] = stw_customer_id
+                        detail_payload = _with_aliases(detail_payload, "card_id", "cardId", "id")
+                        stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], detail_payload)
+                        update_doc["provider_raw"] = {"create": stw_resp, "detail": stw_detail}
                     except Exception as e:
                         stw_detail_error = str(e)
                         update_doc["provider_raw"] = {"create": stw_resp, "detail_error": stw_detail_error}
