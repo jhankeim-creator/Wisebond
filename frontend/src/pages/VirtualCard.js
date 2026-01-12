@@ -8,8 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -31,8 +29,7 @@ import {
   Plus,
   ArrowRight,
   ArrowDown,
-  RefreshCw,
-  MoreVertical
+  RefreshCw
 } from 'lucide-react';
 
 // Card logos
@@ -58,22 +55,6 @@ export default function VirtualCard() {
   const [txLoading, setTxLoading] = useState(false);
   const [txData, setTxData] = useState(null);
   const [refreshingDetails, setRefreshingDetails] = useState(false);
-  // UI-only: customers can toggle mask style
-  const [maskStyleByOrderId, setMaskStyleByOrderId] = useState({});
-  // PIN / Reveal full details
-  const [hasCardPin, setHasCardPin] = useState(!!user?.has_card_pin);
-  const [showSetPinModal, setShowSetPinModal] = useState(false);
-  const [pinSetValue, setPinSetValue] = useState('');
-  const [pinSetLoading, setPinSetLoading] = useState(false);
-  const [showRevealModal, setShowRevealModal] = useState(false);
-  const [revealPin, setRevealPin] = useState('');
-  const [revealing, setRevealing] = useState(false);
-  const [revealedCard, setRevealedCard] = useState(null);
-  const [showPinResetModal, setShowPinResetModal] = useState(false);
-  const [pinResetToken, setPinResetToken] = useState('');
-  const [pinResetNew, setPinResetNew] = useState('');
-  const [sendingReset, setSendingReset] = useState(false);
-  const [resettingPin, setResettingPin] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [cardFee, setCardFee] = useState(500);
   const [defaultCardBg, setDefaultCardBg] = useState(null);
@@ -128,7 +109,7 @@ export default function VirtualCard() {
     try {
       setLoadError(null);
       const [ordersRes, depositsRes, withdrawalsRes] = await Promise.all([
-        axios.get(`${API}/virtual-cards/orders?refresh=1`),
+        axios.get(`${API}/virtual-cards/orders`),
         axios.get(`${API}/virtual-cards/deposits`),
         axios.get(`${API}/virtual-cards/withdrawals`)
       ]);
@@ -152,19 +133,6 @@ export default function VirtualCard() {
     fetchData();
     fetchConfig();
   }, [fetchData, fetchConfig]);
-
-  useEffect(() => {
-    setHasCardPin(!!user?.has_card_pin);
-  }, [user?.has_card_pin]);
-
-  const fetchPinStatus = useCallback(async () => {
-    try {
-      const res = await axios.get(`${API}/virtual-cards/pin/status`);
-      if (typeof res.data?.has_pin === 'boolean') setHasCardPin(res.data.has_pin);
-    } catch {
-      // ignore
-    }
-  }, []);
 
   const orderCard = async () => {
     const email = String(user?.email || '').trim();
@@ -257,23 +225,11 @@ export default function VirtualCard() {
     setShowTopUpModal(true);
   };
 
-  const openTopUpModalForCard = (order) => {
-    if (!order?.order_id) return;
-    setTopUpCardId(order.order_id);
-    setShowTopUpModal(true);
-  };
-
   const openWithdrawModal = () => {
     // Auto-select card if only one
     if (approvedCards.length === 1) {
       setWithdrawCardId(approvedCards[0].order_id);
     }
-    setShowWithdrawModal(true);
-  };
-
-  const openWithdrawModalForCard = (order) => {
-    if (!order?.order_id) return;
-    setWithdrawCardId(order.order_id);
     setShowWithdrawModal(true);
   };
 
@@ -313,92 +269,10 @@ export default function VirtualCard() {
 
   const viewCardDetails = (order) => {
     setSelectedCard(order);
-    setRevealedCard(null);
     setTxData(null);
     setSpendingLimit(order?.spending_limit_usd != null ? String(order.spending_limit_usd) : '');
     setSpendingPeriod(order?.spending_limit_period || 'monthly');
     setShowCardDetails(true);
-  };
-
-  const setPin = async () => {
-    const pin = String(pinSetValue || '').trim();
-    if (!/^\d{4}$/.test(pin)) {
-      toast.error(getText('PIN nan dwe 4 chif.', 'Le PIN doit avoir 4 chiffres.', 'PIN must be 4 digits.'));
-      return;
-    }
-    setPinSetLoading(true);
-    try {
-      await axios.post(`${API}/virtual-cards/pin/set`, { pin });
-      toast.success(getText('PIN mete!', 'PIN enregistré!', 'PIN set!'));
-      setPinSetValue('');
-      setShowSetPinModal(false);
-      fetchPinStatus();
-      refreshUser();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || e.message || 'Error');
-    } finally {
-      setPinSetLoading(false);
-    }
-  };
-
-  const sendPinReset = async () => {
-    setSendingReset(true);
-    try {
-      await axios.post(`${API}/virtual-cards/pin/forgot`, {});
-      toast.success(getText('Kòd reset voye sou imèl ou.', 'Code envoyé sur votre email.', 'Reset code sent to your email.'));
-    } catch (e) {
-      toast.error(e.response?.data?.detail || e.message || 'Error');
-    } finally {
-      setSendingReset(false);
-    }
-  };
-
-  const confirmPinReset = async () => {
-    const token = String(pinResetToken || '').trim();
-    const newPin = String(pinResetNew || '').trim();
-    if (!token) {
-      toast.error(getText('Antre kòd la.', 'Entrez le code.', 'Enter the code.'));
-      return;
-    }
-    if (!/^\d{4}$/.test(newPin)) {
-      toast.error(getText('PIN nouvo a dwe 4 chif.', 'Le nouveau PIN doit avoir 4 chiffres.', 'New PIN must be 4 digits.'));
-      return;
-    }
-    setResettingPin(true);
-    try {
-      await axios.post(`${API}/virtual-cards/pin/reset`, { token, new_pin: newPin });
-      toast.success(getText('PIN chanje!', 'PIN changé!', 'PIN reset!'));
-      setPinResetToken('');
-      setPinResetNew('');
-      setShowPinResetModal(false);
-      fetchPinStatus();
-      refreshUser();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || e.message || 'Error');
-    } finally {
-      setResettingPin(false);
-    }
-  };
-
-  const revealFullDetails = async () => {
-    if (!selectedCard?.order_id) return;
-    const pin = String(revealPin || '').trim();
-    if (!/^\d{4}$/.test(pin)) {
-      toast.error(getText('PIN nan dwe 4 chif.', 'Le PIN doit avoir 4 chiffres.', 'PIN must be 4 digits.'));
-      return;
-    }
-    setRevealing(true);
-    try {
-      const res = await axios.post(`${API}/virtual-cards/${selectedCard.order_id}/reveal`, { pin });
-      setRevealedCard(res.data?.card || null);
-      toast.success(getText('Detay revele!', 'Détails révélés!', 'Details revealed!'));
-      setShowRevealModal(false);
-      setRevealPin('');
-    } catch (e) {
-      toast.error(e.response?.data?.detail || e.message || 'Error');
-    } finally {
-      setRevealing(false);
-    }
   };
 
   const openTransactions = async (order) => {
@@ -472,19 +346,8 @@ export default function VirtualCard() {
   };
 
   const formatCardNumber = (last4) => {
-    // Default masked format used across the app (never reveals full PAN).
     if (!last4) return '•••• •••• •••• ••••';
     return `•••• •••• •••• ${String(last4).slice(-4)}`;
-  };
-
-  const formatCardNumberAsterisks = (last4) => {
-    if (!last4) return '**** **** **** ****';
-    return `**** **** **** ${String(last4).slice(-4)}`;
-  };
-
-  const toggleMaskStyle = (orderId) => {
-    if (!orderId) return;
-    setMaskStyleByOrderId((prev) => ({ ...prev, [orderId]: !prev?.[orderId] }));
   };
 
   const topUpFee = calculateTopUpFee();
@@ -538,7 +401,7 @@ export default function VirtualCard() {
             </CardContent>
           </Card>
         ) : null}
-        {/* Feature flag (read-only mode when disabled) */}
+        {/* Feature flag */}
         {virtualCardsEnabled === false ? (
           <Card>
             <CardContent className="p-8 text-center">
@@ -548,9 +411,9 @@ export default function VirtualCard() {
               </h3>
               <p className="text-stone-600 dark:text-stone-400">
                 {getText(
-                  'Ou ka toujou wè kat/ou istorik ki deja egziste yo, men ou pa ka fè nouvo demann kounye a.',
-                  'Vous pouvez toujours voir vos cartes/historiques existants, mais vous ne pouvez pas faire de nouvelles demandes pour le moment.',
-                  'You can still view existing cards/history, but new requests are temporarily disabled.'
+                  'Fonksyon sa a ap aktive lè admin lan pare.',
+                  'Cette fonctionnalité sera activée par l’admin quand elle sera prête.',
+                  'This feature will be enabled by the admin when ready.'
                 )}
               </p>
             </CardContent>
@@ -558,7 +421,7 @@ export default function VirtualCard() {
         ) : null}
 
         {/* KYC Check */}
-        {virtualCardsEnabled === null ? (
+        {virtualCardsEnabled === false ? null : virtualCardsEnabled === null ? (
           <Card>
             <CardContent className="p-8 text-center text-stone-500">
               {getText('Chajman...', 'Chargement...', 'Loading...')}
@@ -585,39 +448,24 @@ export default function VirtualCard() {
           </Card>
         ) : (
           <>
-            {/* Header / hero */}
+            {/* Info Banner */}
             <div className="bg-gradient-to-r from-purple-600 to-purple-800 rounded-2xl p-6 text-white">
-              <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+              <div className="flex items-start gap-4">
                 <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
                   <CreditCard size={24} />
                 </div>
-                <div className="flex-1">
-                  <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                    <div>
-                      <h2 className="text-xl font-bold">
-                        {getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card')}
-                      </h2>
-                      <p className="text-purple-100 text-sm mt-1">
-                        {getText(
-                          'Pou acha an liy (Netflix, Amazon, elatriye).',
-                          'Pour achats en ligne (Netflix, Amazon, etc.).',
-                          'For online purchases (Netflix, Amazon, etc.).'
-                        )}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button onClick={() => setShowOrderModal(true)} disabled={virtualCardsEnabled === false} className="bg-white text-purple-700 hover:bg-purple-50">
-                        <ShoppingCart className="mr-2" size={18} />
-                        {getText('Komande', 'Commander', 'Order')}
-                      </Button>
-                      <Button variant="outline" onClick={() => { setLoading(true); fetchData(); fetchConfig(); }} className="border-white/40 text-white hover:bg-white/10">
-                        <RefreshCw className="mr-2" size={18} />
-                        {getText('Rechaje', 'Recharger', 'Refresh')}
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="bg-red-500/20 border border-red-300/30 rounded-lg p-3 mt-4">
+                <div>
+                  <h2 className="text-xl font-bold mb-2">
+                    {getText('Kat Vityèl pou Acha an Liy', 'Carte Virtuelle pour Achats en Ligne', 'Virtual Card for Online Purchases')}
+                  </h2>
+                  <p className="text-purple-100 text-sm mb-3">
+                    {getText(
+                      'Kreye yon kat vityèl pou fè acha an liy (Netflix, Amazon, elatriye). Kat la jere pa yon tyè pati.',
+                      'Créez une carte virtuelle pour faire des achats en ligne (Netflix, Amazon, etc.). La carte est gérée par un tiers.',
+                      'Create a virtual card for online purchases (Netflix, Amazon, etc.). The card is managed by a third party.'
+                    )}
+                  </p>
+                  <div className="bg-red-500/20 border border-red-300/30 rounded-lg p-3">
                     <p className="text-red-100 text-xs font-medium flex items-center gap-2">
                       ⚠️ {getText(
                         'ENPÒTAN: Kat la PA pou peye sit paryaj oswa sit pònografik. Vyolasyon ap lakoz bloke kont ou.',
@@ -630,37 +478,45 @@ export default function VirtualCard() {
               </div>
             </div>
 
-            {/* Quick stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card>
-                <CardContent className="p-4">
-                  <p className="text-xs text-stone-500">{getText('Kat aktif', 'Cartes actives', 'Active cards')}</p>
-                  <p className="text-2xl font-bold text-stone-900 dark:text-white">{approvedCards.length}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <p className="text-xs text-stone-500">{getText('Balans USD', 'Solde USD', 'USD balance')}</p>
-                  <p className="text-2xl font-bold text-stone-900 dark:text-white">${(user?.wallet_usd || 0).toFixed(2)}</p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="p-4">
-                  <p className="text-xs text-stone-500">{getText('Demann an atant', 'Demandes en attente', 'Pending requests')}</p>
-                  <p className="text-2xl font-bold text-stone-900 dark:text-white">{cardOrders.filter(o => o.status === 'pending').length}</p>
-                </CardContent>
-              </Card>
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <h2 className="text-2xl font-bold text-stone-900 dark:text-white">
+                  {getText('Kat Mwen Yo', 'Mes Cartes', 'My Cards')}
+                </h2>
+                <p className="text-stone-500 dark:text-stone-400">
+                  {getText('Jere kat vityèl ou yo', 'Gérez vos cartes virtuelles', 'Manage your virtual cards')}
+                </p>
+              </div>
+              <div className="flex gap-3">
+                {approvedCards.length > 0 && (
+                  <Button onClick={openTopUpModal} className="bg-emerald-500 hover:bg-emerald-600 text-white">
+                    <Plus className="mr-2" size={18} />
+                    {getText('Ajoute kòb sou kat', 'Ajouter des fonds', 'Add funds to card')}
+                  </Button>
+                )}
+                {approvedCards.length > 0 && (
+                  <Button onClick={openWithdrawModal} variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50">
+                    <ArrowDown className="mr-2" size={18} />
+                    {getText('Retire sou bous', 'Retirer vers wallet', 'Withdraw to wallet')}
+                  </Button>
+                )}
+                <Button onClick={() => setShowOrderModal(true)} className="btn-primary">
+                  <ShoppingCart className="mr-2" size={18} />
+                  {getText('Komande yon kat', 'Commander une carte', 'Order a card')}
+                </Button>
+              </div>
             </div>
 
             {/* Pending order notice */}
-            {!loading && cardOrders.some(o => o.status === 'pending') ? (
+            {!loading && approvedCards.length === 0 && cardOrders.some(o => o.status === 'pending') ? (
               <Card className="border-amber-200 bg-amber-50 dark:bg-amber-900/10">
                 <CardContent className="p-4">
                   <p className="font-semibold text-amber-800 dark:text-amber-300">
                     {getText(
-                      'Gen demann kat an atant apwobasyon admin lan.',
-                      'Des demandes de carte sont en attente d’approbation.',
-                      'Some card requests are pending admin approval.'
+                      'Demann kat ou an an atant apwobasyon admin lan.',
+                      'Votre demande de carte est en attente d’approbation.',
+                      'Your card request is pending admin approval.'
                     )}
                   </p>
                   <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
@@ -674,201 +530,112 @@ export default function VirtualCard() {
               </Card>
             ) : null}
 
-            {/* Cards grid */}
+            {/* USD Balance for Top-up */}
+            {approvedCards.length > 0 && (
+              <Card className="bg-gradient-to-r from-amber-500 to-amber-600 text-white">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-amber-100 text-sm">{getText('Balans USD disponib pou top-up', 'Solde USD disponible pour recharge', 'USD balance available for top-up')}</p>
+                      <p className="text-2xl font-bold">${(user?.wallet_usd || 0).toFixed(2)}</p>
+                    </div>
+                    <Button 
+                      onClick={openTopUpModal}
+                      className="bg-white text-amber-600 hover:bg-amber-50"
+                    >
+                      {getText('Ajoute sou kat', 'Recharger carte', 'Top up card')}
+                      <ArrowRight className="ml-2" size={16} />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Card Orders History */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <CreditCard size={20} className="text-[#EA580C]" />
-                  {getText('Kat Mwen Yo', 'Mes Cartes', 'My Cards')}
+                  {getText('Kat Mwen Yo', 'Mes Cartes', 'My Cards')} ({approvedCards.length} {getText('aktif', 'actives', 'active')})
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="space-y-3">
                     {[1, 2, 3].map(i => (
-                      <div key={i} className="skeleton h-44 rounded-xl" />
+                      <div key={i} className="skeleton h-16 rounded-lg" />
                     ))}
                   </div>
-                ) : approvedCards.length === 0 ? (
+                ) : cardOrders.length === 0 ? (
                   <div className="text-center py-8 text-stone-500">
                     <CreditCard className="mx-auto mb-3 text-stone-400" size={48} />
-                    <p>{getText('Ou poko gen kat aktif', 'Vous n\'avez pas de carte active', 'You have no active cards')}</p>
-                    <Button onClick={() => setShowOrderModal(true)} disabled={virtualCardsEnabled === false} className="btn-gold mt-4">
+                    <p>{getText('Ou poko gen komand kat', 'Vous n\'avez pas encore de commande de carte', 'You have no card orders yet')}</p>
+                    <Button onClick={() => setShowOrderModal(true)} className="btn-gold mt-4">
                       <ShoppingCart className="mr-2" size={18} />
                       {getText('Komande premye kat ou', 'Commander votre première carte', 'Order your first card')}
                     </Button>
                   </div>
                 ) : (
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {approvedCards.map((c) => (
-                      <div key={c.order_id} className="rounded-2xl overflow-hidden border border-stone-200 bg-white dark:bg-stone-900 dark:border-stone-700">
-                        {/* Card visual (no actions on the card face) */}
-                        <div
-                          className={`relative overflow-hidden text-white p-4 min-h-[176px] ${
-                            c.card_type === 'mastercard'
-                              ? 'bg-gradient-to-br from-orange-500 via-red-500 to-pink-600'
-                              : 'bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800'
-                          }`}
-                        >
-                          {(c.card_image || defaultCardBg) ? (
-                            <img
-                              src={c.card_image || defaultCardBg}
-                              alt="Card"
-                              className="absolute inset-0 w-full h-full object-cover opacity-80"
-                            />
-                          ) : null}
-
-                          <div className="relative z-10 flex flex-col h-full">
-                            {/* Header */}
-                            <div className="flex items-center justify-between">
-                              <span className="text-[15px] font-bold tracking-[3px] text-[#ffd700]">
-                                {String(c.card_brand || 'KAYICOM').toUpperCase()}
-                              </span>
-                              <div className="w-[45px] h-[35px] rounded-md bg-gradient-to-br from-[#f0d060] to-[#b8860b]" />
-                            </div>
-
-                            {/* Number row */}
-                            <div className="flex items-center gap-3 mt-10">
-                              <span className="font-mono text-[18px] tracking-[4px]">
-                                {maskStyleByOrderId?.[c.order_id] ? formatCardNumber(c.card_last4) : formatCardNumberAsterisks(c.card_last4)}
-                              </span>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => toggleMaskStyle(c.order_id)}
-                                className="h-8 w-8 p-0 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-                                aria-label={getText('Chanje afichaj mask la', 'Changer le masquage', 'Toggle mask display')}
-                              >
-                                {maskStyleByOrderId?.[c.order_id] ? <EyeOff size={16} /> : <Eye size={16} />}
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => copyToClipboard(
-                                  maskStyleByOrderId?.[c.order_id] ? formatCardNumber(c.card_last4) : formatCardNumberAsterisks(c.card_last4),
-                                  getText('Nimewo kat (mask)', 'Numéro (masqué)', 'Card number (masked)')
-                                )}
-                                className="h-8 w-8 p-0 border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-                                aria-label={getText('Kopye', 'Copier', 'Copy')}
-                              >
-                                <Copy size={16} />
-                              </Button>
-                            </div>
-
-                            {/* Footer */}
-                            <div className="flex items-end justify-between mt-auto">
-                              <div>
-                                <span className="block text-[10px] uppercase text-white/70 mb-1">
-                                  {getText('Mèt Kat la', 'Titulaire', 'Card holder')}
+                  <div className="divide-y divide-stone-100 dark:divide-stone-700">
+                    {cardOrders.map((order) => (
+                      <div key={order.order_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                            order.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-stone-100 dark:bg-stone-800'
+                          }`}>
+                            {order.card_type && order.status === 'approved' ? (
+                              <img 
+                                src={order.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
+                                alt={order.card_type}
+                                className="h-8 w-auto"
+                              />
+                            ) : (
+                              <CreditCard className={order.status === 'approved' ? 'text-emerald-600' : 'text-stone-600 dark:text-stone-400'} size={24} />
+                            )}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-stone-900 dark:text-white">{order.card_email}</p>
+                              {order.card_brand && order.status === 'approved' && (
+                                <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">
+                                  {order.card_brand}
                                 </span>
-                                <span className="text-[13px] font-medium">
-                                  {String((c.card_holder_name || user?.full_name || 'N/A')).toUpperCase()}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="block text-[10px] uppercase text-white/70 mb-1">
-                                  {getText('Ekspirasyon', 'Expiration', 'Expiry')}
-                                </span>
-                                <span className="text-[13px] font-medium font-mono">{c.card_expiry || 'MM/YY'}</span>
-                              </div>
-                              <div>
-                                <span className="block text-[10px] uppercase text-white/70 mb-1">CVV</span>
-                                <span className="text-[13px] font-medium font-mono">***</span>
-                              </div>
-                              <div className="flex items-center">
-                                {c.card_type === 'mastercard' ? (
-                                  <>
-                                    <div className="w-[28px] h-[28px] rounded-full bg-[#eb001b] opacity-80" />
-                                    <div className="w-[28px] h-[28px] rounded-full bg-[#f79e1b] -ml-3 opacity-80" />
-                                  </>
-                                ) : (
-                                  <span className="text-xs font-bold tracking-widest text-white/80">VISA</span>
-                                )}
-                              </div>
+                              )}
                             </div>
+                            {order.status === 'approved' && order.card_last4 && (
+                              <p className="text-sm font-mono text-emerald-600 dark:text-emerald-400">
+                                •••• •••• •••• {order.card_last4}
+                              </p>
+                            )}
+                            <p className="text-sm text-stone-500">
+                              {new Date(order.created_at).toLocaleDateString()}
+                            </p>
                           </div>
                         </div>
-
-                        {/* Billing info (customer-safe) */}
-                        {(c.billing_address || c.billing_city || c.billing_country || c.billing_zip) ? (
-                          <div className="p-3 bg-white dark:bg-stone-900 border-t border-stone-200 dark:border-stone-700">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold text-stone-900 dark:text-white">
-                                  {getText('Adrès Faktirasyon', 'Adresse de Facturation', 'Billing Address')}
-                                </p>
-                                <p className="text-xs text-stone-600 dark:text-stone-300 mt-2 leading-5">
-                                  {c.billing_address ? (<><strong>{getText('Lari:', 'Rue:', 'Street:')}</strong> {c.billing_address}<br /></>) : null}
-                                  {c.billing_city ? (<><strong>{getText('Vil:', 'Ville:', 'City:')}</strong> {c.billing_city}<br /></>) : null}
-                                  {c.billing_zip ? (<><strong>ZIP:</strong> {c.billing_zip}<br /></>) : null}
-                                  {c.billing_country ? (<><strong>{getText('Peyi:', 'Pays:', 'Country:')}</strong> {c.billing_country}</>) : null}
-                                </p>
-                              </div>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="shrink-0"
-                                onClick={() => copyToClipboard(
-                                  [
-                                    c.billing_address,
-                                    c.billing_city,
-                                    c.billing_zip,
-                                    c.billing_country,
-                                  ].filter(Boolean).join(', '),
-                                  getText('Adrès', 'Adresse', 'Address')
-                                )}
-                              >
-                                <Copy size={14} className="mr-2" />
-                                {getText('Kopye', 'Copier', 'Copy')}
-                              </Button>
-                            </div>
-                          </div>
-                        ) : null}
-
-                        {/* Action bar (standard pattern: actions below, not on the card) */}
-                        <div className="p-3 flex items-center justify-between gap-2">
-                          <Button size="sm" onClick={() => viewCardDetails(c)} className="btn-primary">
-                            <Eye size={16} className="mr-2" />
-                            {getText('Detay', 'Détails', 'Details')}
-                          </Button>
-
-                          <div className="flex items-center gap-2">
-                            {getStatusBadge(c.status)}
-
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm" className="px-2" aria-label={getText('Plis', 'Plus', 'More')}>
-                                  <MoreVertical size={16} />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {c.provider === 'strowallet' ? (
-                                  <DropdownMenuItem onSelect={() => openTransactions(c)}>
-                                    <History />
-                                    {getText('Tranzaksyon', 'Transactions', 'Transactions')}
-                                  </DropdownMenuItem>
-                                ) : null}
-
-                                <DropdownMenuItem onSelect={() => refreshCardDetails(c)} disabled={refreshingDetails || virtualCardsEnabled === false}>
-                                  <RefreshCw className={refreshingDetails ? 'animate-spin' : ''} />
-                                  {getText('Ajou detay', 'Rafraîchir', 'Refresh')}
-                                </DropdownMenuItem>
-
-                                <DropdownMenuSeparator />
-
-                                <DropdownMenuItem onSelect={() => openTopUpModalForCard(c)} disabled={virtualCardsEnabled === false}>
-                                  <Plus />
-                                  {getText('Top-up', 'Recharger', 'Top up')}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => openWithdrawModalForCard(c)} disabled={virtualCardsEnabled === false}>
-                                  <ArrowDown />
-                                  {getText('Retrè', 'Retrait', 'Withdraw')}
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
+                        <div className="flex items-center gap-3">
+                          {order.status === 'approved' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => viewCardDetails(order)}
+                              className="text-emerald-600 border-emerald-300 hover:bg-emerald-50"
+                            >
+                              <Eye size={16} className="mr-1" />
+                              {getText('Wè Detay', 'Voir Détails', 'View Details')}
+                            </Button>
+                          )}
+                          {order.status === 'approved' && order.provider === 'strowallet' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openTransactions(order)}
+                              className="text-purple-700 border-purple-300 hover:bg-purple-50"
+                            >
+                              <History size={16} className="mr-1" />
+                              {getText('Tranzaksyon', 'Transactions', 'Transactions')}
+                            </Button>
+                          )}
+                          {getStatusBadge(order.status)}
                         </div>
                       </div>
                     ))}
@@ -877,142 +644,101 @@ export default function VirtualCard() {
               </CardContent>
             </Card>
 
-            {/* Activity tabs */}
+            {/* Deposit/Top-up History for Cards */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <History size={20} className="text-amber-500" />
+                  {getText('Istorik Top-up Kat', 'Historique des Recharges', 'Card Top-up History')}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="skeleton h-16 rounded-lg" />
+                    ))}
+                  </div>
+                ) : cardDeposits.length === 0 ? (
+                  <div className="text-center py-8 text-stone-500">
+                    <Wallet className="mx-auto mb-3 text-stone-400" size={48} />
+                    <p>{getText('Pa gen istorik top-up', 'Pas d\'historique de recharge', 'No top-up history')}</p>
+                    <p className="text-sm mt-1">{getText('Top-up kat ou yo ap parèt isit la', 'Vos recharges carte apparaîtront ici', 'Your card top-ups will appear here')}</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-stone-100 dark:divide-stone-700">
+                    {cardDeposits.map((deposit) => (
+                      <div key={deposit.deposit_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                            deposit.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-900/30' : 
+                            deposit.status === 'rejected' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-amber-100 dark:bg-amber-900/30'
+                          }`}>
+                            <Wallet className={
+                              deposit.status === 'approved' ? 'text-emerald-600' : 
+                              deposit.status === 'rejected' ? 'text-red-600' : 'text-amber-600'
+                            } size={20} />
+                          </div>
+                          <div>
+                            <p className="font-medium text-stone-900 dark:text-white">
+                              ${deposit.amount.toFixed(2)} USD
+                            </p>
+                            <p className="text-sm text-stone-500">
+                              {new Date(deposit.created_at).toLocaleDateString()} - {deposit.card_email}
+                            </p>
+                          </div>
+                        </div>
+                        {getStatusBadge(deposit.status)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Withdrawals History */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <History size={20} className="text-stone-600" />
-                  {getText('Aktivite', 'Activité', 'Activity')}
+                  {getText('Istorik Retrè Kat', 'Historique des Retraits', 'Card Withdrawal History')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="orders">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="orders">{getText('Komand', 'Commandes', 'Orders')}</TabsTrigger>
-                    <TabsTrigger value="topups">{getText('Top-up', 'Recharges', 'Top-ups')}</TabsTrigger>
-                    <TabsTrigger value="withdrawals">{getText('Retrè', 'Retraits', 'Withdrawals')}</TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="orders" className="mt-4">
-                    {loading ? (
-                      <div className="space-y-3">
-                        {[1, 2, 3].map(i => (<div key={i} className="skeleton h-16 rounded-lg" />))}
-                      </div>
-                    ) : cardOrders.length === 0 ? (
-                      <div className="text-center py-8 text-stone-500">
-                        <p>{getText('Pa gen komand', 'Aucune commande', 'No orders')}</p>
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-stone-100 dark:divide-stone-700">
-                        {cardOrders.map((order) => (
-                          <div key={order.order_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                                order.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-stone-100 dark:bg-stone-800'
-                              }`}>
-                                {order.card_type && order.status === 'approved' ? (
-                                  <img
-                                    src={order.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO}
-                                    alt={order.card_type}
-                                    className="h-8 w-auto"
-                                  />
-                                ) : (
-                                  <CreditCard className={order.status === 'approved' ? 'text-emerald-600' : 'text-stone-600 dark:text-stone-400'} size={24} />
-                                )}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="font-medium text-stone-900 dark:text-white truncate">{order.card_email}</p>
-                                <p className="text-xs text-stone-500">{new Date(order.created_at).toLocaleDateString()}</p>
-                                {order.status === 'approved' && order.card_last4 ? (
-                                  <p className="text-sm font-mono text-emerald-600 dark:text-emerald-400">•••• •••• •••• {order.card_last4}</p>
-                                ) : null}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 flex-wrap justify-end">
-                              {order.status === 'approved' ? (
-                                <Button variant="outline" size="sm" onClick={() => viewCardDetails(order)} className="text-emerald-600 border-emerald-300 hover:bg-emerald-50">
-                                  <Eye size={16} className="mr-1" />
-                                  {getText('Detay', 'Détails', 'Details')}
-                                </Button>
-                              ) : null}
-                              {order.status === 'approved' && order.provider === 'strowallet' ? (
-                                <Button variant="outline" size="sm" onClick={() => openTransactions(order)} className="text-purple-700 border-purple-300 hover:bg-purple-50">
-                                  <History size={16} className="mr-1" />
-                                  {getText('Tranzaksyon', 'Transactions', 'Transactions')}
-                                </Button>
-                              ) : null}
-                              {getStatusBadge(order.status)}
-                            </div>
+                {loading ? (
+                  <div className="space-y-3">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="skeleton h-16 rounded-lg" />
+                    ))}
+                  </div>
+                ) : cardWithdrawals.length === 0 ? (
+                  <div className="text-center py-8 text-stone-500">
+                    <Wallet className="mx-auto mb-3 text-stone-400" size={48} />
+                    <p>{getText('Pa gen istorik retrè', 'Pas d\'historique de retrait', 'No withdrawal history')}</p>
+                    <p className="text-sm mt-1">{getText('Retrè yo ap parèt isit la', 'Vos retraits apparaîtront ici', 'Your withdrawals will appear here')}</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-stone-100 dark:divide-stone-700">
+                    {cardWithdrawals.map((w) => (
+                      <div key={w.withdrawal_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-stone-100 dark:bg-stone-800">
+                            <ArrowDown className="text-stone-600 dark:text-stone-300" size={20} />
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="topups" className="mt-4">
-                    {loading ? (
-                      <div className="space-y-3">
-                        {[1, 2, 3].map(i => (<div key={i} className="skeleton h-16 rounded-lg" />))}
-                      </div>
-                    ) : cardDeposits.length === 0 ? (
-                      <div className="text-center py-8 text-stone-500">
-                        <p>{getText('Pa gen istorik top-up', 'Pas d\'historique de recharge', 'No top-up history')}</p>
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-stone-100 dark:divide-stone-700">
-                        {cardDeposits.map((deposit) => (
-                          <div key={deposit.deposit_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                                deposit.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-900/30' :
-                                deposit.status === 'rejected' ? 'bg-red-100 dark:bg-red-900/30' : 'bg-amber-100 dark:bg-amber-900/30'
-                              }`}>
-                                <Wallet className={
-                                  deposit.status === 'approved' ? 'text-emerald-600' :
-                                  deposit.status === 'rejected' ? 'text-red-600' : 'text-amber-600'
-                                } size={20} />
-                              </div>
-                              <div>
-                                <p className="font-medium text-stone-900 dark:text-white">${Number(deposit.amount || 0).toFixed(2)} USD</p>
-                                <p className="text-xs text-stone-500">{new Date(deposit.created_at).toLocaleDateString()} • {deposit.card_email}</p>
-                              </div>
-                            </div>
-                            {getStatusBadge(deposit.status)}
+                          <div>
+                            <p className="font-medium text-stone-900 dark:text-white">
+                              ${Number(w.amount || 0).toFixed(2)} USD
+                            </p>
+                            <p className="text-sm text-stone-500">
+                              {new Date(w.created_at).toLocaleDateString()} - {w.card_email}
+                            </p>
                           </div>
-                        ))}
+                        </div>
+                        {getStatusBadge(w.status)}
                       </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="withdrawals" className="mt-4">
-                    {loading ? (
-                      <div className="space-y-3">
-                        {[1, 2, 3].map(i => (<div key={i} className="skeleton h-16 rounded-lg" />))}
-                      </div>
-                    ) : cardWithdrawals.length === 0 ? (
-                      <div className="text-center py-8 text-stone-500">
-                        <p>{getText('Pa gen istorik retrè', 'Pas d\'historique de retrait', 'No withdrawal history')}</p>
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-stone-100 dark:divide-stone-700">
-                        {cardWithdrawals.map((w) => (
-                          <div key={w.withdrawal_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-stone-100 dark:bg-stone-800">
-                                <ArrowDown className="text-stone-600 dark:text-stone-300" size={20} />
-                              </div>
-                              <div>
-                                <p className="font-medium text-stone-900 dark:text-white">${Number(w.amount || 0).toFixed(2)} USD</p>
-                                <p className="text-xs text-stone-500">{new Date(w.created_at).toLocaleDateString()} • {w.card_email}</p>
-                              </div>
-                            </div>
-                            {getStatusBadge(w.status)}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </TabsContent>
-                </Tabs>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1320,37 +1046,17 @@ export default function VirtualCard() {
             
             {selectedCard && (
               <div className="space-y-4 py-4">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Quick info */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
-                    <p className="text-xs text-stone-500">{getText('Estati', 'Statut', 'Status')}</p>
-                    <p className="font-semibold capitalize">{selectedCard.card_status || '—'}</p>
+                    <p className="text-xs text-stone-500">{getText('Email Kat', 'Email Carte', 'Card Email')}</p>
+                    <p className="font-medium break-all">{selectedCard.card_email || user?.email || '—'}</p>
                   </div>
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
-                    <p className="text-xs text-stone-500">{getText('Balans Kat', 'Solde Carte', 'Card balance')}</p>
-                    <p className="font-semibold">
-                      {selectedCard.card_balance != null
-                        ? `${Number(selectedCard.card_balance).toFixed(2)} ${selectedCard.card_currency || 'USD'}`
-                        : '—'}
-                    </p>
-                    <p className="text-[11px] text-stone-500 mt-1">
-                      {getText('Klike “Refresh” pou ajou li.', 'Cliquez “Rafraîchir” pour le mettre à jour.', 'Use “Refresh” to update.')}
-                    </p>
-                  </div>
-                  <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
-                    <p className="text-xs text-stone-500">{getText('Echèk Peman', 'Échecs Paiement', 'Payment fails')}</p>
-                    <p className="font-semibold">
-                      {typeof selectedCard.failed_payment_count === 'number' ? `${selectedCard.failed_payment_count}/3` : '—'}
-                    </p>
+                    <p className="text-xs text-stone-500">{getText('ID Kat (Provider)', 'ID Carte (Provider)', 'Card ID (Provider)')}</p>
+                    <p className="font-mono text-sm break-all">{selectedCard.provider_card_id || '—'}</p>
                   </div>
                 </div>
-
-                {selectedCard.card_status === 'locked' && selectedCard.locked_reason ? (
-                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
-                    <p className="text-red-700 dark:text-red-300 text-sm">
-                      <strong>{getText('Rezon blokaj:', 'Raison du blocage:', 'Lock reason:')}</strong> {selectedCard.locked_reason}
-                    </p>
-                  </div>
-                ) : null}
 
                 {/* Card Visual */}
                 <div className={`relative rounded-2xl p-4 sm:p-6 text-white overflow-hidden ${
@@ -1383,9 +1089,16 @@ export default function VirtualCard() {
                     <div className="mb-6">
                       <div className="flex items-start gap-2">
                         <span className="font-mono text-lg sm:text-xl tracking-wider break-all">
-                          {revealedCard?.card_number ? String(revealedCard.card_number) : formatCardNumber(selectedCard.card_last4)}
+                          {formatCardNumber(selectedCard.card_last4)}
                         </span>
                       </div>
+                      <p className="text-xs text-white/70 mt-2">
+                        {getText(
+                          'Pou sekirite w, app la pa montre nimewo kat konplè oswa CVV. Tcheke email ou / kontakte sipò si ou bezwen detay yo.',
+                          'Pour votre sécurité, l’app n’affiche pas le numéro complet ni le CVV. Vérifiez votre email / contactez le support si besoin.',
+                          'For your security, the app does not show the full card number or CVV. Check your email / contact support if needed.'
+                        )}
+                      </p>
                     </div>
                     
                     <div className="flex justify-between items-end">
@@ -1397,57 +1110,11 @@ export default function VirtualCard() {
                       </div>
                       <div className="text-right">
                         <p className="text-white/60 text-xs uppercase mb-1">{getText('Ekspire', 'Expire', 'Expires')}</p>
-                        <p className="font-mono font-medium">{revealedCard?.expiry || selectedCard.card_expiry || 'MM/YY'}</p>
+                        <p className="font-mono font-medium">{selectedCard.card_expiry || 'MM/YY'}</p>
                       </div>
                     </div>
                   </div>
                 </div>
-
-                {/* Full reveal controls */}
-                {selectedCard?.provider === 'strowallet' ? (
-                  <div className="border rounded-xl p-4 space-y-3 bg-stone-50 dark:bg-stone-800">
-                    <p className="text-sm text-stone-700 dark:text-stone-200">
-                      <strong>{getText('Detay sansib:', 'Détails sensibles:', 'Sensitive details:')}</strong>{' '}
-                      {getText(
-                        'Ou dwe mete PIN 4 chif ou pou revele nimewo kat + CVV.',
-                        'Vous devez entrer votre PIN (4 chiffres) pour révéler le numéro + CVV.',
-                        'Enter your 4-digit PIN to reveal card number + CVV.'
-                      )}
-                    </p>
-
-                    {revealedCard?.cvv ? (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-white dark:bg-stone-900 rounded-lg p-3 border">
-                          <p className="text-xs text-stone-500">CVV</p>
-                          <p className="font-mono text-lg font-semibold">{String(revealedCard.cvv)}</p>
-                        </div>
-                        <div className="bg-white dark:bg-stone-900 rounded-lg p-3 border">
-                          <p className="text-xs text-stone-500">{getText('Non sou kat', 'Nom sur carte', 'Name on card')}</p>
-                          <p className="font-semibold">{String(revealedCard.card_holder_name || '').toUpperCase()}</p>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <div className="flex gap-2 flex-wrap">
-                      {!hasCardPin ? (
-                        <Button onClick={() => setShowSetPinModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white">
-                          {getText('Mete PIN', 'Définir PIN', 'Set PIN')}
-                        </Button>
-                      ) : (
-                        <Button onClick={() => setShowRevealModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white">
-                          {getText('Revele detay', 'Révéler détails', 'Reveal details')}
-                        </Button>
-                      )}
-
-                      <Button
-                        variant="outline"
-                        onClick={() => { setShowPinResetModal(true); }}
-                      >
-                        {getText('Mwen bliye PIN', 'J’ai oublié le PIN', 'Forgot PIN')}
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
 
                 {(selectedCard.billing_address || selectedCard.billing_city || selectedCard.billing_country) && (
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
@@ -1473,6 +1140,14 @@ export default function VirtualCard() {
                       <Copy size={14} className="mr-2" />
                       {getText('Kopye Adrès', 'Copier Adresse', 'Copy Address')}
                     </Button>
+                  </div>
+                )}
+
+                {selectedCard.admin_notes && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+                    <p className="text-blue-700 dark:text-blue-400 text-sm">
+                      <strong>{getText('Nòt:', 'Note:', 'Note:')}</strong> {selectedCard.admin_notes}
+                    </p>
                   </div>
                 )}
 
@@ -1666,96 +1341,6 @@ export default function VirtualCard() {
                 </div>
               </div>
             )}
-          </DialogContent>
-        </Dialog>
-
-        {/* Set PIN modal */}
-        <Dialog open={showSetPinModal} onOpenChange={setShowSetPinModal}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>{getText('Mete PIN Kat la', 'Définir le PIN', 'Set card PIN')}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div>
-                <Label>{getText('PIN (4 chif)', 'PIN (4 chiffres)', 'PIN (4 digits)')}</Label>
-                <Input
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={pinSetValue}
-                  onChange={(e) => setPinSetValue(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="mt-2 font-mono text-lg"
-                  placeholder="1234"
-                />
-              </div>
-              <Button onClick={setPin} disabled={pinSetLoading || pinSetValue.length !== 4} className="w-full bg-purple-600 hover:bg-purple-700 text-white">
-                {pinSetLoading ? getText('Ap sove...', 'Enregistrement...', 'Saving...') : getText('Sove PIN', 'Enregistrer', 'Save PIN')}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Reveal modal */}
-        <Dialog open={showRevealModal} onOpenChange={setShowRevealModal}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>{getText('Revele detay kat la', 'Révéler les détails', 'Reveal card details')}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div>
-                <Label>{getText('Antre PIN ou', 'Entrez votre PIN', 'Enter your PIN')}</Label>
-                <Input
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={revealPin}
-                  onChange={(e) => setRevealPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="mt-2 font-mono text-lg"
-                  placeholder="••••"
-                />
-              </div>
-              <Button onClick={revealFullDetails} disabled={revealing || revealPin.length !== 4} className="w-full bg-purple-600 hover:bg-purple-700 text-white">
-                {revealing ? getText('Ap verifye...', 'Vérification...', 'Verifying...') : getText('Revele', 'Révéler', 'Reveal')}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Reset PIN modal */}
-        <Dialog open={showPinResetModal} onOpenChange={setShowPinResetModal}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>{getText('Reset PIN Kat la', 'Réinitialiser le PIN', 'Reset PIN')}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm">
-                {getText(
-                  'Nou pral voye yon kòd reset sou imèl kont ou. Kòd la valab 15 minit.',
-                  'Nous enverrons un code sur votre email. Code valable 15 minutes.',
-                  'We will send a reset code to your account email. Code valid for 15 minutes.'
-                )}
-              </div>
-              <Button variant="outline" onClick={sendPinReset} disabled={sendingReset} className="w-full">
-                {sendingReset ? getText('Ap voye...', 'Envoi...', 'Sending...') : getText('Voye kòd reset la', 'Envoyer le code', 'Send reset code')}
-              </Button>
-
-              <div>
-                <Label>{getText('Kòd reset', 'Code', 'Code')}</Label>
-                <Input value={pinResetToken} onChange={(e) => setPinResetToken(e.target.value)} className="mt-2 font-mono" placeholder="ex: AbC..."/>
-              </div>
-              <div>
-                <Label>{getText('Nouvo PIN (4 chif)', 'Nouveau PIN (4 chiffres)', 'New PIN (4 digits)')}</Label>
-                <Input
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={pinResetNew}
-                  onChange={(e) => setPinResetNew(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="mt-2 font-mono text-lg"
-                  placeholder="1234"
-                />
-              </div>
-              <Button onClick={confirmPinReset} disabled={resettingPin || !pinResetToken || pinResetNew.length !== 4} className="w-full bg-purple-600 hover:bg-purple-700 text-white">
-                {resettingPin ? getText('Ap chanje...', 'Changement...', 'Resetting...') : getText('Konfime reset', 'Confirmer', 'Confirm reset')}
-              </Button>
-            </div>
           </DialogContent>
         </Dialog>
       </div>

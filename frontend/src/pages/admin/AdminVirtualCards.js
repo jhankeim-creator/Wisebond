@@ -24,7 +24,6 @@ export default function AdminVirtualCards() {
   const [activeTab, setActiveTab] = useState('orders');
   const [strowalletEnabled, setStrowalletEnabled] = useState(false);
   const [autoIssueStrowallet, setAutoIssueStrowallet] = useState(true);
-  const [providerCardId, setProviderCardId] = useState('');
   const [cardSettings, setCardSettings] = useState(null);
   const [savingCardSettings, setSavingCardSettings] = useState(false);
   
@@ -55,7 +54,6 @@ export default function AdminVirtualCards() {
   // Card details for manual entry (SECURITY: do not store PAN/CVV)
   const [cardDetails, setCardDetails] = useState({
     card_email: '', // Email for the card
-    provider_card_id: '', // Optional Strowallet card_id (links an existing provider card)
     card_brand: '',
     card_type: 'visa',
     card_holder_name: '',
@@ -143,8 +141,6 @@ export default function AdminVirtualCards() {
           strowallet_brand_name: settings.strowallet_brand_name || 'KAYICOM',
           strowallet_api_key: settings.strowallet_api_key || '',
           strowallet_api_secret: settings.strowallet_api_secret || '',
-          strowallet_api_key_masked: settings.strowallet_api_key_masked || '',
-          strowallet_api_secret_masked: settings.strowallet_api_secret_masked || '',
           strowallet_base_url: settings.strowallet_base_url || '',
           strowallet_create_user_path: settings.strowallet_create_user_path || '',
           strowallet_create_card_path: settings.strowallet_create_card_path || '',
@@ -152,6 +148,7 @@ export default function AdminVirtualCards() {
           strowallet_withdraw_card_path: settings.strowallet_withdraw_card_path || '',
           strowallet_fetch_card_detail_path: settings.strowallet_fetch_card_detail_path || '',
           strowallet_card_transactions_path: settings.strowallet_card_transactions_path || '',
+          strowallet_mode: settings.strowallet_mode || 'live',
           strowallet_create_card_amount_usd: settings.strowallet_create_card_amount_usd ?? 5,
           strowallet_freeze_unfreeze_path: settings.strowallet_freeze_unfreeze_path || '',
           strowallet_full_card_history_path: settings.strowallet_full_card_history_path || '',
@@ -195,6 +192,7 @@ export default function AdminVirtualCards() {
         strowallet_withdraw_card_path: cardSettings.strowallet_withdraw_card_path || null,
         strowallet_fetch_card_detail_path: cardSettings.strowallet_fetch_card_detail_path || null,
         strowallet_card_transactions_path: cardSettings.strowallet_card_transactions_path || null,
+        strowallet_mode: cardSettings.strowallet_mode || 'live',
         strowallet_create_card_amount_usd: Number.isFinite(Number(cardSettings.strowallet_create_card_amount_usd))
           ? Number(cardSettings.strowallet_create_card_amount_usd)
           : 5,
@@ -228,6 +226,7 @@ export default function AdminVirtualCards() {
         strowallet_fund_card_path: s.strowallet_fund_card_path || '/api/bitvcard/fund-card/',
         strowallet_fetch_card_detail_path: s.strowallet_fetch_card_detail_path || '/api/bitvcard/fetch-card-detail/',
         strowallet_card_transactions_path: s.strowallet_card_transactions_path || '/api/bitvcard/card-transactions/',
+        strowallet_mode: s.strowallet_mode || 'live',
         strowallet_create_card_amount_usd: s.strowallet_create_card_amount_usd ?? 5,
         strowallet_freeze_unfreeze_path: s.strowallet_freeze_unfreeze_path || '',
         strowallet_full_card_history_path: s.strowallet_full_card_history_path || '',
@@ -385,7 +384,6 @@ export default function AdminVirtualCards() {
     setFoundClient(null);
     setCardDetails({
       card_email: '',
-      provider_card_id: '',
       card_brand: '',
       card_type: 'visa',
       card_holder_name: '',
@@ -411,12 +409,7 @@ export default function AdminVirtualCards() {
       // If auto-issuing via Strowallet, do NOT send manual card details.
       // Backend will create the card via Strowallet and populate details automatically.
       const payload = shouldAutoIssue
-        ? {
-          action,
-          admin_notes: adminNotes,
-          // Optional: if card already exists in Strowallet, link it to avoid duplicates.
-          ...(providerCardId ? { provider_card_id: String(providerCardId).trim() } : {}),
-        }
+        ? { action, admin_notes: adminNotes }
         : {
           action,
           admin_notes: adminNotes,
@@ -465,10 +458,8 @@ export default function AdminVirtualCards() {
 
   const resetOrderForm = () => {
     setAdminNotes('');
-    setProviderCardId('');
     setCardDetails({
       card_email: '',
-      provider_card_id: '',
       card_brand: '',
       card_type: 'visa',
       card_holder_name: '',
@@ -485,12 +476,10 @@ export default function AdminVirtualCards() {
   const openOrderModal = (order) => {
     setSelectedOrder(order);
     setAdminNotes(order.admin_notes || '');
-    setProviderCardId(order?.provider_card_id || '');
     // Default to auto-issue if Strowallet is enabled and the order isn't already a provider card.
     setAutoIssueStrowallet(!!strowalletEnabled && (order?.provider !== 'strowallet'));
     setCardDetails({
       card_email: order.card_email || '',
-      provider_card_id: order?.provider_card_id || '',
       card_brand: order.card_brand || '',
       card_type: order.card_type || 'visa',
       card_holder_name: order.card_holder_name || '',
@@ -623,11 +612,6 @@ export default function AdminVirtualCards() {
                         className="mt-1 font-mono text-sm"
                         placeholder="••••••••"
                       />
-                      {cardSettings.strowallet_api_key_masked ? (
-                        <p className="text-xs text-stone-500 mt-1">
-                          {getText('Kle aktyèl:', 'Clé actuelle:', 'Current key:')} <span className="font-mono">{cardSettings.strowallet_api_key_masked}</span>
-                        </p>
-                      ) : null}
                     </div>
                     <div>
                       <Label>API Secret</Label>
@@ -638,11 +622,6 @@ export default function AdminVirtualCards() {
                         className="mt-1 font-mono text-sm"
                         placeholder="••••••••"
                       />
-                      {cardSettings.strowallet_api_secret_masked ? (
-                        <p className="text-xs text-stone-500 mt-1">
-                          {getText('Sekrè aktyèl:', 'Secret actuel:', 'Current secret:')} <span className="font-mono">{cardSettings.strowallet_api_secret_masked}</span>
-                        </p>
-                      ) : null}
                     </div>
                   </div>
 
@@ -679,6 +658,28 @@ export default function AdminVirtualCards() {
                         />
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        <div>
+                          <Label>{getText('Mode', 'Mode', 'Mode')}</Label>
+                          <Select
+                            value={cardSettings.strowallet_mode || 'live'}
+                            onValueChange={(v) => setCardSettings({ ...cardSettings, strowallet_mode: v })}
+                          >
+                            <SelectTrigger className="mt-1">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="live">live</SelectItem>
+                              <SelectItem value="sandbox">sandbox</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-stone-500 mt-1">
+                            {getText(
+                              'Si Strowallet kont ou se sandbox, mete sandbox isit la.',
+                              'Si votre compte Strowallet est sandbox, choisissez sandbox.',
+                              'If your Strowallet account is sandbox, choose sandbox.'
+                            )}
+                          </p>
+                        </div>
                         <div>
                           <Label>{getText('Default amount (USD)', 'Montant par défaut (USD)', 'Default amount (USD)')}</Label>
                           <Input
@@ -1363,25 +1364,6 @@ export default function AdminVirtualCards() {
                       <Textarea value={adminNotes} onChange={(e) => setAdminNotes(e.target.value)} rows={2} className="mt-1" />
                     </div>
 
-                    {strowalletEnabled && autoIssueStrowallet && (
-                      <div>
-                        <Label>{getText('ID Kat (Strowallet) - opsyonèl', 'ID Carte (Strowallet) - optionnel', 'Card ID (Strowallet) - optional')}</Label>
-                        <Input
-                          value={providerCardId}
-                          onChange={(e) => setProviderCardId(e.target.value)}
-                          className="mt-1 font-mono"
-                          placeholder="ex: 123456"
-                        />
-                        <p className="text-xs text-stone-500 mt-1">
-                          {getText(
-                            'Sèvi ak sa sèlman si kat la deja kreye nan Strowallet epi ou pa vle kreye yon doublon.',
-                            'Utilisez ceci seulement si la carte existe déjà dans Strowallet et vous ne voulez pas créer un doublon.',
-                            'Use this only if the card already exists in Strowallet and you want to avoid creating a duplicate.'
-                          )}
-                        </p>
-                      </div>
-                    )}
-
                     <div className="flex gap-4 pt-4 border-t">
                       <Button onClick={() => handleProcessOrder('approve')} disabled={processing} className="flex-1 bg-emerald-500 hover:bg-emerald-600">
                         <Check size={18} className="mr-2" />{getText('Apwouve', 'Approuver', 'Approve')}
@@ -1654,23 +1636,6 @@ export default function AdminVirtualCards() {
                     type="email"
                   />
                   <p className="text-xs text-stone-500 mt-1">{getText('Email asosye ak kat la', 'Email associé à la carte', 'Email associated with the card')}</p>
-                </div>
-
-                <div>
-                  <Label>{getText('Provider Card ID (Strowallet) - opsyonèl', 'Provider Card ID (Strowallet) - optionnel', 'Provider Card ID (Strowallet) - optional')}</Label>
-                  <Input
-                    placeholder="ex: 123456"
-                    value={cardDetails.provider_card_id}
-                    onChange={(e) => setCardDetails({ ...cardDetails, provider_card_id: e.target.value })}
-                    className="mt-1 font-mono"
-                  />
-                  <p className="text-xs text-stone-500 mt-1">
-                    {getText(
-                      'Si kat la deja kreye sou Strowallet, mete card_id la pou li parèt sou app la.',
-                      'Si la carte existe déjà sur Strowallet, renseignez son card_id pour l’afficher dans l’app.',
-                      'If the card already exists in Strowallet, paste its card_id so it appears in-app.'
-                    )}
-                  </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

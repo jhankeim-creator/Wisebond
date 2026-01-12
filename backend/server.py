@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Request, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
@@ -257,6 +257,10 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
     if not brand_name:
         brand_name = "KAYICOM"
 
+    # Some Strowallet deployments require passing `mode` and an initial `amount` when creating cards.
+    stw_mode = ((settings or {}).get("strowallet_mode") or os.environ.get("STROWALLET_MODE") or "live").strip().lower()
+    if stw_mode not in {"live", "sandbox"}:
+        stw_mode = "live"
     try:
         stw_amount = float((settings or {}).get("strowallet_create_card_amount_usd") or os.environ.get("STROWALLET_CREATE_CARD_AMOUNT_USD") or 5)
     except Exception:
@@ -331,6 +335,7 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
         "fetch_detail_path": fetch_detail_path,
         "card_tx_path": card_tx_path,
         "brand_name": brand_name,
+        "mode": stw_mode,
         "create_card_amount_usd": stw_amount,
         "set_limit_path": set_limit_path,
         "freeze_path": freeze_path,
@@ -352,115 +357,12 @@ def _extract_first(d: Any, *paths: str) -> Optional[Any]:
         for key in path.split("."):
             if isinstance(cur, dict) and key in cur:
                 cur = cur[key]
-                continue
-
-            # Support providers that return arrays at intermediate nodes.
-            # Examples:
-            # - {"data": [{"card_id": "..."}]} with path "data.card_id"
-            # - {"data": [{"card": {"id": "..."}}]} with path "data.card.id"
-            if isinstance(cur, list):
-                # Numeric index support: "data.0.card_id"
-                if key.isdigit():
-                    idx = int(key)
-                    if 0 <= idx < len(cur):
-                        cur = cur[idx]
-                        continue
-                    ok = False
-                    break
-
-                # Non-index key: find the first object containing that key.
-                found = False
-                for item in cur:
-                    if isinstance(item, dict) and key in item and item[key] is not None:
-                        cur = item[key]
-                        found = True
-                        break
-                if found:
-                    continue
-
-            ok = False
-            break
+            else:
+                ok = False
+                break
         if ok and cur is not None:
             return cur
     return None
-
-
-def _mask_secret(value: Optional[str], *, keep_last: int = 4) -> str:
-    """
-    Mask a secret for UI display. Never returns the full value.
-    """
-    v = (value or "").strip()
-    if not v:
-        return ""
-    if len(v) <= keep_last:
-        return "*" * len(v)
-    return ("*" * (len(v) - keep_last)) + v[-keep_last:]
-
-
-_SENSITIVE_KEY_SUBSTRINGS = {
-    "card_number",
-    "pan",
-    "cvv",
-    "cvc",
-    "security_code",
-    "pin",
-}
-
-_SENSITIVE_KEY_EXACT = {
-    # Some providers use generic key names for PAN/CVV
-    "number",
-    "cardnumber",
-}
-
-
-def _redact_sensitive_payload(obj: Any) -> Any:
-    """
-    Recursively redact common sensitive fields in provider payloads.
-    SECURITY: this is best-effort; never rely on it as the only control.
-    """
-    if isinstance(obj, dict):
-        out: Dict[str, Any] = {}
-        for k, v in obj.items():
-            kl = str(k).lower()
-            if (kl in _SENSITIVE_KEY_EXACT) or any(s in kl for s in _SENSITIVE_KEY_SUBSTRINGS):
-                # If it's a likely PAN, keep last 4 for debugging.
-                if isinstance(v, str):
-                    digits = "".join(ch for ch in v if ch.isdigit())
-                    if 12 <= len(digits) <= 19:
-                        out[k] = _mask_secret(digits, keep_last=4)
-                    else:
-                        out[k] = "***REDACTED***"
-                else:
-                    out[k] = "***REDACTED***"
-            else:
-                out[k] = _redact_sensitive_payload(v)
-        return out
-    if isinstance(obj, list):
-        return [_redact_sensitive_payload(v) for v in obj]
-    return obj
-
-
-def _safe_float(v: Any) -> Optional[float]:
-    try:
-        if v is None:
-            return None
-        # Handle numeric strings with commas/spaces
-        if isinstance(v, str):
-            vv = v.strip().replace(",", "")
-            if vv == "":
-                return None
-            return float(vv)
-        return float(v)
-    except Exception:
-        return None
-
-
-def _extract_float_first(d: Any, *paths: str) -> Optional[float]:
-    """
-    Best-effort numeric extractor for varying provider schemas.
-    """
-    raw = _extract_first(d, *paths)
-    return _safe_float(raw)
 
 def _with_aliases(payload: Dict[str, Any], key: str, *aliases: str) -> Dict[str, Any]:
     """
@@ -530,6 +432,9 @@ def _ensure_strowallet_auth_payload(payload: Dict[str, Any], cfg: Dict[str, str]
         payload.setdefault("secret_key", api_secret)
         payload.setdefault("api_secret", api_secret)
         payload.setdefault("secret", api_secret)
+    # Many SDK calls include `mode`; add it if configured.
+    if cfg.get("mode"):
+        payload.setdefault("mode", cfg["mode"])
     return payload
 
 async def _strowallet_post(settings: Optional[dict], path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -916,188 +821,6 @@ async def _strowallet_create_customer_id(
         },
     )
 
-
-async def _strowallet_issue_card_for_order(
-    *,
-    settings: Optional[dict],
-    order: Dict[str, Any],
-    user: Dict[str, Any],
-) -> Dict[str, Any]:
-    """
-    Issue a Strowallet virtual card for a given order + user and return the DB update document.
-    SECURITY: never store full PAN/CVV; only last4/expiry/name/brand/type + provider ids.
-    """
-    if not _strowallet_enabled(settings):
-        raise HTTPException(status_code=400, detail="Strowallet is not enabled")
-
-    cfg = _strowallet_config(settings)
-    now = datetime.now(timezone.utc).isoformat()
-
-    # Ensure (best-effort) provider customer id exists if required by plan.
-    stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
-    if not stw_customer_id and cfg.get("create_user_path"):
-        kyc = await db.kyc.find_one(
-            {"user_id": user.get("user_id"), "status": "approved"},
-            {"_id": 0},
-        )
-        if not kyc:
-            raise HTTPException(status_code=400, detail="User KYC must be approved before creating a Strowallet customer.")
-        stw_customer_id = await _strowallet_create_customer_id(
-            settings=settings,
-            cfg=cfg,
-            user=user,
-            customer_email=(user.get("email") or ""),
-            kyc=kyc,
-        )
-        if stw_customer_id and user.get("user_id"):
-            await db.users.update_one(
-                {"user_id": user["user_id"]},
-                {"$set": {"strowallet_customer_id": stw_customer_id}},
-            )
-
-    create_payload: Dict[str, Any] = {
-        "email": order.get("card_email") or user.get("email"),
-        "card_email": order.get("card_email") or user.get("email"),
-        "customerEmail": order.get("card_email") or user.get("email"),
-        "name_on_card": (user.get("full_name") or "").upper(),
-        "card_type": (order.get("card_type") or "visa"),
-        "amount": str(cfg.get("create_card_amount_usd") or 5),
-        "full_name": user.get("full_name"),
-        "name": user.get("full_name"),
-        "phone": user.get("phone"),
-        "phone_number": user.get("phone"),
-        "reference": order.get("order_id"),
-        "customer_reference": user.get("user_id"),
-    }
-    if stw_customer_id:
-        create_payload["customer_id"] = stw_customer_id
-        create_payload["user_id"] = stw_customer_id
-        create_payload["card_user_id"] = stw_customer_id
-
-    create_payload = _with_aliases(create_payload, "phone", "mobile", "msisdn")
-    create_payload = _with_aliases(create_payload, "customerEmail", "customer_email", "customeremail")
-    create_payload = {k: v for k, v in create_payload.items() if v not in (None, "")}
-
-    stw_resp = await _strowallet_post(settings, cfg["create_path"], create_payload)
-
-    provider_card_id = _extract_first(
-        stw_resp,
-        "data.card.card_id",
-        "data.card_id",
-        "data.cardId",
-        "data.id",
-        "data.card.cardId",
-        "card_id",
-        "id",
-        "data.card.id",
-    )
-
-    # Fetch detail best-effort (with retries) to populate last4/expiry/etc.
-    stw_detail = await _strowallet_fetch_detail_with_retry(
-        settings=settings,
-        cfg=cfg,
-        provider_card_id=str(provider_card_id),
-        stw_customer_id=stw_customer_id,
-        reference=f"detail-{order.get('order_id')}",
-        attempts=4,
-    )
-
-    src = stw_detail or stw_resp
-    card_number = _extract_first(src, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
-    card_expiry = _extract_first(src, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
-    card_type = _extract_first(src, "data.type", "type", "data.card.type")
-    card_holder_name = _extract_first(src, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
-    card_brand = _extract_first(src, "data.brand", "brand", "data.card.brand")
-    card_balance = _extract_float_first(
-        src,
-        "data.balance",
-        "data.available_balance",
-        "data.availableBalance",
-        "balance",
-        "available_balance",
-        "availableBalance",
-        "data.card.balance",
-        "data.card.available_balance",
-        "data.card.availableBalance",
-    )
-    card_currency = _extract_first(src, "data.currency", "currency", "data.card.currency")
-
-    update_doc: Dict[str, Any] = {
-        "status": "approved",
-        "processed_at": now,
-        "processed_by": "system",
-        "provider": "strowallet",
-        "provider_card_id": str(provider_card_id) if provider_card_id else None,
-        # Keep provider payloads redacted (do not store PAN/CVV).
-        "provider_raw": _redact_sensitive_payload({"create": stw_resp, "detail": stw_detail} if stw_detail else {"create": stw_resp}),
-        "card_status": "active",
-        "failed_payment_count": int(order.get("failed_payment_count", 0) or 0),
-        "spending_limit_usd": float(order.get("spending_limit_usd", 500.0) or 500.0),
-        "spending_limit_period": str(order.get("spending_limit_period", "monthly") or "monthly"),
-    }
-
-    # Branding
-    if cfg.get("brand_name"):
-        update_doc["card_brand"] = cfg["brand_name"]
-    elif card_brand:
-        update_doc["card_brand"] = str(card_brand)
-    else:
-        update_doc["card_brand"] = "Virtual Card"
-
-    if card_type:
-        update_doc["card_type"] = str(card_type).lower()
-    if card_holder_name:
-        update_doc["card_holder_name"] = str(card_holder_name)
-    elif user.get("full_name"):
-        update_doc["card_holder_name"] = str(user["full_name"]).upper()
-
-    if card_number:
-        card_number_str = str(card_number).replace(" ", "")
-        update_doc["card_last4"] = card_number_str[-4:]
-    if card_expiry:
-        update_doc["card_expiry"] = str(card_expiry)
-    if card_balance is not None:
-        update_doc["card_balance"] = float(card_balance)
-    if card_currency:
-        update_doc["card_currency"] = str(card_currency).upper()
-
-    return update_doc
-
-
-async def _strowallet_fetch_detail_with_retry(
-    *,
-    settings: Optional[dict],
-    cfg: Dict[str, str],
-    provider_card_id: str,
-    stw_customer_id: Optional[str],
-    reference: str,
-    attempts: int = 4,
-) -> Optional[Dict[str, Any]]:
-    """
-    Best-effort fetch-card-detail with short retries.
-    Some providers need a few seconds after create-card before detail is available.
-    """
-    if not provider_card_id or not cfg.get("fetch_detail_path"):
-        return None
-
-    last_err: Optional[Exception] = None
-    for i in range(max(1, int(attempts or 1))):
-        try:
-            detail_payload: Dict[str, Any] = {"card_id": provider_card_id, "reference": reference}
-            if stw_customer_id:
-                detail_payload["customer_id"] = stw_customer_id
-                detail_payload["card_user_id"] = stw_customer_id
-            detail_payload = _with_aliases(detail_payload, "card_id", "cardId", "id")
-            return await _strowallet_post(settings, cfg["fetch_detail_path"], detail_payload)
-        except Exception as e:
-            last_err = e
-            # Backoff: 0.6s, 1.2s, 2.4s, 4.8s (max ~9s)
-            await asyncio.sleep(0.6 * (2**i))
-            continue
-
-    # Keep fully best-effort; caller should proceed with create response.
-    return None
-
 # ==================== MODELS ====================
 
 class UserCreate(BaseModel):
@@ -1128,31 +851,6 @@ class UserResponse(BaseModel):
     is_admin: bool
     created_at: str
     telegram_chat_id: Optional[str] = None
-    # Virtual card PIN status (never return the PIN itself)
-    has_card_pin: Optional[bool] = None
-
-
-class CardPinSetRequest(BaseModel):
-    pin: str = Field(min_length=4, max_length=4)
-
-
-class CardPinChangeRequest(BaseModel):
-    current_pin: str = Field(min_length=4, max_length=4)
-    new_pin: str = Field(min_length=4, max_length=4)
-
-
-class CardPinForgotRequest(BaseModel):
-    # Send a reset code to this email (defaults to user's email)
-    email: Optional[EmailStr] = None
-
-
-class CardPinResetConfirmRequest(BaseModel):
-    token: str = Field(min_length=8)
-    new_pin: str = Field(min_length=4, max_length=4)
-
-
-class CardRevealRequest(BaseModel):
-    pin: str = Field(min_length=4, max_length=4)
 
 class PasswordReset(BaseModel):
     email: EmailStr
@@ -1488,20 +1186,6 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
-
-_PIN_RE = re.compile(r"^\d{4}$")
-
-
-def _hash_pin(pin: str) -> str:
-    return bcrypt.hashpw(pin.encode(), bcrypt.gensalt()).decode()
-
-
-def _verify_pin(pin: str, hashed: str) -> bool:
-    return bcrypt.checkpw(pin.encode(), hashed.encode())
-
-
-def _is_valid_pin(pin: str) -> bool:
-    return bool(_PIN_RE.match(str(pin or "").strip()))
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -2093,11 +1777,7 @@ async def reset_password(request: PasswordResetConfirm):
 
 @api_router.get("/auth/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_user)):
-    # Never expose card PIN hash; only expose whether a PIN is set.
-    u = dict(current_user or {})
-    u["has_card_pin"] = bool(u.get("card_pin_hash"))
-    u.pop("card_pin_hash", None)
-    return UserResponse(**u)
+    return UserResponse(**current_user)
 
 @api_router.patch("/profile")
 async def update_profile(
@@ -3449,8 +3129,8 @@ def _calculate_card_fee_usd(amount: float, card_fees: List[Dict[str, Any]]) -> f
 @api_router.get("/virtual-cards")
 async def get_virtual_cards(current_user: dict = Depends(get_current_user)):
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    # Read-only access should remain available even if virtual cards are temporarily disabled,
-    # so customers can still see their previously issued cards/orders.
+    if not _virtual_cards_enabled(settings):
+        return {"cards": []}
     cards = await db.virtual_cards.find(
         {"user_id": current_user["user_id"]},
         {"_id": 0}
@@ -3458,169 +3138,11 @@ async def get_virtual_cards(current_user: dict = Depends(get_current_user)):
     return {"cards": cards}
 
 @api_router.get("/virtual-cards/orders")
-async def get_card_orders(
-    current_user: dict = Depends(get_current_user),
-    refresh: bool = Query(default=False),
-):
-    """
-    Get user's virtual card orders.
-
-    - Always hides admin/internal fields from customers.
-    - When `refresh=1`, best-effort pulls fresh Strowallet card details (balance/status/etc)
-      and persists safe fields for customer dashboard display.
-    """
+async def get_card_orders(current_user: dict = Depends(get_current_user)):
+    """Get user's virtual card orders"""
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-
-    # Best-effort sync before returning, so the customer dashboard shows latest provider data.
-    # Keep this guarded: only when feature enabled + refresh requested.
-    if refresh and _virtual_cards_enabled(settings):
-        cfg = _strowallet_config(settings)
-        if cfg.get("fetch_detail_path"):
-            # Fetch user strowallet customer id once (some deployments require it).
-            u = await db.users.find_one(
-                {"user_id": current_user["user_id"]},
-                {"_id": 0, "strowallet_customer_id": 1, "strowallet_user_id": 1},
-            )
-            stw_customer_id = (u or {}).get("strowallet_customer_id") or (u or {}).get("strowallet_user_id")
-
-            # Only refresh approved provider cards; cap to avoid hammering provider.
-            candidates = await db.virtual_card_orders.find(
-                {
-                    "user_id": current_user["user_id"],
-                    "status": "approved",
-                    "provider": "strowallet",
-                    "provider_card_id": {"$ne": None},
-                },
-                {"_id": 0, "order_id": 1, "provider_card_id": 1, "spending_limit_usd": 1, "spending_limit_period": 1, "card_status": 1},
-            ).sort("created_at", -1).limit(5).to_list(5)
-
-            sem = asyncio.Semaphore(2)
-
-            async def _refresh_one(o: Dict[str, Any]) -> None:
-                async with sem:
-                    try:
-                        payload: Dict[str, Any] = {
-                            "card_id": o.get("provider_card_id"),
-                            "reference": f"orders-refresh-{o.get('order_id')}",
-                        }
-                        if stw_customer_id:
-                            payload["customer_id"] = stw_customer_id
-                            payload["card_user_id"] = stw_customer_id
-                        payload = _with_aliases(payload, "card_id", "cardId", "id")
-
-                        stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
-
-                        # Extract safe fields only (never store PAN/CVV).
-                        card_number = _extract_first(stw_detail, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
-                        card_expiry = _extract_first(stw_detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
-                        card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
-                        card_brand = _extract_first(stw_detail, "data.brand", "brand", "data.card.brand")
-                        card_type = _extract_first(stw_detail, "data.type", "type", "data.card.type")
-                        card_balance = _extract_float_first(
-                            stw_detail,
-                            "data.balance",
-                            "data.available_balance",
-                            "data.availableBalance",
-                            "balance",
-                            "available_balance",
-                            "availableBalance",
-                            "data.card.balance",
-                            "data.card.available_balance",
-                            "data.card.availableBalance",
-                        )
-                        card_currency = _extract_first(stw_detail, "data.currency", "currency", "data.card.currency")
-                        raw_status = _extract_first(
-                            stw_detail,
-                            "data.status",
-                            "data.card_status",
-                            "card_status",
-                            "status",
-                            "data.card.status",
-                            "data.card.card_status",
-                        )
-                        raw_limit = _extract_float_first(
-                            stw_detail,
-                            "data.spending_limit",
-                            "data.spendingLimit",
-                            "spending_limit",
-                            "spendingLimit",
-                            "data.limit",
-                            "limit",
-                            "data.card.limit",
-                            "data.card.spending_limit",
-                        )
-                        raw_period = _extract_first(
-                            stw_detail,
-                            "data.spending_limit_period",
-                            "data.spendingLimitPeriod",
-                            "spending_limit_period",
-                            "spendingLimitPeriod",
-                            "data.period",
-                            "period",
-                        )
-                        raw_reason = _extract_first(
-                            stw_detail,
-                            "data.lock_reason",
-                            "data.locked_reason",
-                            "locked_reason",
-                            "lock_reason",
-                            "data.reason",
-                            "reason",
-                        )
-
-                        update_doc: Dict[str, Any] = {}
-                        if card_number:
-                            card_number_str = str(card_number).replace(" ", "")
-                            update_doc["card_last4"] = card_number_str[-4:]
-                        if card_expiry:
-                            update_doc["card_expiry"] = str(card_expiry)
-                        if card_holder_name:
-                            update_doc["card_holder_name"] = str(card_holder_name)
-                        if card_brand:
-                            update_doc["card_brand"] = str(card_brand)
-                        if card_type:
-                            update_doc["card_type"] = str(card_type).lower()
-                        if card_balance is not None:
-                            update_doc["card_balance"] = float(card_balance)
-                        if card_currency:
-                            update_doc["card_currency"] = str(card_currency).upper()
-
-                        # Provider status -> normalize for dashboard ("active"/"locked") when possible.
-                        if raw_status:
-                            s = str(raw_status).strip().lower()
-                            if any(x in s for x in ("lock", "freeze", "blocked", "suspend")):
-                                update_doc["card_status"] = "locked"
-                            elif any(x in s for x in ("active", "open", "unfreeze", "unlocked")):
-                                update_doc["card_status"] = "active"
-
-                        if raw_reason and isinstance(raw_reason, (str, int, float)):
-                            update_doc["locked_reason"] = str(raw_reason)[:400]
-
-                        # Provider spending limit (best-effort) -> keep within our policy bounds.
-                        if raw_limit is not None:
-                            lim = float(raw_limit)
-                            if 0 < lim <= 5000:
-                                update_doc["spending_limit_usd"] = round(lim, 2)
-                        if raw_period:
-                            p = str(raw_period).strip().lower()
-                            if "day" in p:
-                                update_doc["spending_limit_period"] = "daily"
-                            elif "month" in p:
-                                update_doc["spending_limit_period"] = "monthly"
-
-                        if update_doc:
-                            await db.virtual_card_orders.update_one(
-                                {"order_id": o.get("order_id"), "user_id": current_user["user_id"]},
-                                {"$set": update_doc},
-                            )
-                    except Exception:
-                        # Fully best-effort: do not block the list page if provider errors.
-                        return
-
-            await asyncio.gather(*[_refresh_one(o) for o in (candidates or [])], return_exceptions=True)
-
-    # Read-only access should remain available even if disabled (do not hide already-issued cards).
-    # SECURITY: hide admin/internal identifiers from customers.
+    if not _virtual_cards_enabled(settings):
+        return {"orders": []}
     orders = await db.virtual_card_orders.find(
         {"user_id": current_user["user_id"]},
         {
@@ -3629,14 +3151,7 @@ async def get_card_orders(
             "card_number": 0,
             "card_cvv": 0,
             "provider_raw": 0,
-            # Never expose admin/internal fields to clients.
-            "provider_card_id": 0,
-            "admin_notes": 0,
-            "processed_by": 0,
-            "processed_at": 0,
-            "user_id": 0,
-            "client_id": 0,
-        },
+        }
     ).sort("created_at", -1).to_list(50)
     return {"orders": orders}
 
@@ -3651,51 +3166,19 @@ async def virtual_card_detail(
     We never return full card number/CVV to clients.
     """
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    # Internal fetch (keep provider_card_id for refresh logic).
-    order_full = await db.virtual_card_orders.find_one(
+    if not _virtual_cards_enabled(settings):
+        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
+
+    order = await db.virtual_card_orders.find_one(
         {"order_id": order_id, "user_id": current_user["user_id"], "status": "approved"},
         {"_id": 0, "card_number": 0, "card_cvv": 0, "provider_raw": 0},
     )
-    if not order_full:
+    if not order:
         raise HTTPException(status_code=404, detail="Card not found or not approved")
 
-    # If virtual cards are disabled, allow viewing stored details but don't call provider.
-    if not _virtual_cards_enabled(settings):
-        safe = await db.virtual_card_orders.find_one(
-            {"order_id": order_id, "user_id": current_user["user_id"]},
-            {
-                "_id": 0,
-                "card_number": 0,
-                "card_cvv": 0,
-                "provider_raw": 0,
-                "provider_card_id": 0,
-                "admin_notes": 0,
-                "processed_by": 0,
-                "processed_at": 0,
-                "user_id": 0,
-                "client_id": 0,
-            },
-        )
-        return {"card": safe or {}, "note": "Virtual cards are currently disabled; provider refresh is unavailable."}
-
     # Only Strowallet cards support provider refresh at the moment.
-    if order_full.get("provider") != "strowallet" or not order_full.get("provider_card_id"):
-        safe = await db.virtual_card_orders.find_one(
-            {"order_id": order_id, "user_id": current_user["user_id"]},
-            {
-                "_id": 0,
-                "card_number": 0,
-                "card_cvv": 0,
-                "provider_raw": 0,
-                "provider_card_id": 0,
-                "admin_notes": 0,
-                "processed_by": 0,
-                "processed_at": 0,
-                "user_id": 0,
-                "client_id": 0,
-            },
-        )
-        return {"card": safe or {}, "note": "No provider detail available for this card"}
+    if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
+        return {"card": order, "note": "No provider detail available for this card"}
 
     cfg = _strowallet_config(settings)
     if not cfg.get("fetch_detail_path"):
@@ -3703,7 +3186,7 @@ async def virtual_card_detail(
 
     # Try fetch detail from provider to populate last4/expiry/etc.
     payload: Dict[str, Any] = {
-        "card_id": order_full.get("provider_card_id"),
+        "card_id": order.get("provider_card_id"),
         "reference": f"detail-{order_id}",
     }
     # Include customer id if present (some deployments require it).
@@ -3720,24 +3203,6 @@ async def virtual_card_detail(
     card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
     card_brand = _extract_first(stw_detail, "data.brand", "brand", "data.card.brand")
     card_type = _extract_first(stw_detail, "data.type", "type", "data.card.type")
-    card_balance = _extract_float_first(
-        stw_detail,
-        "data.balance",
-        "data.available_balance",
-        "data.availableBalance",
-        "balance",
-        "available_balance",
-        "availableBalance",
-        "data.card.balance",
-        "data.card.available_balance",
-        "data.card.availableBalance",
-    )
-    card_currency = _extract_first(
-        stw_detail,
-        "data.currency",
-        "currency",
-        "data.card.currency",
-    )
 
     update_doc: Dict[str, Any] = {}
     if card_number:
@@ -3751,99 +3216,19 @@ async def virtual_card_detail(
         update_doc["card_brand"] = str(card_brand)
     if card_type and not order.get("card_type"):
         update_doc["card_type"] = str(card_type).lower()
-    if card_balance is not None:
-        update_doc["card_balance"] = float(card_balance)
-    if card_currency and not order_full.get("card_currency"):
-        update_doc["card_currency"] = str(card_currency).upper()
-
-    # Extra provider fields (best-effort) for customer dashboard:
-    raw_status = _extract_first(
-        stw_detail,
-        "data.status",
-        "data.card_status",
-        "card_status",
-        "status",
-        "data.card.status",
-        "data.card.card_status",
-    )
-    raw_reason = _extract_first(
-        stw_detail,
-        "data.lock_reason",
-        "data.locked_reason",
-        "locked_reason",
-        "lock_reason",
-        "data.reason",
-        "reason",
-    )
-    raw_limit = _extract_float_first(
-        stw_detail,
-        "data.spending_limit",
-        "data.spendingLimit",
-        "spending_limit",
-        "spendingLimit",
-        "data.limit",
-        "limit",
-        "data.card.limit",
-        "data.card.spending_limit",
-    )
-    raw_period = _extract_first(
-        stw_detail,
-        "data.spending_limit_period",
-        "data.spendingLimitPeriod",
-        "spending_limit_period",
-        "spendingLimitPeriod",
-        "data.period",
-        "period",
-    )
-
-    if raw_status:
-        s = str(raw_status).strip().lower()
-        if any(x in s for x in ("lock", "freeze", "blocked", "suspend")):
-            update_doc["card_status"] = "locked"
-        elif any(x in s for x in ("active", "open", "unfreeze", "unlocked")):
-            update_doc["card_status"] = "active"
-
-    if raw_reason and isinstance(raw_reason, (str, int, float)):
-        update_doc["locked_reason"] = str(raw_reason)[:400]
-
-    if raw_limit is not None:
-        lim = float(raw_limit)
-        if 0 < lim <= 5000:
-            update_doc["spending_limit_usd"] = round(lim, 2)
-    if raw_period:
-        p = str(raw_period).strip().lower()
-        if "day" in p:
-            update_doc["spending_limit_period"] = "daily"
-        elif "month" in p:
-            update_doc["spending_limit_period"] = "monthly"
 
     if update_doc:
         await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": update_doc})
-        order_full.update(update_doc)
+        order.update(update_doc)
 
-    # Return sanitized document to customer (no provider_card_id/admin_notes/internal ids).
-    safe = await db.virtual_card_orders.find_one(
-        {"order_id": order_id, "user_id": current_user["user_id"]},
-        {
-            "_id": 0,
-            "card_number": 0,
-            "card_cvv": 0,
-            "provider_raw": 0,
-            "provider_card_id": 0,
-            "admin_notes": 0,
-            "processed_by": 0,
-            "processed_at": 0,
-            "user_id": 0,
-            "client_id": 0,
-        },
-    )
-    return {"provider": "strowallet", "card": safe or {}}
+    return {"provider": "strowallet", "card": order}
 
 @api_router.get("/virtual-cards/deposits")
 async def get_card_deposits(current_user: dict = Depends(get_current_user)):
     """Get user's card deposit history (deposits made to their virtual card)"""
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    # Read-only access should remain available even if disabled.
+    if not _virtual_cards_enabled(settings):
+        return {"deposits": []}
     deposits = await db.virtual_card_deposits.find(
         {"user_id": current_user["user_id"]},
         {"_id": 0}
@@ -3852,7 +3237,7 @@ async def get_card_deposits(current_user: dict = Depends(get_current_user)):
 
 @api_router.post("/virtual-cards/order")
 async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Depends(get_current_user)):
-    """Submit a card order request (auto-issue when Strowallet is enabled)."""
+    """Submit a manual card order request"""
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     if not _virtual_cards_enabled(settings):
         raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
@@ -3908,52 +3293,10 @@ async def order_virtual_card(request: VirtualCardOrder, current_user: dict = Dep
     })
     
     await log_action(current_user["user_id"], "card_order", {"order_id": order["order_id"]})
-
-    # AUTO-ISSUE: If Strowallet is enabled, create the card immediately so it appears in the customer dashboard.
-    # If issuance fails for any reason, keep order pending for admin follow-up (do not lose the order).
-    msg = "Card order submitted successfully"
-    try:
-        if _strowallet_enabled(settings):
-            user = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0})
-            if not user:
-                raise HTTPException(status_code=404, detail="User not found")
-            issue_update = await _strowallet_issue_card_for_order(settings=settings, order=order, user=user)
-            await db.virtual_card_orders.update_one({"order_id": order["order_id"]}, {"$set": issue_update})
-            order.update(issue_update)
-            msg = "Card created successfully"
-    except HTTPException as e:
-        # Keep it pending; store a useful note for admin.
-        try:
-            await db.virtual_card_orders.update_one(
-                {"order_id": order["order_id"]},
-                {"$set": {
-                    "status": "pending",
-                    "admin_notes": f"Auto-issue failed; needs admin review. {getattr(e, 'detail', str(e))}",
-                    "processed_at": None,
-                    "processed_by": None,
-                }},
-            )
-        except Exception:
-            pass
-        msg = "Card order submitted successfully (pending provider issuance)"
-    except Exception as e:
-        try:
-            await db.virtual_card_orders.update_one(
-                {"order_id": order["order_id"]},
-                {"$set": {
-                    "status": "pending",
-                    "admin_notes": f"Auto-issue failed; needs admin review. {str(e)}",
-                    "processed_at": None,
-                    "processed_by": None,
-                }},
-            )
-        except Exception:
-            pass
-        msg = "Card order submitted successfully (pending provider issuance)"
-
+    
     if "_id" in order:
         del order["_id"]
-    return {"order": order, "message": msg}
+    return {"order": order, "message": "Card order submitted successfully"}
 
 class CardTopUpRequest(BaseModel):
     order_id: str
@@ -4064,7 +3407,7 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
                     "delivery_info": f"Auto delivered via Strowallet{(' (txn ' + str(provider_txn_id) + ')') if provider_txn_id else ''}",
                     "provider": "strowallet",
                     "provider_txn_id": provider_txn_id,
-                    "provider_raw": _redact_sensitive_payload(stw_resp),
+                    "provider_raw": stw_resp,
                 }}
             )
 
@@ -4116,10 +3459,7 @@ async def update_virtual_card_controls(
     if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
         raise HTTPException(status_code=400, detail="This card cannot be managed automatically")
 
-    # We auto-freeze on first failure to prevent 3-fail hard blocks; do not hard-block unlocks.
     failed_count = int(order.get("failed_payment_count", 0) or 0)
-    # Hard-block policy: after 3 failed payments, user must contact support to unlock.
-    # (UI already enforces this; backend must enforce it too.)
     is_hard_blocked = failed_count >= 3
 
     update_doc: Dict[str, Any] = {}
@@ -4137,7 +3477,7 @@ async def update_virtual_card_controls(
 
     if payload.lock is not None:
         if payload.lock is False and is_hard_blocked:
-            raise HTTPException(status_code=400, detail="Card is blocked. Contact support.")
+            raise HTTPException(status_code=400, detail="Card is blocked after 3 failed payments. Contact support.")
         update_doc["card_status"] = "locked" if payload.lock else "active"
 
     if not update_doc:
@@ -4178,7 +3518,8 @@ async def update_virtual_card_controls(
 async def get_card_withdrawals(current_user: dict = Depends(get_current_user)):
     """Get user's card withdrawal history (withdrawals from virtual card back to wallet)."""
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    # Read-only access should remain available even if disabled.
+    if not _virtual_cards_enabled(settings):
+        return {"withdrawals": []}
     withdrawals = await db.virtual_card_withdrawals.find(
         {"user_id": current_user["user_id"]},
         {"_id": 0},
@@ -4241,7 +3582,7 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
         "status": "approved",
         "provider": "strowallet",
         "provider_txn_id": provider_txn_id,
-        "provider_raw": _redact_sensitive_payload(stw_resp),
+        "provider_raw": stw_resp,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "processed_at": datetime.now(timezone.utc).isoformat(),
         "processed_by": "system",
@@ -4308,232 +3649,6 @@ async def virtual_card_transactions(
     resp = await _strowallet_post(settings, cfg["card_tx_path"], payload)
     return {"provider": "strowallet", "order_id": order_id, "response": resp}
 
-
-@api_router.get("/virtual-cards/pin/status")
-async def virtual_card_pin_status(current_user: dict = Depends(get_current_user)):
-    return {"has_pin": bool((current_user or {}).get("card_pin_hash"))}
-
-
-@api_router.post("/virtual-cards/pin/set")
-async def virtual_card_pin_set(req: CardPinSetRequest, current_user: dict = Depends(get_current_user)):
-    pin = str(req.pin or "").strip()
-    if not _is_valid_pin(pin):
-        raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
-
-    await db.users.update_one(
-        {"user_id": current_user["user_id"]},
-        {"$set": {
-            "card_pin_hash": _hash_pin(pin),
-            "card_pin_set_at": datetime.now(timezone.utc).isoformat(),
-            "card_pin_failed_attempts": 0,
-            "card_pin_locked_until": None,
-        }},
-    )
-    await log_action(current_user["user_id"], "card_pin_set", {})
-    return {"message": "PIN set successfully"}
-
-
-@api_router.post("/virtual-cards/pin/change")
-async def virtual_card_pin_change(req: CardPinChangeRequest, current_user: dict = Depends(get_current_user)):
-    cur = str(req.current_pin or "").strip()
-    new = str(req.new_pin or "").strip()
-    if not _is_valid_pin(cur) or not _is_valid_pin(new):
-        raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
-    if cur == new:
-        raise HTTPException(status_code=400, detail="New PIN must be different")
-
-    user = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0})
-    if not user or not user.get("card_pin_hash"):
-        raise HTTPException(status_code=400, detail="PIN is not set")
-
-    locked_until = user.get("card_pin_locked_until")
-    if locked_until:
-        try:
-            if datetime.fromisoformat(str(locked_until)) > datetime.now(timezone.utc):
-                raise HTTPException(status_code=429, detail="Too many attempts. Try again later.")
-        except ValueError:
-            pass
-
-    if not _verify_pin(cur, user["card_pin_hash"]):
-        attempts = int(user.get("card_pin_failed_attempts", 0) or 0) + 1
-        update: Dict[str, Any] = {"card_pin_failed_attempts": attempts}
-        if attempts >= 5:
-            update["card_pin_locked_until"] = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
-        raise HTTPException(status_code=401, detail="Invalid PIN")
-
-    await db.users.update_one(
-        {"user_id": user["user_id"]},
-        {"$set": {
-            "card_pin_hash": _hash_pin(new),
-            "card_pin_changed_at": datetime.now(timezone.utc).isoformat(),
-            "card_pin_failed_attempts": 0,
-            "card_pin_locked_until": None,
-        }},
-    )
-    await log_action(user["user_id"], "card_pin_change", {})
-    return {"message": "PIN changed successfully"}
-
-
-@api_router.post("/virtual-cards/pin/forgot")
-async def virtual_card_pin_forgot(req: CardPinForgotRequest, current_user: dict = Depends(get_current_user)):
-    user = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    to_email = str((req.email or user.get("email") or "")).strip().lower()
-    if not to_email:
-        raise HTTPException(status_code=400, detail="Email is required")
-
-    token = secrets.token_urlsafe(16)
-    expires = datetime.now(timezone.utc) + timedelta(minutes=15)
-    await db.card_pin_resets.insert_one({
-        "token": token,
-        "user_id": user["user_id"],
-        "email": to_email,
-        "expires": expires.isoformat(),
-        "used": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
-
-    await send_email(
-        to_email,
-        "KAYICOM - PIN Kat Vityèl (Reset)",
-        f"""
-        <h2>Reset PIN Kat Vityèl</h2>
-        <p>Men kòd reset ou:</p>
-        <p style="font-size:20px;font-weight:bold;letter-spacing:2px;"><code>{token}</code></p>
-        <p>Kòd sa a ap ekspire nan 15 minit.</p>
-        <p>Si ou pa t mande sa, inyore mesaj sa a.</p>
-        """,
-    )
-    await log_action(user["user_id"], "card_pin_forgot", {"email": to_email})
-    return {"message": "Reset code sent"}
-
-
-@api_router.post("/virtual-cards/pin/reset")
-async def virtual_card_pin_reset(req: CardPinResetConfirmRequest, current_user: dict = Depends(get_current_user)):
-    token = str(req.token or "").strip()
-    new = str(req.new_pin or "").strip()
-    if not token:
-        raise HTTPException(status_code=400, detail="Token is required")
-    if not _is_valid_pin(new):
-        raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
-
-    doc = await db.card_pin_resets.find_one({"token": token, "used": False, "user_id": current_user["user_id"]}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=400, detail="Invalid or used token")
-    try:
-        if datetime.fromisoformat(str(doc["expires"])) < datetime.now(timezone.utc):
-            raise HTTPException(status_code=400, detail="Token expired")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Token expired")
-
-    await db.users.update_one(
-        {"user_id": current_user["user_id"]},
-        {"$set": {
-            "card_pin_hash": _hash_pin(new),
-            "card_pin_changed_at": datetime.now(timezone.utc).isoformat(),
-            "card_pin_failed_attempts": 0,
-            "card_pin_locked_until": None,
-        }},
-    )
-    await db.card_pin_resets.update_one({"token": token}, {"$set": {"used": True, "used_at": datetime.now(timezone.utc).isoformat()}})
-    await log_action(current_user["user_id"], "card_pin_reset", {})
-    return {"message": "PIN reset successfully"}
-
-
-@api_router.post("/virtual-cards/{order_id}/reveal")
-async def virtual_card_reveal(
-    order_id: str,
-    req: CardRevealRequest,
-    response: Response,
-    current_user: dict = Depends(get_current_user),
-):
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
-
-    pin = str(req.pin or "").strip()
-    if not _is_valid_pin(pin):
-        raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
-
-    user = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not user.get("card_pin_hash"):
-        raise HTTPException(status_code=400, detail="PIN is not set")
-
-    locked_until = user.get("card_pin_locked_until")
-    if locked_until:
-        try:
-            if datetime.fromisoformat(str(locked_until)) > datetime.now(timezone.utc):
-                raise HTTPException(status_code=429, detail="Too many attempts. Try again later.")
-        except ValueError:
-            pass
-
-    if not _verify_pin(pin, user["card_pin_hash"]):
-        attempts = int(user.get("card_pin_failed_attempts", 0) or 0) + 1
-        update: Dict[str, Any] = {"card_pin_failed_attempts": attempts}
-        if attempts >= 5:
-            update["card_pin_locked_until"] = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
-        raise HTTPException(status_code=401, detail="Invalid PIN")
-
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"card_pin_failed_attempts": 0, "card_pin_locked_until": None}})
-
-    # Fetch without status filter so we can return a clearer error.
-    order = await db.virtual_card_orders.find_one(
-        {"order_id": order_id, "user_id": user["user_id"]},
-        {"_id": 0},
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Card not found")
-    if str(order.get("status") or "").lower() != "approved":
-        raise HTTPException(status_code=403, detail="Card is not approved yet")
-    if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
-        raise HTTPException(status_code=400, detail="Full details are only available for provider-issued cards")
-
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _strowallet_enabled(settings):
-        raise HTTPException(status_code=400, detail="Strowallet is disabled")
-    cfg = _strowallet_config(settings)
-    if not cfg.get("fetch_detail_path"):
-        raise HTTPException(status_code=400, detail="Provider card detail endpoint not configured")
-
-    stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
-    payload: Dict[str, Any] = {"card_id": order.get("provider_card_id"), "reference": f"reveal-{order_id}-{uuid.uuid4()}"}
-    if stw_customer_id:
-        payload["customer_id"] = stw_customer_id
-        payload["card_user_id"] = stw_customer_id
-    payload = _with_aliases(payload, "card_id", "cardId", "id")
-
-    detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
-
-    pan = _extract_first(detail, "data.card_number", "data.number", "card_number", "number", "data.card.card_number", "data.card.number")
-    cvv = _extract_first(detail, "data.cvv", "cvv", "data.card.cvv", "data.security_code", "security_code")
-    expiry = _extract_first(detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
-    exp_month = _extract_first(detail, "data.expiry_month", "expiry_month", "data.card.expiry_month")
-    exp_year = _extract_first(detail, "data.expiry_year", "expiry_year", "data.card.expiry_year")
-
-    expiry_norm = None
-    if exp_month and exp_year:
-        expiry_norm = f"{str(exp_month).zfill(2)}/{str(exp_year)[-2:]}"
-    elif expiry:
-        expiry_norm = str(expiry)
-
-    await log_action(user["user_id"], "card_reveal", {"order_id": order_id, "provider": "strowallet"})
-
-    return {
-        "card": {
-            "order_id": order_id,
-            "provider_card_id": order.get("provider_card_id"),
-            "card_number": str(pan) if pan is not None else None,
-            "cvv": str(cvv) if cvv is not None else None,
-            "expiry": expiry_norm,
-            "card_holder_name": order.get("card_holder_name") or (user.get("full_name") or ""),
-        },
-        "warning": "Sensitive data: do not share or screenshot.",
-    }
 
 @api_router.get("/virtual-cards/{order_id}/history")
 async def virtual_card_full_history(
@@ -4733,15 +3848,10 @@ async def strowallet_webhook(request: Request):
     if not order:
         return {"ok": True}
 
-    # If the card is already locked/frozen, ignore further failed events.
-    # Goal: auto-freeze on first failure to prevent the card reaching a "3 failures" hard-block state.
-    if str(order.get("card_status") or "").lower() == "locked":
-        return {"ok": True, "note": "Card already locked; ignoring failed-payment event"}
-
-    # First failure -> set failed count to 1 and lock/freeze.
+    # Increment failed payment count.
     await db.virtual_card_orders.update_one(
         {"order_id": order["order_id"]},
-        {"$set": {"failed_payment_count": 1}},
+        {"$inc": {"failed_payment_count": 1}},
     )
     updated = await db.virtual_card_orders.find_one({"order_id": order["order_id"]}, {"_id": 0})
     failed_count = int((updated or {}).get("failed_payment_count", 0) or 0)
@@ -4749,8 +3859,8 @@ async def strowallet_webhook(request: Request):
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     cfg = _strowallet_config(settings)
 
-    # Auto-freeze on FIRST failed payment to prevent provider-side hard blocks.
-    if failed_count >= 1:
+    # Auto-freeze on FIRST failed payment to prevent the card being blocked by multiple failures.
+    if failed_count == 1:
         await db.virtual_card_orders.update_one(
             {"order_id": order["order_id"]},
             {"$set": {
@@ -4764,6 +3874,17 @@ async def strowallet_webhook(request: Request):
                 await _strowallet_post(settings, cfg["freeze_path"], {"card_id": card_id, "reference": f"autofreeze-1-{order['order_id']}"})
         except Exception as e:
             logger.warning(f"Failed to freeze Strowallet card {card_id} after first failed payment: {e}")
+
+    if failed_count >= 3:
+        # Hard lock (support-only unlock).
+        await db.virtual_card_orders.update_one(
+            {"order_id": order["order_id"]},
+            {"$set": {
+                "card_status": "locked",
+                "locked_reason": "Auto-locked after 3 failed payments",
+                "locked_at": datetime.now(timezone.utc).isoformat(),
+            }}
+        )
 
     await log_action(order.get("user_id") or "system", "strowallet_failed_payment", {"order_id": order["order_id"], "card_id": card_id, "failed_count": failed_count})
     return {"ok": True, "failed_count": failed_count}
@@ -4788,7 +3909,6 @@ async def admin_get_card_orders(
             "card_image": 0,  # can be large base64
             "card_number": 0,  # sensitive
             "card_cvv": 0,  # sensitive
-            "provider_raw": 0,  # omit from list payload (even redacted it can be large)
         },
     ).sort("created_at", -1).limit(limit).to_list(limit)
 
@@ -4832,9 +3952,6 @@ class ManualCardCreate(BaseModel):
     user_id: str
     client_id: str
     card_email: str
-    # Optional: link an already-created provider card (e.g. created directly in Strowallet dashboard)
-    # so it appears in-app and supports reveal/transactions.
-    provider_card_id: Optional[str] = None
     card_brand: Optional[str] = None
     card_type: Optional[str] = "visa"
     card_holder_name: Optional[str] = None
@@ -4861,67 +3978,6 @@ async def admin_create_card_manually(
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     default_card_bg = settings.get("card_background_image") if settings else None
     card_image = payload.card_image or default_card_bg
-
-    provider_card_id = (str(payload.provider_card_id).strip() if payload.provider_card_id else "") or None
-    if provider_card_id:
-        # Prevent linking the same provider card to multiple orders/users.
-        existing = await db.virtual_card_orders.find_one(
-            {"provider": "strowallet", "provider_card_id": provider_card_id},
-            {"_id": 0, "order_id": 1, "user_id": 1, "card_email": 1},
-        )
-        if existing:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Provider card is already linked (order_id={existing.get('order_id')})",
-            )
-
-    # If a provider card id is provided and Strowallet is enabled, best-effort refresh details so
-    # customer dashboard has last4/expiry/brand/name.
-    provider_detail: Optional[Dict[str, Any]] = None
-    if provider_card_id and _strowallet_enabled(settings):
-        try:
-            cfg = _strowallet_config(settings)
-            stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
-            provider_detail = await _strowallet_fetch_detail_with_retry(
-                settings=settings,
-                cfg=cfg,
-                provider_card_id=str(provider_card_id),
-                stw_customer_id=stw_customer_id,
-                reference=f"admin-link-{provider_card_id}",
-                attempts=4,
-            )
-        except Exception:
-            provider_detail = None
-
-    # Derive best-effort fields from provider detail if admin did not provide them.
-    detail_card_number = _extract_first(
-        provider_detail,
-        "data.card_number",
-        "data.number",
-        "card_number",
-        "number",
-        "data.card.number",
-        "data.card.card_number",
-    )
-    detail_expiry = _extract_first(
-        provider_detail,
-        "data.expiry",
-        "data.expiry_date",
-        "expiry",
-        "expiry_date",
-        "data.card.expiry",
-        "data.card.expiry_date",
-    )
-    detail_holder = _extract_first(
-        provider_detail,
-        "data.name_on_card",
-        "data.card_name",
-        "name_on_card",
-        "card_name",
-        "data.card.name_on_card",
-    )
-    detail_brand = _extract_first(provider_detail, "data.brand", "brand", "data.card.brand")
-    detail_type = _extract_first(provider_detail, "data.type", "type", "data.card.type")
     
     # Create card order directly as approved
     order = {
@@ -4929,15 +3985,12 @@ async def admin_create_card_manually(
         "user_id": payload.user_id,
         "client_id": payload.client_id,
         "card_email": payload.card_email.lower(),
-        "provider": "strowallet" if provider_card_id else None,
-        "provider_card_id": provider_card_id,
-        "provider_raw": _redact_sensitive_payload({"linked": True, "detail": provider_detail} if provider_detail else {"linked": True}) if provider_card_id else None,
-        "card_brand": payload.card_brand or (str(detail_brand) if detail_brand else None) or (_strowallet_config(settings).get("brand_name") if (provider_card_id and _strowallet_enabled(settings)) else None),
-        "card_type": (payload.card_type or (str(detail_type).lower() if detail_type else None) or "visa"),
-        "card_holder_name": payload.card_holder_name or (str(detail_holder) if detail_holder else None) or (str(user.get("full_name") or "").upper() if user.get("full_name") else None),
+        "card_brand": payload.card_brand,
+        "card_type": payload.card_type,
+        "card_holder_name": payload.card_holder_name,
         # SECURITY: store only last4 (never store full PAN / CVV).
-        "card_last4": payload.card_last4 or (str(detail_card_number).replace(" ", "")[-4:] if detail_card_number else None),
-        "card_expiry": payload.card_expiry or (str(detail_expiry) if detail_expiry else None),
+        "card_last4": payload.card_last4,
+        "card_expiry": payload.card_expiry,
         "billing_address": payload.billing_address,
         "billing_city": payload.billing_city,
         "billing_country": payload.billing_country,
@@ -4986,9 +4039,6 @@ async def admin_create_card_manually(
 class CardDetailsPayload(BaseModel):
     action: Optional[str] = None  # approve or reject
     admin_notes: Optional[str] = None
-    # Optional: if a Strowallet card was already created outside/earlier, admin can link it here
-    # to avoid issuing a duplicate card during approval.
-    provider_card_id: Optional[str] = None
     card_brand: Optional[str] = None  # Wise, Payoneer, etc.
     card_type: Optional[str] = None  # visa or mastercard
     card_holder_name: Optional[str] = None
@@ -5052,231 +4102,161 @@ async def admin_process_card_order(
 
             cfg = _strowallet_config(settings)
 
-            # If admin provided a provider_card_id, link it instead of creating a new card.
-            provided_provider_card_id = (payload.provider_card_id or "").strip()
-            if provided_provider_card_id:
-                provider_card_id = provided_provider_card_id
-                update_doc["provider"] = "strowallet"
-                update_doc["provider_card_id"] = provider_card_id
-                update_doc["provider_raw"] = {"linked": True}
-
-                # Best-effort pull details from provider so customer dashboard has info.
-                if cfg.get("fetch_detail_path"):
-                    try:
-                        stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
-                        stw_detail = await _strowallet_fetch_detail_with_retry(
-                            settings=settings,
-                            cfg=cfg,
-                            provider_card_id=str(provider_card_id),
-                            stw_customer_id=stw_customer_id,
-                            reference=f"detail-{order_id}",
-                            attempts=4,
-                        )
-                        if stw_detail:
-                            update_doc["provider_raw"] = _redact_sensitive_payload({"linked": True, "detail": stw_detail})
-
-                        card_number = _extract_first(stw_detail, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
-                        card_expiry = _extract_first(stw_detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
-                        card_brand = _extract_first(stw_detail, "data.brand", "brand", "data.card.brand")
-                        card_type = _extract_first(stw_detail, "data.type", "type", "data.card.type")
-                        card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
-                        card_balance = _extract_float_first(
-                            stw_detail,
-                            "data.balance",
-                            "data.available_balance",
-                            "data.availableBalance",
-                            "balance",
-                            "available_balance",
-                            "availableBalance",
-                            "data.card.balance",
-                            "data.card.available_balance",
-                            "data.card.availableBalance",
-                        )
-                        card_currency = _extract_first(stw_detail, "data.currency", "currency", "data.card.currency")
-
-                        if cfg.get("brand_name"):
-                            update_doc["card_brand"] = cfg["brand_name"]
-                        elif card_brand:
-                            update_doc["card_brand"] = str(card_brand)
-                        else:
-                            update_doc["card_brand"] = "Virtual Card"
-
-                        if card_type:
-                            update_doc["card_type"] = str(card_type).lower()
-                        if card_holder_name:
-                            update_doc["card_holder_name"] = str(card_holder_name)
-                        elif user.get("full_name"):
-                            update_doc["card_holder_name"] = str(user["full_name"]).upper()
-
-                        if card_number:
-                            card_number_str = str(card_number).replace(" ", "")
-                            update_doc["card_last4"] = card_number_str[-4:]
-                        if card_expiry:
-                            update_doc["card_expiry"] = str(card_expiry)
-                        if card_balance is not None:
-                            update_doc["card_balance"] = float(card_balance)
-                        if card_currency:
-                            update_doc["card_currency"] = str(card_currency).upper()
-                    except Exception as e:
-                        # Don't block approval if detail fetch fails; linking still helps show the card.
-                        update_doc["provider_raw"] = {"linked": True, "detail_error": str(e)}
-
-            else:
-                # Some Strowallet APIs require creating a user/customer first (ex: /api/bitvcard/create-user/).
-                # We store the returned customer/user id on our user record to reuse it.
-                stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
-                if not stw_customer_id and cfg.get("create_user_path"):
-                    # Prefer approved KYC for provider onboarding requirements.
-                    kyc = await db.kyc.find_one(
-                        {"user_id": user["user_id"], "status": "approved"},
-                        {"_id": 0},
+            # Some Strowallet APIs require creating a user/customer first (ex: /api/bitvcard/create-user/).
+            # We store the returned customer/user id on our user record to reuse it.
+            stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
+            if not stw_customer_id and cfg.get("create_user_path"):
+                # Prefer approved KYC for provider onboarding requirements.
+                kyc = await db.kyc.find_one(
+                    {"user_id": user["user_id"], "status": "approved"},
+                    {"_id": 0},
+                )
+                if not kyc:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="User KYC must be approved before creating a Strowallet customer.",
                     )
-                    if not kyc:
-                        raise HTTPException(
-                            status_code=400,
-                            detail="User KYC must be approved before creating a Strowallet customer.",
-                        )
-                    stw_customer_id = await _strowallet_create_customer_id(
-                        settings=settings,
-                        cfg=cfg,
-                        user=user,
-                        # Use the user's actual email for provider customer identity (avoid collisions with card_email).
-                        customer_email=(user.get("email") or ""),
-                        kyc=kyc,
-                    )
-                    if stw_customer_id:
-                        await db.users.update_one(
-                            {"user_id": user["user_id"]},
-                            {"$set": {"strowallet_customer_id": stw_customer_id}},
-                        )
-
-                # If customer id is still missing, continue best-effort.
-                # Many Strowallet create-card setups accept customerEmail only.
-
-                create_payload: Dict[str, Any] = {
-                    # Common fields across many Strowallet deployments (best-effort).
-                    "email": order.get("card_email") or user.get("email"),
-                    "card_email": order.get("card_email") or user.get("email"),
-                    # Strowallet bitvcard schema (per docs)
-                    "customerEmail": order.get("card_email") or user.get("email"),
-                    "name_on_card": (user.get("full_name") or "").upper(),
-                    "card_type": (order.get("card_type") or "visa"),
-                    "amount": str(cfg.get("create_card_amount_usd") or 5),
-                    "full_name": user.get("full_name"),
-                    "name": user.get("full_name"),
-                    "phone": user.get("phone"),
-                    "phone_number": user.get("phone"),
-                    "reference": order_id,
-                    "customer_reference": user.get("user_id"),
-                }
+                stw_customer_id = await _strowallet_create_customer_id(
+                    settings=settings,
+                    cfg=cfg,
+                    user=user,
+                    # Use the user's actual email for provider customer identity (avoid collisions with card_email).
+                    customer_email=(user.get("email") or ""),
+                    kyc=kyc,
+                )
                 if stw_customer_id:
-                    # Try common keys used by Strowallet deployments
-                    create_payload["customer_id"] = stw_customer_id
-                    create_payload["user_id"] = stw_customer_id
-                    create_payload["card_user_id"] = stw_customer_id
-
-                # Provide common aliases for provider schemas
-                create_payload = _with_aliases(create_payload, "phone", "mobile", "msisdn")
-                create_payload = _with_aliases(create_payload, "customerEmail", "customer_email", "customeremail")
-
-                # Remove empty values to avoid API rejections.
-                create_payload = {k: v for k, v in create_payload.items() if v not in (None, "")}
-
-                # Strowallet bitvcard LIVE does NOT support a `mode` field.
-                # Environment is inferred from the LIVE keys + LIVE endpoint URL.
-                stw_resp = await _strowallet_post(settings, cfg["create_path"], create_payload)
-                auto_created = True
-
-                provider_card_id = _extract_first(
-                    stw_resp,
-                    "data.card.card_id",
-                    "data.card_id",
-                    "data.cardId",
-                    "data.id",
-                    "data.card.cardId",
-                    "card_id",
-                    "id",
-                    "data.card.id",
-                )
-
-                # Persist provider metadata immediately so we don't lose it if a follow-up call fails.
-                update_doc["provider"] = "strowallet"
-                update_doc["provider_card_id"] = str(provider_card_id) if provider_card_id else None
-                update_doc["provider_raw"] = _redact_sensitive_payload({"create": stw_resp})
-
-                # If a fetch-card-detail endpoint is configured, use it to get full card details.
-                # IMPORTANT: do not fail the approval flow if detail fetch fails; card might already be created.
-                stw_detail = None
-                stw_detail_error: Optional[str] = None
-                if provider_card_id and cfg.get("fetch_detail_path"):
-                    try:
-                        stw_detail = await _strowallet_fetch_detail_with_retry(
-                            settings=settings,
-                            cfg=cfg,
-                            provider_card_id=str(provider_card_id),
-                            stw_customer_id=stw_customer_id,
-                            reference=f"detail-{order_id}",
-                            attempts=4,
-                        )
-                        if stw_detail:
-                            update_doc["provider_raw"] = _redact_sensitive_payload({"create": stw_resp, "detail": stw_detail})
-                    except Exception as e:
-                        stw_detail_error = str(e)
-                        update_doc["provider_raw"] = _redact_sensitive_payload({"create": stw_resp, "detail_error": stw_detail_error})
-
-                src = stw_detail or stw_resp
-                card_number = _extract_first(src, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
-                card_expiry = _extract_first(src, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
-                card_brand = _extract_first(src, "data.brand", "brand", "data.card.brand")
-                card_type = _extract_first(src, "data.type", "type", "data.card.type")
-                card_holder_name = _extract_first(src, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
-                card_balance = _extract_float_first(
-                    src,
-                    "data.balance",
-                    "data.available_balance",
-                    "data.availableBalance",
-                    "balance",
-                    "available_balance",
-                    "availableBalance",
-                    "data.card.balance",
-                    "data.card.available_balance",
-                    "data.card.availableBalance",
-                )
-                card_currency = _extract_first(src, "data.currency", "currency", "data.card.currency")
-
-                # If we couldn't extract provider_card_id, annotate admin notes for follow-up.
-                if not provider_card_id:
-                    update_doc["admin_notes"] = (
-                        (payload.admin_notes or "")
-                        + ("\n" if payload.admin_notes else "")
-                        + "WARN: Strowallet card created but provider_card_id could not be extracted from response."
+                    await db.users.update_one(
+                        {"user_id": user["user_id"]},
+                        {"$set": {"strowallet_customer_id": stw_customer_id}},
                     )
 
-                # White-label: prefer configured brand name for UI display.
-                if cfg.get("brand_name"):
-                    update_doc["card_brand"] = cfg["brand_name"]
-                elif card_brand:
-                    update_doc["card_brand"] = str(card_brand)
+            # If customer id is still missing, continue best-effort.
+            # Many Strowallet create-card setups accept customerEmail only.
+
+            create_payload: Dict[str, Any] = {
+                # Common fields across many Strowallet deployments (best-effort).
+                "email": order.get("card_email") or user.get("email"),
+                "card_email": order.get("card_email") or user.get("email"),
+                # Strowallet bitvcard schema (per docs)
+                "customerEmail": order.get("card_email") or user.get("email"),
+                "name_on_card": (user.get("full_name") or "").upper(),
+                "card_type": (order.get("card_type") or "visa"),
+                "amount": str(cfg.get("create_card_amount_usd") or 5),
+                "mode": cfg.get("mode") or "live",
+                "full_name": user.get("full_name"),
+                "name": user.get("full_name"),
+                "phone": user.get("phone"),
+                "phone_number": user.get("phone"),
+                "reference": order_id,
+                "customer_reference": user.get("user_id"),
+            }
+            if stw_customer_id:
+                # Try common keys used by Strowallet deployments
+                create_payload["customer_id"] = stw_customer_id
+                create_payload["user_id"] = stw_customer_id
+                create_payload["card_user_id"] = stw_customer_id
+
+            # Provide common aliases for provider schemas
+            create_payload = _with_aliases(create_payload, "phone", "mobile", "msisdn")
+            create_payload = _with_aliases(create_payload, "customerEmail", "customer_email", "customeremail")
+
+            # Remove empty values to avoid API rejections.
+            create_payload = {k: v for k, v in create_payload.items() if v not in (None, "")}
+
+            # Some Strowallet deployments validate mode against a different enum.
+            # If we see "selected mode is invalid", retry with common alternatives (test/production) and/or omit it.
+            def _mode_candidates(v: str) -> List[Optional[str]]:
+                base = (v or "").strip().lower()
+                mapped = {"sandbox": "test", "live": "live"}.get(base, base or None)
+                candidates: List[Optional[str]] = [mapped]
+                # Common provider values
+                candidates += ["test", "live", "production", "prod", "sandbox"]
+                # Also allow omitting mode entirely
+                candidates += [None]
+                # Deduplicate while preserving order
+                out: List[Optional[str]] = []
+                for c in candidates:
+                    cc = (c.strip().lower() if isinstance(c, str) else None)
+                    key = cc if cc else None
+                    if key in out:
+                        continue
+                    out.append(key)
+                return out
+
+            stw_resp = None
+            last_mode_err = None
+            for m in _mode_candidates(str(create_payload.get("mode") or "")):
+                try_payload = dict(create_payload)
+                if m:
+                    try_payload["mode"] = m
                 else:
-                    update_doc["card_brand"] = "Virtual Card"
+                    try_payload.pop("mode", None)
+                try:
+                    stw_resp = await _strowallet_post(settings, cfg["create_path"], try_payload)
+                    break
+                except HTTPException as e:
+                    txt = _stw_error_text(getattr(e, "detail", ""))
+                    if "mode" in txt and "invalid" in txt:
+                        last_mode_err = getattr(e, "detail", str(e))
+                        continue
+                    raise
+            if stw_resp is None and last_mode_err is not None:
+                raise HTTPException(status_code=502, detail=last_mode_err)
+            auto_created = True
 
-                if card_type:
-                    update_doc["card_type"] = str(card_type).lower()
+            provider_card_id = _extract_first(
+                stw_resp,
+                "data.card.card_id",
+                "data.card_id",
+                "data.card_id",
+                "data.id",
+                "card_id",
+                "id",
+                "data.card.id",
+            )
 
-                if card_holder_name:
-                    update_doc["card_holder_name"] = str(card_holder_name)
-                elif user.get("full_name"):
-                    update_doc["card_holder_name"] = str(user["full_name"]).upper()
+            # If a fetch-card-detail endpoint is configured, use it to get full card details.
+            stw_detail = None
+            if provider_card_id and cfg.get("fetch_detail_path"):
+                detail_payload: Dict[str, Any] = {"card_id": provider_card_id}
+                if stw_customer_id:
+                    detail_payload["customer_id"] = stw_customer_id
+                    detail_payload["card_user_id"] = stw_customer_id
+                detail_payload = _with_aliases(detail_payload, "card_id", "cardId", "id")
+                stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], detail_payload)
 
-                if card_number:
-                    card_number_str = str(card_number).replace(" ", "")
-                    update_doc["card_last4"] = card_number_str[-4:]
-                if card_expiry:
-                    update_doc["card_expiry"] = str(card_expiry)
-                if card_balance is not None:
-                    update_doc["card_balance"] = float(card_balance)
-                if card_currency:
-                    update_doc["card_currency"] = str(card_currency).upper()
+            src = stw_detail or stw_resp
+            card_number = _extract_first(src, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
+            card_expiry = _extract_first(src, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
+            card_brand = _extract_first(src, "data.brand", "brand", "data.card.brand")
+            card_type = _extract_first(src, "data.type", "type", "data.card.type")
+            card_holder_name = _extract_first(src, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
+
+            update_doc["provider"] = "strowallet"
+            update_doc["provider_card_id"] = provider_card_id
+            update_doc["provider_raw"] = {"create": stw_resp, "detail": stw_detail} if stw_detail else stw_resp
+
+            # White-label: prefer configured brand name for UI display.
+            if cfg.get("brand_name"):
+                update_doc["card_brand"] = cfg["brand_name"]
+            elif card_brand:
+                update_doc["card_brand"] = str(card_brand)
+            else:
+                update_doc["card_brand"] = "Virtual Card"
+
+            if card_type:
+                update_doc["card_type"] = str(card_type).lower()
+
+            if card_holder_name:
+                update_doc["card_holder_name"] = str(card_holder_name)
+            elif user.get("full_name"):
+                update_doc["card_holder_name"] = str(user["full_name"]).upper()
+
+            if card_number:
+                card_number_str = str(card_number).replace(" ", "")
+                update_doc["card_last4"] = card_number_str[-4:]
+            if card_expiry:
+                update_doc["card_expiry"] = str(card_expiry)
 
         # Manual entry is only honored when Strowallet automation is NOT enabled.
         if not _strowallet_enabled(settings):
@@ -7598,21 +6578,6 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
                 settings[k] = v
     else:
         settings = defaults
-
-    # SECURITY: never return raw Strowallet secrets to the browser (even in admin UI).
-    # Admin can still UPDATE them via PUT /admin/settings, but GET will only show masked hints.
-    try:
-        cfg = _strowallet_config(settings)
-        settings["strowallet_api_key_masked"] = _mask_secret(cfg.get("api_key"))
-        settings["strowallet_api_secret_masked"] = _mask_secret(cfg.get("api_secret"))
-        settings["strowallet_has_keys"] = bool(cfg.get("api_key") and cfg.get("api_secret"))
-    except Exception:
-        settings["strowallet_api_key_masked"] = ""
-        settings["strowallet_api_secret_masked"] = ""
-        settings["strowallet_has_keys"] = False
-
-    settings["strowallet_api_key"] = ""
-    settings["strowallet_api_secret"] = ""
     return {"settings": settings}
 
 
@@ -7786,6 +6751,7 @@ async def admin_strowallet_apply_default_endpoints(admin: dict = Depends(get_adm
         "strowallet_fund_card_path": "/api/bitvcard/fund-card/",
         "strowallet_fetch_card_detail_path": "/api/bitvcard/fetch-card-detail/",
         "strowallet_card_transactions_path": "/api/bitvcard/card-transactions/",
+        "strowallet_mode": "live",
         "strowallet_create_card_amount_usd": 5.0,
         # Advanced endpoints vary by plan; keep empty so admin can fill in if provided by Strowallet.
         "strowallet_freeze_unfreeze_path": "",
@@ -7803,158 +6769,6 @@ async def admin_strowallet_apply_default_endpoints(admin: dict = Depends(get_adm
 
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     return {"message": "Default Strowallet endpoints applied", "settings": settings}
-
-
-class AdminStrowalletFetchCardDetail(BaseModel):
-    card_id: str = Field(min_length=1)
-    user_id: Optional[str] = None  # optional: use stored strowallet_customer_id if present
-    customer_id: Optional[str] = None  # optional override for some provider setups
-    reference: Optional[str] = None
-
-
-@api_router.post("/admin/strowallet/fetch-card-detail")
-async def admin_strowallet_fetch_card_detail(
-    payload: AdminStrowalletFetchCardDetail,
-    admin: dict = Depends(get_admin_user),
-):
-    """
-    Admin-only: fetch full provider card detail on-demand.
-    SECURITY: response may contain sensitive fields (PAN/CVV) depending on provider.
-    We do NOT store the provider response in DB.
-    """
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _strowallet_enabled(settings):
-        raise HTTPException(status_code=400, detail="Strowallet is disabled")
-
-    cfg = _strowallet_config(settings)
-    if not cfg.get("fetch_detail_path"):
-        raise HTTPException(status_code=400, detail="Strowallet fetch detail endpoint not configured")
-
-    card_id = str(payload.card_id).strip()
-    if not card_id:
-        raise HTTPException(status_code=400, detail="card_id is required")
-
-    stw_customer_id: Optional[str] = (payload.customer_id or "").strip() or None
-    if not stw_customer_id and payload.user_id:
-        u = await db.users.find_one({"user_id": str(payload.user_id).strip()}, {"_id": 0})
-        if u:
-            stw_customer_id = (u.get("strowallet_customer_id") or u.get("strowallet_user_id") or "").strip() or None
-
-    ref = (payload.reference or "").strip() or f"admin-fetch-{uuid.uuid4()}"
-    req: Dict[str, Any] = {"card_id": card_id, "reference": ref}
-    if stw_customer_id:
-        req["customer_id"] = stw_customer_id
-        req["card_user_id"] = stw_customer_id
-    req = _with_aliases(req, "card_id", "cardId", "id")
-
-    detail = await _strowallet_post(settings, cfg["fetch_detail_path"], req)
-    return {
-        "warning": "Sensitive data may be present in this response. Do not copy/share it.",
-        "detail": detail,
-    }
-
-
-@api_router.post("/admin/strowallet/sync-user-cards")
-async def admin_strowallet_sync_user_cards(
-    email: Optional[str] = Query(default=None, description="User email to sync cards for"),
-    user_id: Optional[str] = Query(default=None, description="User id to sync cards for"),
-    admin: dict = Depends(get_admin_user),
-):
-    """
-    Admin utility: refresh Strowallet card details (last4/expiry/name/brand/type) for a user.
-    This fixes cases where cards exist at provider but our dashboard is missing details.
-    """
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _strowallet_enabled(settings):
-        raise HTTPException(status_code=400, detail="Strowallet is disabled")
-
-    if not email and not user_id:
-        raise HTTPException(status_code=400, detail="Provide email or user_id")
-
-    q_user: Dict[str, Any] = {}
-    if user_id:
-        q_user["user_id"] = str(user_id).strip()
-    if email:
-        q_user["email"] = str(email).strip().lower()
-
-    user = await db.users.find_one(q_user, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    cfg = _strowallet_config(settings)
-    if not cfg.get("fetch_detail_path"):
-        raise HTTPException(status_code=400, detail="Provider card detail endpoint not configured")
-
-    orders = await db.virtual_card_orders.find(
-        {"user_id": user["user_id"], "status": "approved", "provider": "strowallet"},
-        {"_id": 0},
-    ).to_list(200)
-
-    updated: List[Dict[str, Any]] = []
-    skipped: List[Dict[str, Any]] = []
-    stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
-
-    for o in orders:
-        oid = o.get("order_id")
-        provider_card_id = o.get("provider_card_id")
-        if not provider_card_id:
-            skipped.append({"order_id": oid, "reason": "missing_provider_card_id"})
-            continue
-
-        payload: Dict[str, Any] = {"card_id": provider_card_id, "reference": f"admin-sync-{oid}"}
-        if stw_customer_id:
-            payload["customer_id"] = stw_customer_id
-            payload["card_user_id"] = stw_customer_id
-        payload = _with_aliases(payload, "card_id", "cardId", "id")
-
-        try:
-            stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
-        except Exception as e:
-            skipped.append({"order_id": oid, "reason": f"fetch_failed: {e}"})
-            continue
-
-        card_number = _extract_first(stw_detail, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
-        card_expiry = _extract_first(stw_detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
-        card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
-        card_brand = _extract_first(stw_detail, "data.brand", "brand", "data.card.brand")
-        card_type = _extract_first(stw_detail, "data.type", "type", "data.card.type")
-
-        update_doc: Dict[str, Any] = {
-            "provider": "strowallet",
-            "provider_card_id": str(provider_card_id),
-            "provider_raw": _redact_sensitive_payload({"detail": stw_detail}),
-        }
-
-        if card_number:
-            card_number_str = str(card_number).replace(" ", "")
-            update_doc["card_last4"] = card_number_str[-4:]
-        if card_expiry:
-            update_doc["card_expiry"] = str(card_expiry)
-        if card_holder_name:
-            update_doc["card_holder_name"] = str(card_holder_name)
-        if cfg.get("brand_name"):
-            update_doc["card_brand"] = cfg["brand_name"]
-        elif card_brand:
-            update_doc["card_brand"] = str(card_brand)
-        if card_type:
-            update_doc["card_type"] = str(card_type).lower()
-
-        await db.virtual_card_orders.update_one({"order_id": oid}, {"$set": update_doc})
-        updated.append({"order_id": oid, "provider_card_id": str(provider_card_id)})
-
-    await log_action(
-        admin["user_id"],
-        "strowallet_sync_user_cards",
-        {"user_id": user["user_id"], "email": user.get("email"), "updated": len(updated), "skipped": len(skipped)},
-    )
-
-    return {
-        "user_id": user["user_id"],
-        "email": user.get("email"),
-        "updated": updated,
-        "skipped": skipped,
-        "note": "Sensitive PAN/CVV are never stored; we store only last4/expiry/name/brand/type.",
-    }
 
 # Public endpoint for chat settings (no auth required)
 @api_router.get("/public/chat-settings")
@@ -8013,18 +6827,10 @@ async def admin_update_settings(settings: AdminSettingsUpdate, admin: dict = Dep
     try:
         # Convert empty strings to None for optional fields, but keep other values
         update_doc = {}
-        # Do not allow accidental clearing of secrets by sending empty strings from the UI.
-        # (Admin settings GET intentionally redacts these fields.)
-        no_clear_on_empty = {
-            "strowallet_api_key",
-            "strowallet_api_secret",
-        }
         for k, v in settings.model_dump().items():
             if v is not None:
                 # Convert empty strings to None for string fields
                 if isinstance(v, str) and v.strip() == "":
-                    if k in no_clear_on_empty:
-                        continue
                     update_doc[k] = None
                 else:
                     update_doc[k] = v
@@ -8155,96 +6961,6 @@ async def admin_update_card_details(
         )
     
     return {"message": "Card details updated"}
-
-
-@api_router.post("/admin/virtual-card-orders/{order_id}/auto-issue")
-async def admin_auto_issue_virtual_card_order(
-    order_id: str,
-    admin: dict = Depends(get_admin_user),
-):
-    """
-    Admin recovery tool: issue/sync a Strowallet card for an order that didn't reach the customer dashboard.
-    - If order is pending, we will issue and mark approved.
-    - If order is approved but missing provider details, we will re-issue detail sync best-effort.
-    """
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _strowallet_enabled(settings):
-        raise HTTPException(status_code=400, detail="Strowallet is disabled")
-
-    order = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-
-    user = await db.users.find_one({"user_id": order.get("user_id")}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # If already issued, just refresh provider detail best-effort.
-    if order.get("provider") == "strowallet" and order.get("provider_card_id"):
-        # Reuse the existing customer detail endpoint logic by calling provider directly
-        cfg = _strowallet_config(settings)
-        stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
-        stw_detail = await _strowallet_fetch_detail_with_retry(
-            settings=settings,
-            cfg=cfg,
-            provider_card_id=str(order.get("provider_card_id")),
-            stw_customer_id=stw_customer_id,
-            reference=f"admin-auto-issue-sync-{order_id}",
-            attempts=4,
-        )
-        if stw_detail:
-            # Apply same extraction rules used elsewhere.
-            card_number = _extract_first(stw_detail, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
-            card_expiry = _extract_first(stw_detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
-            card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
-            card_brand = _extract_first(stw_detail, "data.brand", "brand", "data.card.brand")
-            card_type = _extract_first(stw_detail, "data.type", "type", "data.card.type")
-            card_balance = _extract_float_first(
-                stw_detail,
-                "data.balance",
-                "data.available_balance",
-                "data.availableBalance",
-                "balance",
-                "available_balance",
-                "availableBalance",
-                "data.card.balance",
-                "data.card.available_balance",
-                "data.card.availableBalance",
-            )
-            card_currency = _extract_first(stw_detail, "data.currency", "currency", "data.card.currency")
-
-            update_doc: Dict[str, Any] = {"provider_raw": _redact_sensitive_payload({"detail": stw_detail})}
-            if card_number:
-                card_number_str = str(card_number).replace(" ", "")
-                update_doc["card_last4"] = card_number_str[-4:]
-            if card_expiry:
-                update_doc["card_expiry"] = str(card_expiry)
-            if card_holder_name:
-                update_doc["card_holder_name"] = str(card_holder_name)
-            if cfg.get("brand_name"):
-                update_doc["card_brand"] = cfg["brand_name"]
-            elif card_brand:
-                update_doc["card_brand"] = str(card_brand)
-            if card_type:
-                update_doc["card_type"] = str(card_type).lower()
-            if card_balance is not None:
-                update_doc["card_balance"] = float(card_balance)
-            if card_currency:
-                update_doc["card_currency"] = str(card_currency).upper()
-
-            await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": update_doc})
-
-        updated = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0, "card_number": 0, "card_cvv": 0})
-        await log_action(admin["user_id"], "admin_auto_issue_card_sync", {"order_id": order_id})
-        return {"order": updated, "note": "Synced existing provider card details"}
-
-    # Otherwise, issue it now.
-    issue_update = await _strowallet_issue_card_for_order(settings=settings, order=order, user=user)
-    await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": issue_update})
-    updated = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0, "card_number": 0, "card_cvv": 0})
-
-    await log_action(admin["user_id"], "admin_auto_issue_card", {"order_id": order_id, "provider_card_id": issue_update.get("provider_card_id")})
-    return {"order": updated, "message": "Card issued/synced successfully"}
 
 # Admin: Get all card top-up requests
 @api_router.get("/admin/card-topups")
