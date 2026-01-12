@@ -30,8 +30,7 @@ export default function AdminVirtualCards() {
   // Orders state
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
-  // Default to 'all' so admins immediately see existing cards.
-  const [orderFilter, setOrderFilter] = useState('all');
+  const [orderFilter, setOrderFilter] = useState('pending');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -40,7 +39,7 @@ export default function AdminVirtualCards() {
   // Top-ups state
   const [topups, setTopups] = useState([]);
   const [topupsLoading, setTopupsLoading] = useState(true);
-  const [topupFilter, setTopupFilter] = useState('all');
+  const [topupFilter, setTopupFilter] = useState('pending');
   const [selectedTopup, setSelectedTopup] = useState(null);
   const [showTopupModal, setShowTopupModal] = useState(false);
   const [deliveryInfo, setDeliveryInfo] = useState('');

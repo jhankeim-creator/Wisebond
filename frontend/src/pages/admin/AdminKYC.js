@@ -366,10 +366,7 @@ export default function AdminKYC() {
                     <thead>
                       <tr>
                         <th>Client ID</th>
-                        <th>Email</th>
                         <th>{getText('Non', 'Nom', 'Name')}</th>
-                        <th>{getText('Dat nesans', 'Date de naissance', 'DOB')}</th>
-                        <th>{getText('Adrès', 'Adresse', 'Address')}</th>
                         <th>{getText('Nasyonalite', 'Nationalité', 'Nationality')}</th>
                         <th>{getText('Tip ID', 'Type ID', 'ID Type')}</th>
                         <th>{getText('Soumèt le', 'Soumis le', 'Submitted')}</th>
@@ -381,10 +378,7 @@ export default function AdminKYC() {
                       {submissions.map((kyc) => (
                         <tr key={kyc.kyc_id}>
                           <td className="font-mono text-sm">{kyc.client_id}</td>
-                          <td className="text-sm break-all">{kyc.user_email || '—'}</td>
                           <td className="font-medium">{kyc.full_name}</td>
-                          <td className="text-sm">{kyc.date_of_birth || '—'}</td>
-                          <td className="text-sm max-w-[220px] truncate" title={kyc.full_address || ''}>{kyc.full_address || '—'}</td>
                           <td>{kyc.nationality}</td>
                           <td className="capitalize">{kyc.id_type?.replace('_', ' ')}</td>
                           <td className="text-sm">{new Date(kyc.submitted_at).toLocaleDateString()}</td>
@@ -423,7 +417,6 @@ export default function AdminKYC() {
                         <div>
                           <p className="font-semibold">{kyc.full_name}</p>
                           <p className="text-xs text-stone-500 font-mono">{kyc.client_id}</p>
-                          {kyc.user_email && <p className="text-xs text-stone-500 break-all">{kyc.user_email}</p>}
                         </div>
                         <Badge className={
                           kyc.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :

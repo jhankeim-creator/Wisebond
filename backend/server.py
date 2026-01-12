@@ -3308,8 +3308,7 @@ async def admin_get_card_orders(
     admin: dict = Depends(get_admin_user)
 ):
     query = {}
-    # Treat `all` as "no filter" sentinel for admin UI.
-    if status and status != "all":
+    if status:
         query["status"] = status
 
     orders = await db.virtual_card_orders.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
@@ -5083,30 +5082,12 @@ async def admin_get_kyc_submissions(
             "user_id": 1,
             "client_id": 1,
             "full_name": 1,
-            "date_of_birth": 1,
-            "full_address": 1,
             "nationality": 1,
             "id_type": 1,
-            "phone_number": 1,
-            "whatsapp_number": 1,
             "submitted_at": 1,
             "status": 1,
         },
     ).sort("submitted_at", -1).skip(skip).limit(limit).to_list(limit)
-
-    # Enrich with user email (email isn't stored in KYC doc historically).
-    user_ids = list({s.get("user_id") for s in submissions if s.get("user_id")})
-    users_by_id: Dict[str, Dict[str, Any]] = {}
-    if user_ids:
-        users = await db.users.find(
-            {"user_id": {"$in": user_ids}},
-            {"_id": 0, "user_id": 1, "email": 1},
-        ).to_list(len(user_ids))
-        users_by_id = {u["user_id"]: u for u in users if u.get("user_id")}
-    for s in submissions:
-        u = users_by_id.get(s.get("user_id"))
-        if u:
-            s["user_email"] = u.get("email")
     stats = {
         "pending": await db.kyc.count_documents({"status": "pending"}),
         "approved": await db.kyc.count_documents({"status": "approved"}),
@@ -5132,10 +5113,6 @@ async def admin_get_kyc(
     kyc = await db.kyc.find_one({"kyc_id": kyc_id}, {"_id": 0})
     if not kyc:
         raise HTTPException(status_code=404, detail="KYC submission not found")
-    # Enrich detail with user email (useful for admins).
-    user = await db.users.find_one({"user_id": kyc.get("user_id")}, {"_id": 0, "email": 1})
-    if user and user.get("email"):
-        kyc["user_email"] = user["email"]
     return {"kyc": kyc}
 
 @api_router.patch("/admin/kyc/{kyc_id}")
