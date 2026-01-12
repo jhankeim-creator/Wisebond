@@ -384,29 +384,6 @@ def _extract_first(d: Any, *paths: str) -> Optional[Any]:
             return cur
     return None
 
-
-def _safe_float(v: Any) -> Optional[float]:
-    try:
-        if v is None:
-            return None
-        # Handle numeric strings with commas/spaces
-        if isinstance(v, str):
-            vv = v.strip().replace(",", "")
-            if vv == "":
-                return None
-            return float(vv)
-        return float(v)
-    except Exception:
-        return None
-
-
-def _extract_float_first(d: Any, *paths: str) -> Optional[float]:
-    """
-    Best-effort numeric extractor for varying provider schemas.
-    """
-    raw = _extract_first(d, *paths)
-    return _safe_float(raw)
-
 def _with_aliases(payload: Dict[str, Any], key: str, *aliases: str) -> Dict[str, Any]:
     """
     Add common alias keys for a given payload field if present.
@@ -953,19 +930,6 @@ async def _strowallet_issue_card_for_order(
     card_type = _extract_first(src, "data.type", "type", "data.card.type")
     card_holder_name = _extract_first(src, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
     card_brand = _extract_first(src, "data.brand", "brand", "data.card.brand")
-    card_balance = _extract_float_first(
-        src,
-        "data.balance",
-        "data.available_balance",
-        "data.availableBalance",
-        "balance",
-        "available_balance",
-        "availableBalance",
-        "data.card.balance",
-        "data.card.available_balance",
-        "data.card.availableBalance",
-    )
-    card_currency = _extract_first(src, "data.currency", "currency", "data.card.currency")
 
     update_doc: Dict[str, Any] = {
         "status": "approved",
@@ -1000,10 +964,6 @@ async def _strowallet_issue_card_for_order(
         update_doc["card_last4"] = card_number_str[-4:]
     if card_expiry:
         update_doc["card_expiry"] = str(card_expiry)
-    if card_balance is not None:
-        update_doc["card_balance"] = float(card_balance)
-    if card_currency:
-        update_doc["card_currency"] = str(card_currency).upper()
 
     return update_doc
 
@@ -3424,24 +3384,6 @@ async def virtual_card_detail(
     card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
     card_brand = _extract_first(stw_detail, "data.brand", "brand", "data.card.brand")
     card_type = _extract_first(stw_detail, "data.type", "type", "data.card.type")
-    card_balance = _extract_float_first(
-        stw_detail,
-        "data.balance",
-        "data.available_balance",
-        "data.availableBalance",
-        "balance",
-        "available_balance",
-        "availableBalance",
-        "data.card.balance",
-        "data.card.available_balance",
-        "data.card.availableBalance",
-    )
-    card_currency = _extract_first(
-        stw_detail,
-        "data.currency",
-        "currency",
-        "data.card.currency",
-    )
 
     update_doc: Dict[str, Any] = {}
     if card_number:
@@ -3455,10 +3397,6 @@ async def virtual_card_detail(
         update_doc["card_brand"] = str(card_brand)
     if card_type and not order.get("card_type"):
         update_doc["card_type"] = str(card_type).lower()
-    if card_balance is not None:
-        update_doc["card_balance"] = float(card_balance)
-    if card_currency and not order.get("card_currency"):
-        update_doc["card_currency"] = str(card_currency).upper()
 
     if update_doc:
         await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": update_doc})
@@ -4416,19 +4354,6 @@ async def admin_process_card_order(
                         card_brand = _extract_first(stw_detail, "data.brand", "brand", "data.card.brand")
                         card_type = _extract_first(stw_detail, "data.type", "type", "data.card.type")
                         card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
-                        card_balance = _extract_float_first(
-                            stw_detail,
-                            "data.balance",
-                            "data.available_balance",
-                            "data.availableBalance",
-                            "balance",
-                            "available_balance",
-                            "availableBalance",
-                            "data.card.balance",
-                            "data.card.available_balance",
-                            "data.card.availableBalance",
-                        )
-                        card_currency = _extract_first(stw_detail, "data.currency", "currency", "data.card.currency")
 
                         if cfg.get("brand_name"):
                             update_doc["card_brand"] = cfg["brand_name"]
@@ -4449,10 +4374,6 @@ async def admin_process_card_order(
                             update_doc["card_last4"] = card_number_str[-4:]
                         if card_expiry:
                             update_doc["card_expiry"] = str(card_expiry)
-                        if card_balance is not None:
-                            update_doc["card_balance"] = float(card_balance)
-                        if card_currency:
-                            update_doc["card_currency"] = str(card_currency).upper()
                     except Exception as e:
                         # Don't block approval if detail fetch fails; linking still helps show the card.
                         update_doc["provider_raw"] = {"linked": True, "detail_error": str(e)}
@@ -4566,20 +4487,6 @@ async def admin_process_card_order(
                 card_brand = _extract_first(src, "data.brand", "brand", "data.card.brand")
                 card_type = _extract_first(src, "data.type", "type", "data.card.type")
                 card_holder_name = _extract_first(src, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
-                card_balance = _extract_float_first(
-                    src,
-                    "data.balance",
-                    "data.available_balance",
-                    "data.availableBalance",
-                    "balance",
-                    "available_balance",
-                    "availableBalance",
-                    "data.card.balance",
-                    "data.card.available_balance",
-                    "data.card.availableBalance",
-                )
-                card_currency = _extract_first(src, "data.currency", "currency", "data.card.currency")
-
                 # If we couldn't extract provider_card_id, annotate admin notes for follow-up.
                 if not provider_card_id:
                     update_doc["admin_notes"] = (
@@ -4609,10 +4516,6 @@ async def admin_process_card_order(
                     update_doc["card_last4"] = card_number_str[-4:]
                 if card_expiry:
                     update_doc["card_expiry"] = str(card_expiry)
-                if card_balance is not None:
-                    update_doc["card_balance"] = float(card_balance)
-                if card_currency:
-                    update_doc["card_currency"] = str(card_currency).upper()
 
         # Manual entry is only honored when Strowallet automation is NOT enabled.
         if not _strowallet_enabled(settings):

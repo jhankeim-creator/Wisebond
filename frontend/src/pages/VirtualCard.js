@@ -1058,38 +1058,6 @@ export default function VirtualCard() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
-                    <p className="text-xs text-stone-500">{getText('Estati', 'Statut', 'Status')}</p>
-                    <p className="font-semibold capitalize">{selectedCard.card_status || '—'}</p>
-                  </div>
-                  <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
-                    <p className="text-xs text-stone-500">{getText('Balans Kat', 'Solde Carte', 'Card balance')}</p>
-                    <p className="font-semibold">
-                      {selectedCard.card_balance != null
-                        ? `${Number(selectedCard.card_balance).toFixed(2)} ${selectedCard.card_currency || 'USD'}`
-                        : '—'}
-                    </p>
-                    <p className="text-[11px] text-stone-500 mt-1">
-                      {getText('Klike “Refresh” pou ajou li.', 'Cliquez “Rafraîchir” pour le mettre à jour.', 'Use “Refresh” to update.')}
-                    </p>
-                  </div>
-                  <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
-                    <p className="text-xs text-stone-500">{getText('Echèk Peman', 'Échecs Paiement', 'Payment fails')}</p>
-                    <p className="font-semibold">
-                      {typeof selectedCard.failed_payment_count === 'number' ? `${selectedCard.failed_payment_count}/3` : '—'}
-                    </p>
-                  </div>
-                </div>
-
-                {selectedCard.card_status === 'locked' && selectedCard.locked_reason ? (
-                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
-                    <p className="text-red-700 dark:text-red-300 text-sm">
-                      <strong>{getText('Rezon blokaj:', 'Raison du blocage:', 'Lock reason:')}</strong> {selectedCard.locked_reason}
-                    </p>
-                  </div>
-                ) : null}
-
                 {/* Card Visual */}
                 <div className={`relative rounded-2xl p-4 sm:p-6 text-white overflow-hidden ${
                   selectedCard.card_type === 'mastercard' 
