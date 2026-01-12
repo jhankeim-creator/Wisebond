@@ -7,10 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Check, X, Eye, RefreshCw, UserCheck, Clock, XCircle, Users, ZoomIn, AlertCircle } from 'lucide-react';
+
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminKYC() {
   const { language } = useLanguage();

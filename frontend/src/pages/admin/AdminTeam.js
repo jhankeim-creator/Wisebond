@@ -7,10 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Plus, RefreshCw, UserX, CheckCircle } from 'lucide-react';
+
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminTeam() {
   const { language } = useLanguage();

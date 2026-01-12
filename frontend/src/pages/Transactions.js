@@ -5,7 +5,6 @@ import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { API_BASE as API } from '@/lib/utils';
 import axios from 'axios';
 import { 
   ArrowDownCircle, 
@@ -16,6 +15,8 @@ import {
   FileDown
 } from 'lucide-react';
 import { jsPDF } from 'jspdf';
+
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function Transactions() {
   const { t } = useLanguage();

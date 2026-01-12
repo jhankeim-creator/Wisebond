@@ -8,12 +8,13 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { Save, Users, DollarSign, Percent, Bell, RefreshCw, Plus, Flag, Trash2, Edit2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminAgentSettings() {
   const { language } = useLanguage();

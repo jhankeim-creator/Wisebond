@@ -9,7 +9,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
 import { 
@@ -32,6 +31,8 @@ import {
   Trash2,
   RefreshCw
 } from 'lucide-react';
+
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminSettings() {
   const { language } = useLanguage();

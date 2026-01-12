@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { useLanguage } from '@/context/LanguageContext';
 import { Card, CardContent } from '@/components/ui/card';
-import { API_BASE as API } from '@/lib/utils';
 import axios from 'axios';
 import { 
   Users,
@@ -12,6 +11,8 @@ import {
   DollarSign,
   TrendingUp
 } from 'lucide-react';
+
+const API = `${process.env.REACT_APP_BACKEND_URL || ''}/api`;
 
 export default function AdminDashboard() {
   const { t } = useLanguage();
