@@ -3588,12 +3588,8 @@ async def get_card_orders(
                 {
                     "user_id": current_user["user_id"],
                     "status": "approved",
+                    "provider": "strowallet",
                     "provider_card_id": {"$ne": None},
-                    # Provider can be stored with mixed case/whitespace; match loosely.
-                    "$or": [
-                        {"provider": {"$regex": r"^\s*strowallet\s*$", "$options": "i"}},
-                        {"provider": {"$in": [None, ""]}},
-                    ],
                 },
                 {"_id": 0, "order_id": 1, "provider_card_id": 1, "spending_limit_usd": 1, "spending_limit_period": 1, "card_status": 1},
             ).sort("created_at", -1).limit(5).to_list(5)
@@ -3744,13 +3740,7 @@ async def get_card_orders(
     # Derive safe capability flags without exposing internal ids.
     for o in (orders or []):
         provider_norm = str(o.get("provider") or "").strip().lower()
-        has_provider_card = bool(o.get("provider_card_id"))
-        provider_is_allowed = provider_norm in ("strowallet", "")
-        o["can_reveal"] = has_provider_card and provider_is_allowed
-        o["can_transactions"] = has_provider_card and provider_is_allowed
-        o["issue_mode"] = "automatic" if has_provider_card else "manual"
-        # Do not expose the provider name to customers.
-        o.pop("provider", None)
+        o["can_reveal"] = bool(o.get("provider_card_id")) and (provider_norm in ("strowallet", ""))
         # Never expose provider_card_id to clients.
         o.pop("provider_card_id", None)
     return {"orders": orders}
@@ -3791,13 +3781,7 @@ async def virtual_card_detail(
                 "client_id": 0,
             },
         )
-        card = safe or {}
-        # Customer-safe flags (do not reveal provider name).
-        card["can_reveal"] = False
-        card["can_transactions"] = False
-        card["issue_mode"] = "manual"
-        card.pop("provider", None)
-        return {"card": card, "note": "Virtual cards are currently disabled; provider refresh is unavailable."}
+        return {"card": safe or {}, "note": "Virtual cards are currently disabled; provider refresh is unavailable."}
 
     # Only Strowallet cards support provider refresh at the moment.
     if str(order_full.get("provider") or "").strip().lower() != "strowallet" or not order_full.get("provider_card_id"):
@@ -3816,25 +3800,11 @@ async def virtual_card_detail(
                 "client_id": 0,
             },
         )
-        card = safe or {}
-        card["can_reveal"] = False
-        card["can_transactions"] = False
-        card["issue_mode"] = "manual"
-        card.pop("provider", None)
-        return {"card": card, "note": "No issuer detail available for this card"}
+        return {"card": safe or {}, "note": "No provider detail available for this card"}
 
     cfg = _strowallet_config(settings)
     if not cfg.get("fetch_detail_path"):
-        # Sanitize provider/internal fields for customer response.
-        provider_norm = str(order_full.get("provider") or "").strip().lower()
-        has_provider_card = bool(order_full.get("provider_card_id"))
-        card = dict(order_full)
-        card["can_reveal"] = has_provider_card and (provider_norm in ("strowallet", ""))
-        card["can_transactions"] = has_provider_card and (provider_norm in ("strowallet", ""))
-        card["issue_mode"] = "automatic" if has_provider_card else "manual"
-        card.pop("provider", None)
-        card.pop("provider_card_id", None)
-        return {"card": card, "note": "Issuer detail endpoint not configured"}
+        return {"card": order_full, "note": "Provider card detail endpoint not configured"}
 
     # Always enforce program default billing address for cards.
     try:
@@ -3890,15 +3860,9 @@ async def virtual_card_detail(
                 "client_id": 0,
             },
         )
-        provider_norm = str(order_full.get("provider") or "").strip().lower()
-        has_provider_card = bool(order_full.get("provider_card_id"))
-        card = safe or {}
-        card["can_reveal"] = has_provider_card and (provider_norm in ("strowallet", ""))
-        card["can_transactions"] = has_provider_card and (provider_norm in ("strowallet", ""))
-        card["issue_mode"] = "automatic" if has_provider_card else "manual"
-        card.pop("provider", None)
         return {
-            "card": card,
+            "provider": "strowallet",
+            "card": safe or {},
             "note": "Provider refresh failed; showing stored card details.",
             "error": str(e),
         }
@@ -4023,14 +3987,7 @@ async def virtual_card_detail(
             "client_id": 0,
         },
     )
-    provider_norm = str(order_full.get("provider") or "").strip().lower()
-    has_provider_card = bool(order_full.get("provider_card_id"))
-    card = safe or {}
-    card["can_reveal"] = has_provider_card and (provider_norm in ("strowallet", ""))
-    card["can_transactions"] = has_provider_card and (provider_norm in ("strowallet", ""))
-    card["issue_mode"] = "automatic" if has_provider_card else "manual"
-    card.pop("provider", None)
-    return {"card": card}
+    return {"provider": "strowallet", "card": safe or {}}
 
 @api_router.get("/virtual-cards/deposits")
 async def get_card_deposits(current_user: dict = Depends(get_current_user)):
@@ -4625,8 +4582,7 @@ async def virtual_card_transactions(
     }
     payload = _with_aliases(payload, "card_id", "cardId", "id")
     resp = await _strowallet_post(settings, cfg["card_tx_path"], payload)
-    # Do not reveal provider name to customers.
-    return {"order_id": order_id, "response": resp}
+    return {"provider": "strowallet", "order_id": order_id, "response": resp}
 
 
 @api_router.get("/virtual-cards/pin/status")
@@ -4985,7 +4941,7 @@ async def virtual_card_full_history(
     }
     payload = _with_aliases(payload, "card_id", "cardId", "id")
     resp = await _strowallet_post(settings, path, payload)
-    return {"order_id": order_id, "response": resp, "path_used": path}
+    return {"provider": "strowallet", "order_id": order_id, "response": resp, "path_used": path}
 
 
 class FreezeUnfreezeRequest(BaseModel):
@@ -5049,7 +5005,7 @@ async def virtual_card_freezeunfreeze(
                 "response": _redact_sensitive_payload(resp),
             })
 
-    return {"order_id": order_id, "action": payload.action, "response": resp}
+    return {"provider": "strowallet", "order_id": order_id, "action": payload.action, "response": resp}
 
 
 @api_router.get("/virtual-cards/withdrawals/{withdrawal_id}/status")
@@ -5068,12 +5024,11 @@ async def virtual_card_withdraw_status(
     if not record:
         raise HTTPException(status_code=404, detail="Withdrawal not found")
     if str(record.get("provider") or "").strip().lower() != "strowallet":
-        # Do not reveal provider name to customers.
-        return {"withdrawal": record}
+        return {"provider": record.get("provider"), "withdrawal": record}
 
     cfg = _strowallet_config(settings)
     if not cfg.get("withdraw_status_path"):
-        return {"withdrawal": record, "note": "Withdraw status endpoint not configured"}
+        return {"provider": "strowallet", "withdrawal": record, "note": "Provider withdraw status endpoint not configured"}
 
     payload: Dict[str, Any] = {
         "reference": record.get("withdrawal_id"),
@@ -5081,7 +5036,7 @@ async def virtual_card_withdraw_status(
         "transaction_reference": record.get("provider_txn_id"),
     }
     resp = await _strowallet_post(settings, cfg["withdraw_status_path"], payload)
-    return {"withdrawal": record, "response": resp}
+    return {"provider": "strowallet", "withdrawal": record, "response": resp}
 
 
 class UpgradeLimitRequest(BaseModel):
@@ -5121,7 +5076,7 @@ async def virtual_card_upgrade_limit(
     body = {k: v for k, v in body.items() if v not in (None, "")}
     body = _with_aliases(body, "card_id", "cardId", "id")
     resp = await _strowallet_post(settings, cfg["upgrade_limit_path"], body)
-    return {"order_id": order_id, "response": resp}
+    return {"provider": "strowallet", "order_id": order_id, "response": resp}
 
 # ==================== STROWALLET WEBHOOK (FAILED PAYMENTS AUTO-LOCK) ====================
 
