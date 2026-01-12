@@ -168,17 +168,6 @@ export default function VirtualCard() {
     return Number(range.fee || 0);
   };
 
-  const calculateWithdrawFee = () => {
-    const amt = parseFloat(withdrawAmount);
-    if (!amt || cardFees.length === 0) return 0;
-    const range = cardFees.find(f => amt >= f.min_amount && amt <= f.max_amount);
-    if (!range) return 0;
-    if (range.is_percentage) {
-      return amt * (range.fee / 100);
-    }
-    return Number(range.fee || 0);
-  };
-
   const submitTopUp = async () => {
     const amt = parseFloat(topUpAmount);
     const fee = calculateTopUpFee();
@@ -326,8 +315,6 @@ export default function VirtualCard() {
 
   const topUpFee = calculateTopUpFee();
   const totalTopUpAmount = Math.max(0, parseFloat(topUpAmount || 0) + (topUpFee || 0));
-  const withdrawFee = calculateWithdrawFee();
-  const netWithdrawAmount = Math.max(0, parseFloat(withdrawAmount || 0) - (withdrawFee || 0));
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -708,11 +695,6 @@ export default function VirtualCard() {
                             <p className="text-sm text-stone-500">
                               {new Date(w.created_at).toLocaleDateString()} - {w.card_email}
                             </p>
-                            {typeof w.fee === 'number' ? (
-                              <p className="text-xs text-stone-500">
-                                {getText('Frè:', 'Frais:', 'Fee:')} ${Number(w.fee || 0).toFixed(2)} • {getText('Nèt:', 'Net:', 'Net:')} ${Number(w.net_amount ?? (Number(w.amount || 0) - Number(w.fee || 0))).toFixed(2)}
-                              </p>
-                            ) : null}
                           </div>
                         </div>
                         {getStatusBadge(w.status)}
@@ -1005,24 +987,6 @@ export default function VirtualCard() {
                 </div>
                 <p className="text-xs text-stone-500 mt-1">{getText('Minimòm: $5', 'Minimum: $5', 'Minimum: $5')}</p>
               </div>
-
-              {/* Fee breakdown */}
-              {withdrawAmount && parseFloat(withdrawAmount) > 0 && (
-                <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4 space-y-2">
-                  <div className="flex justify-between text-stone-600 dark:text-stone-400">
-                    <span>{getText('Montan (soti nan kat)', 'Montant (depuis carte)', 'Amount (from card)')}</span>
-                    <span>${parseFloat(withdrawAmount).toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-stone-600 dark:text-stone-400">
-                    <span>{getText('Frè', 'Frais', 'Fee')}</span>
-                    <span className="text-amber-700">${withdrawFee.toFixed(2)}</span>
-                  </div>
-                  <div className="border-t border-stone-200 dark:border-stone-700 pt-2 flex justify-between font-semibold">
-                    <span>{getText('Nèt w ap resevwa nan bous la', 'Net crédité au wallet', 'Net credited to wallet')}</span>
-                    <span className="text-[#EA580C]">${netWithdrawAmount.toFixed(2)}</span>
-                  </div>
-                </div>
-              )}
 
               <Button
                 onClick={submitWithdraw}

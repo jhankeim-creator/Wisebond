@@ -706,8 +706,6 @@ class AdminSettingsUpdate(BaseModel):
 
     # Fees & Affiliate (optional, UI-configurable)
     card_order_fee_htg: Optional[int] = None
-    # Virtual Card: charge fee on withdrawals back to wallet (USD)
-    card_withdraw_fee_enabled: Optional[bool] = None
     affiliate_reward_htg: Optional[int] = None
     affiliate_cards_required: Optional[int] = None
     card_background_image: Optional[str] = None
@@ -2611,31 +2609,6 @@ async def withdraw_affiliate_earnings(current_user: dict = Depends(get_current_u
 CARD_FEE_HTG = 500  # Card order fee in HTG
 CARD_BONUS_USD = 0  # Bonus removed (kept for backward compatibility)
 
-def _calculate_card_fee_usd(amount: float, card_fees: List[Dict[str, Any]]) -> float:
-    """
-    Calculate fee (USD) using the same tiers used for card top-ups.
-    card_fees docs: {min_amount, max_amount, fee, is_percentage}
-    """
-    try:
-        amt = float(amount or 0)
-    except Exception:
-        return 0.0
-    if amt <= 0 or not card_fees:
-        return 0.0
-    for fee_config in (card_fees or []):
-        try:
-            mn = float(fee_config.get("min_amount", 0) or 0)
-            mx = float(fee_config.get("max_amount", 0) or 0)
-            if amt < mn or amt > mx:
-                continue
-            fee_val = float(fee_config.get("fee", 0) or 0)
-            if fee_config.get("is_percentage"):
-                return round(amt * (fee_val / 100.0), 2)
-            return round(fee_val, 2)
-        except Exception:
-            continue
-    return 0.0
-
 @api_router.get("/virtual-cards")
 async def get_virtual_cards(current_user: dict = Depends(get_current_user)):
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
@@ -2765,10 +2738,18 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
     
     # Calculate fee based on card fees
     card_fees = await db.card_fees.find({}, {"_id": 0}).sort("min_amount", 1).to_list(100)
-    fee = _calculate_card_fee_usd(float(request.amount), card_fees)
+    fee = 0
+    for fee_config in card_fees:
+        if request.amount >= fee_config["min_amount"] and request.amount <= fee_config["max_amount"]:
+            if fee_config.get("is_percentage"):
+                fee = request.amount * (fee_config["fee"] / 100)
+            else:
+                fee = fee_config["fee"]
+            break
     
     # Fee is added on top: client receives `amount` on card, wallet is charged (amount + fee)
-    total_deduction = round(float(request.amount) + float(fee or 0), 2)
+    fee = round(float(fee or 0), 2)
+    total_deduction = round(float(request.amount) + float(fee), 2)
     
     if current_user.get("wallet_usd", 0) < total_deduction:
         raise HTTPException(status_code=400, detail="Insufficient USD balance")
@@ -2988,19 +2969,6 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
     if amt < 5:
         raise HTTPException(status_code=400, detail="Minimum amount is $5")
 
-    # Apply the same card fee tiers for withdrawals (optional; enabled by default).
-    card_withdraw_fee_enabled = bool((settings or {}).get("card_withdraw_fee_enabled", True))
-    fee = 0.0
-    if card_withdraw_fee_enabled:
-        card_fees = await db.card_fees.find({}, {"_id": 0}).sort("min_amount", 1).to_list(100)
-        fee = _calculate_card_fee_usd(amt, card_fees)
-        if fee < 0:
-            fee = 0.0
-    fee = round(float(fee or 0), 2)
-    net_amount = round(max(0.0, amt - fee), 2)
-    if net_amount <= 0:
-        raise HTTPException(status_code=400, detail="Withdrawal amount is too small after fee")
-
     if not _strowallet_enabled(settings):
         raise HTTPException(status_code=400, detail="Card withdrawals are not enabled")
     if card_order.get("provider") != "strowallet" or not card_order.get("provider_card_id"):
@@ -3028,9 +2996,7 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
         "card_brand": card_order.get("card_brand"),
         "card_type": card_order.get("card_type"),
         "card_last4": card_order.get("card_last4"),
-        "amount": amt,  # gross withdrawn from card
-        "fee": fee,
-        "net_amount": net_amount,  # credited to wallet
+        "amount": amt,
         "currency": "USD",
         "status": "approved",
         "provider": "strowallet",
@@ -3044,21 +3010,20 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
     await db.virtual_card_withdrawals.insert_one(record)
     await db.users.update_one(
         {"user_id": current_user["user_id"]},
-        {"$inc": {"wallet_usd": net_amount}},
+        {"$inc": {"wallet_usd": amt}},
     )
     await db.transactions.insert_one({
         "transaction_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
         "type": "card_withdrawal",
-        "amount": net_amount,
-        "fee": fee,
+        "amount": amt,
         "currency": "USD",
         "status": "completed",
-        "description": f"Card withdrawal from {card_order.get('card_email')} (Strowallet) - gross ${amt:.2f} fee ${fee:.2f} net ${net_amount:.2f}",
+        "description": f"Card withdrawal from {card_order.get('card_email')} (Strowallet)",
         "reference_id": withdrawal_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    await log_action(current_user["user_id"], "card_withdrawal", {"withdrawal_id": withdrawal_id, "gross": amt, "fee": fee, "net": net_amount})
+    await log_action(current_user["user_id"], "card_withdrawal", {"withdrawal_id": withdrawal_id, "amount": amt})
 
     if "_id" in record:
         del record["_id"]
@@ -5923,7 +5888,6 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
         "telegram_bot_token": "",
         "telegram_chat_id": "",
         "card_order_fee_htg": 500,
-        "card_withdraw_fee_enabled": True,
         "affiliate_reward_htg": 2000,
         "affiliate_cards_required": 5,
         "card_background_image": None,
@@ -6133,7 +6097,6 @@ async def get_public_app_config():
         return {
             "virtual_cards_enabled": False,
             "card_order_fee_htg": 500,
-            "card_withdraw_fee_enabled": True,
             "card_background_image": None,
             "topup_fee_tiers": [],
             "announcement_enabled": False,
@@ -6147,7 +6110,6 @@ async def get_public_app_config():
     return {
         "virtual_cards_enabled": _virtual_cards_enabled(settings),
         "card_order_fee_htg": settings.get("card_order_fee_htg", 500),
-        "card_withdraw_fee_enabled": settings.get("card_withdraw_fee_enabled", True),
         "card_background_image": settings.get("card_background_image"),
         "topup_fee_tiers": settings.get("topup_fee_tiers", []),
         "announcement_enabled": settings.get("announcement_enabled", False),
