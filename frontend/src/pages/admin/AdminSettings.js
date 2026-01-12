@@ -66,7 +66,6 @@ export default function AdminSettings() {
     strowallet_base_url: '',
     strowallet_api_key: '',
     strowallet_api_secret: '',
-    strowallet_create_user_path: '',
     strowallet_create_card_path: '',
     strowallet_fund_card_path: '',
     strowallet_withdraw_card_path: '',
@@ -173,7 +172,7 @@ export default function AdminSettings() {
         'telegram_enabled', 'telegram_bot_token', 'telegram_chat_id',
         'plisio_enabled', 'plisio_api_key', 'plisio_secret_key',
         'strowallet_enabled', 'strowallet_base_url', 'strowallet_api_key', 'strowallet_api_secret',
-        'strowallet_create_user_path', 'strowallet_create_card_path', 'strowallet_fund_card_path', 'strowallet_withdraw_card_path',
+        'strowallet_create_card_path', 'strowallet_fund_card_path', 'strowallet_withdraw_card_path',
         'strowallet_brand_name',
         'card_order_fee_htg', 'affiliate_reward_htg', 'affiliate_cards_required',
         'card_background_image',
@@ -737,15 +736,6 @@ export default function AdminSettings() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <Label>{getText('Create user path', 'Create user path', 'Create user path')}</Label>
-                    <Input
-                      placeholder="/api/bitvcard/create-user/"
-                      value={settings.strowallet_create_user_path || ''}
-                      onChange={(e) => setSettings({ ...settings, strowallet_create_user_path: e.target.value })}
-                      className="mt-1 font-mono text-sm"
-                    />
-                  </div>
                   <div>
                     <Label>{getText('Create path', 'Create path', 'Create path')}</Label>
                     <Input
