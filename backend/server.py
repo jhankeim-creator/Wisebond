@@ -4193,46 +4193,6 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
                 {"reference_id": deposit["deposit_id"]},
                 {"$set": {"status": "completed"}}
             )
-
-            # Best-effort: refresh card balance after funding so customers see it.
-            try:
-                cfg = _strowallet_config(settings)
-                stw_customer_id = (current_user or {}).get("strowallet_customer_id") or (current_user or {}).get("strowallet_user_id")
-                # If current_user doesn't include it, pull from DB.
-                if not stw_customer_id:
-                    u = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0, "strowallet_customer_id": 1, "strowallet_user_id": 1})
-                    stw_customer_id = (u or {}).get("strowallet_customer_id") or (u or {}).get("strowallet_user_id")
-                detail = await _strowallet_fetch_detail_with_retry(
-                    settings=settings,
-                    cfg=cfg,
-                    provider_card_id=str(card_order.get("provider_card_id")),
-                    stw_customer_id=stw_customer_id,
-                    reference=f"balance-after-fund-{deposit['deposit_id']}",
-                    attempts=3,
-                )
-                if detail:
-                    bal = _extract_float_first(
-                        detail,
-                        "data.balance",
-                        "data.available_balance",
-                        "data.availableBalance",
-                        "data.card.balance",
-                        "data.card.available_balance",
-                        "data.card.availableBalance",
-                        "balance",
-                        "available_balance",
-                        "availableBalance",
-                    )
-                    cur = _extract_first(detail, "data.currency", "currency", "data.card.currency")
-                    upd: Dict[str, Any] = {}
-                    if bal is not None:
-                        upd["card_balance"] = float(bal)
-                    if cur:
-                        upd["card_currency"] = str(cur).upper()
-                    if upd:
-                        await db.virtual_card_orders.update_one({"order_id": card_order.get("order_id")}, {"$set": upd})
-            except Exception:
-                pass
     except Exception as e:
         # Keep the request pending for manual processing if Strowallet fails.
         logger.warning(f"Strowallet auto top-up failed for deposit {deposit.get('deposit_id')}: {e}")
@@ -4432,41 +4392,6 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
 
     stw_resp = await _strowallet_post(settings, cfg["withdraw_path"], withdraw_payload)
     provider_txn_id = _extract_first(stw_resp, "data.transaction_id", "data.txn_id", "transaction_id", "txn_id", "id")
-
-    # Best-effort: refresh card balance after withdrawal so customers see updated balance.
-    try:
-        stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
-        detail = await _strowallet_fetch_detail_with_retry(
-            settings=settings,
-            cfg=cfg,
-            provider_card_id=str(card_order.get("provider_card_id")),
-            stw_customer_id=stw_customer_id,
-            reference=f"balance-after-withdraw-{withdrawal_id}",
-            attempts=3,
-        )
-        if detail:
-            bal = _extract_float_first(
-                detail,
-                "data.balance",
-                "data.available_balance",
-                "data.availableBalance",
-                "data.card.balance",
-                "data.card.available_balance",
-                "data.card.availableBalance",
-                "balance",
-                "available_balance",
-                "availableBalance",
-            )
-            cur = _extract_first(detail, "data.currency", "currency", "data.card.currency")
-            upd: Dict[str, Any] = {}
-            if bal is not None:
-                upd["card_balance"] = float(bal)
-            if cur:
-                upd["card_currency"] = str(cur).upper()
-            if upd:
-                await db.virtual_card_orders.update_one({"order_id": request.order_id}, {"$set": upd})
-    except Exception:
-        pass
 
     record = {
         "withdrawal_id": withdrawal_id,
