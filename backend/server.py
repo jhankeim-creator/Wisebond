@@ -3699,7 +3699,7 @@ async def virtual_card_detail(
 
     cfg = _strowallet_config(settings)
     if not cfg.get("fetch_detail_path"):
-        return {"card": order, "note": "Provider card detail endpoint not configured"}
+        return {"card": order_full, "note": "Provider card detail endpoint not configured"}
 
     # Try fetch detail from provider to populate last4/expiry/etc.
     payload: Dict[str, Any] = {
@@ -3747,9 +3747,9 @@ async def virtual_card_detail(
         update_doc["card_expiry"] = str(card_expiry)
     if card_holder_name:
         update_doc["card_holder_name"] = str(card_holder_name)
-    if card_brand and not order.get("card_brand"):
+    if card_brand and not order_full.get("card_brand"):
         update_doc["card_brand"] = str(card_brand)
-    if card_type and not order.get("card_type"):
+    if card_type and not order_full.get("card_type"):
         update_doc["card_type"] = str(card_type).lower()
     if card_balance is not None:
         update_doc["card_balance"] = float(card_balance)
