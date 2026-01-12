@@ -101,8 +101,7 @@ def _virtual_cards_enabled(settings: Optional[dict]) -> bool:
     return _strowallet_enabled(settings)
 
 def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
-    # Default to strowallet.com to avoid silent "enabled but no base_url" misconfig.
-    base_url = ((settings or {}).get("strowallet_base_url") or os.environ.get("STROWALLET_BASE_URL") or "https://strowallet.com").strip()
+    base_url = ((settings or {}).get("strowallet_base_url") or os.environ.get("STROWALLET_BASE_URL") or "").strip()
     api_key = ((settings or {}).get("strowallet_api_key") or os.environ.get("STROWALLET_API_KEY") or "").strip()
     api_secret = ((settings or {}).get("strowallet_api_secret") or os.environ.get("STROWALLET_API_SECRET") or "").strip()
     brand_name = ((settings or {}).get("strowallet_brand_name") or os.environ.get("STROWALLET_BRAND_NAME") or "").strip()
@@ -5189,7 +5188,7 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
         "plisio_api_key": "",
         "plisio_secret_key": "",
         "strowallet_enabled": False,
-        "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", "") or "https://strowallet.com",
+        "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", ""),
         "strowallet_api_key": "",
         "strowallet_api_secret": "",
         "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/card-user",
@@ -5225,103 +5224,6 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
     else:
         settings = defaults
     return {"settings": settings}
-
-
-async def _strowallet_probe(settings: Optional[dict], path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Send a raw probe request to Strowallet and return status + body (no secrets).
-    We intentionally do NOT raise on 4xx so admin can see if it's auth/path/payload.
-    """
-    cfg = _strowallet_config(settings)
-    url = f"{cfg['base_url'].rstrip('/')}{path}"
-    headers = {
-        "Authorization": f"Bearer {cfg['api_key']}" if cfg.get("api_key") else "",
-        "X-API-Key": cfg.get("api_key", ""),
-        "x-api-key": cfg.get("api_key", ""),
-        "api-key": cfg.get("api_key", ""),
-        "public_key": cfg.get("api_key", ""),
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
-    if cfg.get("api_secret"):
-        headers["X-API-Secret"] = cfg["api_secret"]
-        headers["x-api-secret"] = cfg["api_secret"]
-        headers["api-secret"] = cfg["api_secret"]
-        headers["secret_key"] = cfg["api_secret"]
-
-    async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as client:
-        try:
-            resp = await client.post(url, json=payload, headers=headers)
-            try:
-                body: Any = resp.json()
-            except Exception:
-                body = {"raw": (resp.text or "")[:3000]}
-            return {"url": url, "status_code": resp.status_code, "body": body}
-        except Exception as e:
-            return {"url": url, "status_code": None, "error": str(e)}
-
-
-@api_router.get("/admin/strowallet/diagnostics")
-async def admin_strowallet_diagnostics(admin: dict = Depends(get_admin_user)):
-    """
-    Diagnostics endpoint to validate Strowallet connectivity/config.
-    It performs non-destructive probes that should NOT create cards/users:
-    it sends intentionally incomplete payloads and returns the response codes.
-    """
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    cfg = _strowallet_config(settings)
-
-    # Config summary (redacted)
-    summary = {
-        "enabled": _strowallet_enabled(settings),
-        "base_url": cfg.get("base_url"),
-        "has_api_key": bool(cfg.get("api_key")),
-        "has_api_secret": bool(cfg.get("api_secret")),
-        "brand_name": cfg.get("brand_name"),
-        "paths": {
-            "create_user_path": cfg.get("create_user_path"),
-            "create_card_path": cfg.get("create_path"),
-            "fund_card_path": cfg.get("fund_path"),
-            "fetch_detail_path": cfg.get("fetch_detail_path"),
-        },
-    }
-
-    # If disabled, don't probe.
-    if not _strowallet_enabled(settings):
-        return {"summary": summary, "probes": [], "note": "Strowallet is disabled in settings."}
-
-    probes = []
-    # Probe create-user/customer endpoint with empty payload (should return 400/422 if reachable+authed; 401/403 if auth; 404 if path)
-    if cfg.get("create_user_path"):
-        probes.append({"name": "create_user_probe", "result": await _strowallet_probe(settings, cfg["create_user_path"], {})})
-    # Probe create-card endpoint with empty payload
-    if cfg.get("create_path"):
-        probes.append({"name": "create_card_probe", "result": await _strowallet_probe(settings, cfg["create_path"], {})})
-    # Probe fetch detail with dummy card_id (should fail validation but confirms path/auth)
-    if cfg.get("fetch_detail_path"):
-        probes.append({"name": "fetch_detail_probe", "result": await _strowallet_probe(settings, cfg["fetch_detail_path"], {"card_id": "TEST"})})
-
-    # Interpret common failures for admin readability
-    def classify(status_code: Optional[int]) -> str:
-        if status_code is None:
-            return "network_error"
-        if status_code in (401, 403):
-            return "auth_error"
-        if status_code == 404:
-            return "wrong_path_or_base_url"
-        if status_code in (400, 422):
-            return "reachable_but_bad_payload (usually OK for auth/path)"
-        if 200 <= status_code < 300:
-            return "ok"
-        if 500 <= status_code:
-            return "provider_error"
-        return "unexpected"
-
-    for p in probes:
-        sc = p["result"].get("status_code")
-        p["classification"] = classify(sc)
-
-    return {"summary": summary, "probes": probes}
 
 # Public endpoint for chat settings (no auth required)
 @api_router.get("/public/chat-settings")
