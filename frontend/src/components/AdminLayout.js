@@ -24,7 +24,6 @@ import {
   Home,
   Bell,
   MessageSquare,
-  Webhook,
   Shield,
   UserPlus,
   Wallet
@@ -65,7 +64,6 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/bulk-email', icon: Mail, label: getText('Imèl', 'Emails', 'Emails') },
     { path: '/admin/team', icon: Shield, label: getText('Ekip', 'Équipe', 'Team') },
     { path: '/admin/logs', icon: MessageSquare, label: getText('Mesaj', 'Journaux', 'Logs') },
-    { path: '/admin/webhook-events', icon: Webhook, label: getText('Webhook', 'Webhook', 'Webhook') },
     { path: '/admin/settings', icon: Settings, label: getText('Paramèt', 'Paramètres', 'Settings') },
   ];
 

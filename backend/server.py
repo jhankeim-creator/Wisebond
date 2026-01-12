@@ -5759,61 +5759,6 @@ async def admin_get_logs(
     logs = await db.logs.find(query, {"_id": 0}).sort("timestamp", -1).limit(limit).to_list(limit)
     return {"logs": logs}
 
-
-# Webhook Events Admin (Strowallet + related account providers)
-@api_router.get("/admin/webhook-events")
-async def admin_get_webhook_events(
-    provider: Optional[str] = None,
-    limit: int = Query(default=100, le=500),
-    admin: dict = Depends(get_admin_user),
-):
-    query: Dict[str, Any] = {}
-    if provider:
-        query["provider"] = str(provider).strip().lower()
-
-    events = await db.webhook_events.find(
-        query,
-        # Don't return full headers/payload for list view; use detail endpoint for full body.
-        {"_id": 0, "event_id": 1, "provider": 1, "received_at": 1, "payload": 1},
-    ).sort("received_at", -1).limit(limit).to_list(limit)
-
-    # Provide a small extracted summary field for quick scanning.
-    for e in events:
-        p = e.get("payload") if isinstance(e.get("payload"), dict) else {}
-        e["summary"] = _extract_first(
-            p,
-            "event",
-            "type",
-            "action",
-            "data.event",
-            "data.type",
-            "data.action",
-            "message",
-        )
-        # Prevent massive payloads in the list response
-        if isinstance(e.get("payload"), dict):
-            # Keep only a small subset in list response
-            e["payload"] = {
-                k: e["payload"].get(k)
-                for k in ("event", "type", "action", "status", "message", "reference", "data")
-                if k in e["payload"]
-            }
-        else:
-            e["payload"] = None
-
-    return {"events": events}
-
-
-@api_router.get("/admin/webhook-events/{event_id}")
-async def admin_get_webhook_event_detail(
-    event_id: str,
-    admin: dict = Depends(get_admin_user),
-):
-    ev = await db.webhook_events.find_one({"event_id": event_id}, {"_id": 0})
-    if not ev:
-        raise HTTPException(status_code=404, detail="Webhook event not found")
-    return {"event": ev}
-
 # ==================== WHATSAPP NOTIFICATIONS ====================
 
 @api_router.get("/admin/whatsapp-notifications")
@@ -6061,7 +6006,6 @@ async def startup():
     await db.agent_requests.create_index([("user_id", 1)])
     await db.payment_gateway_methods.create_index("payment_method_id", unique=True)
     await db.payment_gateway_methods.create_index([("payment_type", 1), ("status", 1)])
-    await db.webhook_events.create_index([("provider", 1), ("received_at", -1)])
     
     # Create default admin if not exists, or update existing admin email
     admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
