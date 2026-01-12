@@ -44,7 +44,6 @@ export default function VirtualCard() {
   const [cardDeposits, setCardDeposits] = useState([]);
   const [cardWithdrawals, setCardWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [virtualCardsEnabled, setVirtualCardsEnabled] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -67,9 +66,6 @@ export default function VirtualCard() {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawCardId, setWithdrawCardId] = useState('');
   const [submittingWithdraw, setSubmittingWithdraw] = useState(false);
-  const [updatingControls, setUpdatingControls] = useState(false);
-  const [spendingLimit, setSpendingLimit] = useState('');
-  const [spendingPeriod, setSpendingPeriod] = useState('monthly');
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -90,9 +86,6 @@ export default function VirtualCard() {
         axios.get(`${API}/public/app-config`),
         axios.get(`${API}/withdrawals/fees`)
       ]);
-      if (typeof configResp.data?.virtual_cards_enabled === 'boolean') {
-        setVirtualCardsEnabled(configResp.data.virtual_cards_enabled);
-      }
       if (configResp.data?.card_order_fee_htg) {
         setCardFee(configResp.data.card_order_fee_htg);
       }
@@ -104,7 +97,6 @@ export default function VirtualCard() {
       }
     } catch (e) {
       // keep default
-      if (virtualCardsEnabled === null) setVirtualCardsEnabled(true);
     }
   };
 
@@ -257,27 +249,7 @@ export default function VirtualCard() {
     setSelectedCard(order);
     setShowCVV(false);
     setShowFullNumber(false);
-    setSpendingLimit(order?.spending_limit_usd != null ? String(order.spending_limit_usd) : '');
-    setSpendingPeriod(order?.spending_limit_period || 'monthly');
     setShowCardDetails(true);
-  };
-
-  const updateControls = async (updates) => {
-    if (!selectedCard?.order_id) return;
-    setUpdatingControls(true);
-    try {
-      const res = await axios.patch(`${API}/virtual-cards/${selectedCard.order_id}/controls`, updates);
-      const updated = res.data?.card;
-      if (updated) {
-        setSelectedCard(updated);
-      }
-      toast.success(getText('Mete ajou!', 'Mis à jour!', 'Updated!'));
-      fetchData();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error');
-    } finally {
-      setUpdatingControls(false);
-    }
   };
 
   const copyToClipboard = (text, label) => {
@@ -325,33 +297,8 @@ export default function VirtualCard() {
   return (
     <DashboardLayout title={getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card')}>
       <div className="space-y-6" data-testid="virtual-card-page">
-        {/* Feature flag */}
-        {virtualCardsEnabled === false ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <AlertCircle className="mx-auto text-amber-500 mb-4" size={48} />
-              <h3 className="text-xl font-bold text-stone-900 dark:text-white mb-2">
-                {getText('Kat vityèl pa disponib kounye a', 'Cartes virtuelles indisponibles', 'Virtual cards unavailable')}
-              </h3>
-              <p className="text-stone-600 dark:text-stone-400">
-                {getText(
-                  'Fonksyon sa a ap aktive lè admin lan pare.',
-                  'Cette fonctionnalité sera activée par l’admin quand elle sera prête.',
-                  'This feature will be enabled by the admin when ready.'
-                )}
-              </p>
-            </CardContent>
-          </Card>
-        ) : null}
-
         {/* KYC Check */}
-        {virtualCardsEnabled === false ? null : virtualCardsEnabled === null ? (
-          <Card>
-            <CardContent className="p-8 text-center text-stone-500">
-              {getText('Chajman...', 'Chargement...', 'Loading...')}
-            </CardContent>
-          </Card>
-        ) : user?.kyc_status !== 'approved' ? (
+        {user?.kyc_status !== 'approved' ? (
           <Card>
             <CardContent className="p-8 text-center">
               <AlertCircle className="mx-auto text-amber-500 mb-4" size={48} />
@@ -1081,92 +1028,6 @@ export default function VirtualCard() {
                 <Button onClick={() => setShowCardDetails(false)} className="w-full" variant="outline">
                   {getText('Fèmen', 'Fermer', 'Close')}
                 </Button>
-
-              {/* Controls */}
-              {selectedCard?.provider === 'strowallet' ? (
-                <div className="border-t pt-4 space-y-3">
-                  <h4 className="font-semibold text-stone-900 dark:text-white">
-                    {getText('Jesyon Kat', 'Gestion Carte', 'Card Management')}
-                  </h4>
-
-                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm text-amber-800 dark:text-amber-300">
-                    {getText(
-                      'Atansyon: 3 echèk peman ka bloke kat la. Asire balans ou bon epi enfòmasyon bòdwo yo kòrèk.',
-                      'Attention: 3 échecs de paiement peuvent bloquer la carte. Assurez-vous d’avoir un bon solde et une bonne adresse de facturation.',
-                      'Warning: 3 failed payments may lock the card. Keep enough balance and correct billing details.'
-                    )}
-                    {typeof selectedCard.failed_payment_count === 'number' ? (
-                      <div className="mt-2 font-semibold">
-                        {getText('Echèk: ', 'Échecs: ', 'Fails: ')}{selectedCard.failed_payment_count}/3
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <Label>{getText('Limit depans (USD)', 'Limite dépenses (USD)', 'Spending limit (USD)')}</Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={spendingLimit}
-                        onChange={(e) => setSpendingLimit(e.target.value)}
-                        className="mt-2"
-                      />
-                    </div>
-                    <div>
-                      <Label>{getText('Peryòd', 'Période', 'Period')}</Label>
-                      <Select value={spendingPeriod} onValueChange={setSpendingPeriod}>
-                        <SelectTrigger className="mt-2">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="daily">{getText('Chak jou', 'Quotidien', 'Daily')}</SelectItem>
-                          <SelectItem value="monthly">{getText('Chak mwa', 'Mensuel', 'Monthly')}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2 flex-wrap">
-                    <Button
-                      onClick={() => updateControls({ spending_limit_usd: parseFloat(spendingLimit), spending_limit_period: spendingPeriod })}
-                      disabled={updatingControls || !spendingLimit || Number(spendingLimit) <= 0}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                    >
-                      {getText('Sove limit', 'Enregistrer limite', 'Save limit')}
-                    </Button>
-                    {selectedCard?.card_status === 'locked' ? (
-                      <Button
-                        variant="outline"
-                        onClick={() => updateControls({ lock: false })}
-                        disabled={updatingControls || (selectedCard.failed_payment_count >= 3)}
-                        className="border-amber-300 text-amber-700 hover:bg-amber-50"
-                      >
-                        {getText('Debloke', 'Débloquer', 'Unlock')}
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        onClick={() => updateControls({ lock: true })}
-                        disabled={updatingControls}
-                        className="border-red-300 text-red-700 hover:bg-red-50"
-                      >
-                        {getText('Bloke kat la', 'Bloquer la carte', 'Lock card')}
-                      </Button>
-                    )}
-                  </div>
-
-                  {(selectedCard.failed_payment_count >= 3) ? (
-                    <div className="text-xs text-red-600">
-                      {getText(
-                        'Kat la bloke apre 3 echèk. Kontakte sipò pou debloke.',
-                        'Carte bloquée après 3 échecs. Contactez le support pour débloquer.',
-                        'Card locked after 3 failures. Contact support to unlock.'
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
               </div>
             )}
           </DialogContent>
