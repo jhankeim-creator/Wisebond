@@ -488,106 +488,30 @@ async def _strowallet_create_customer_id(
     settings: Optional[dict],
     cfg: Dict[str, str],
     user: Dict[str, Any],
-    customer_email: Optional[str] = None,
-    kyc: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Create (or fetch) a Strowallet customer/user id.
     Some Strowallet plans require this before card creation.
     Tries a small set of known endpoint variants and returns the discovered id.
     """
-    # Strowallet create-user (bitvcard) often requires KYC + address fields.
-    kyc = kyc or {}
     full_name = (user.get("full_name") or "").strip()
     parts = [p for p in full_name.split(" ") if p]
     first_name = parts[0] if parts else full_name
     last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
 
-    # Map our KYC fields to provider-required schema.
-    # Provider-required (from diagnostics): customerEmail, idNumber, idType, firstName, lastName, phoneNumber,
-    # city, state, country, zipCode, line1, houseNumber, idImage, userPhoto, dateOfBirth.
-    address_line1 = (kyc.get("full_address") or "").strip()
-    city = (kyc.get("city") or "").strip()
-    state = (kyc.get("state") or "").strip()
-    country = (kyc.get("country") or "").strip()
-    id_number = (kyc.get("id_number") or "").strip()
-    id_type = (kyc.get("id_type") or "").strip()
-    id_image = (kyc.get("id_front_image") or "").strip()
-    user_photo = (kyc.get("selfie_with_id") or "").strip()
-    date_of_birth = (kyc.get("date_of_birth") or "").strip()
-
-    # Best-effort: parse house number / zip from full_address if present.
-    house_number = ""
-    zip_code = ""
-    if address_line1:
-        m_house = re.match(r"^\s*(\d+)\b", address_line1)
-        if m_house:
-            house_number = m_house.group(1)
-        m_zip = re.search(r"(\d{4,6})(?!.*\d)", address_line1)
-        if m_zip:
-            zip_code = m_zip.group(1)
-
-    # If still missing, use conservative placeholders (some countries don't use postal codes).
-    # Admin can override by improving KYC address format.
-    if not zip_code:
-        zip_code = "00000"
-    if not house_number:
-        house_number = "1"
-
-    customer_email_final = (customer_email or user.get("email") or "").strip()
-
     create_user_payload: Dict[str, Any] = {
-        # Required field names (provider schema)
-        "customerEmail": customer_email_final,
-        "idNumber": id_number,
-        "idType": id_type,
-        "firstName": first_name,
-        "lastName": last_name,
-        "phoneNumber": (user.get("phone") or "").strip(),
-        "city": city,
-        "state": state,
-        "country": country,
-        "zipCode": zip_code,
-        "line1": address_line1,
-        "houseNumber": house_number,
-        "idImage": id_image,
-        "userPhoto": user_photo,
-        "dateOfBirth": date_of_birth,
-        # Helpful traceability (usually ignored by provider)
+        "email": user.get("email"),
+        "full_name": user.get("full_name"),
+        "name": user.get("full_name"),
+        "first_name": first_name,
+        "last_name": last_name,
+        "phone": user.get("phone"),
+        "phone_number": user.get("phone"),
         "reference": user.get("user_id"),
         "customer_reference": user.get("user_id"),
     }
-    # Drop empties so we can give a clean "missing fields" error locally (before calling provider).
     create_user_payload = {k: v for k, v in create_user_payload.items() if v not in (None, "")}
-
-    # Fail fast if critical fields are missing (avoid confusing provider errors).
-    required_keys = [
-        "customerEmail",
-        "idNumber",
-        "idType",
-        "firstName",
-        "lastName",
-        "phoneNumber",
-        "city",
-        "state",
-        "country",
-        "zipCode",
-        "line1",
-        "houseNumber",
-        "idImage",
-        "userPhoto",
-        "dateOfBirth",
-    ]
-    missing = [k for k in required_keys if k not in create_user_payload]
-    if missing:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "message": "Missing required fields for Strowallet create-user. Ensure user KYC includes these fields.",
-                "missing": missing,
-                "note": "This is required by your Strowallet plan before creating a card.",
-            },
-        )
+    create_user_payload = _with_aliases(create_user_payload, "phone", "mobile", "msisdn")
 
     # Try configured path first, then common variants.
     candidates = [
@@ -3850,23 +3774,7 @@ async def admin_process_card_order(
             # We store the returned customer/user id on our user record to reuse it.
             stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
             if not stw_customer_id and cfg.get("create_user_path"):
-                # Prefer approved KYC for provider onboarding requirements.
-                kyc = await db.kyc.find_one(
-                    {"user_id": user["user_id"], "status": "approved"},
-                    {"_id": 0},
-                )
-                if not kyc:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="User KYC must be approved before creating a Strowallet customer.",
-                    )
-                stw_customer_id = await _strowallet_create_customer_id(
-                    settings=settings,
-                    cfg=cfg,
-                    user=user,
-                    customer_email=(order.get("card_email") or user.get("email")),
-                    kyc=kyc,
-                )
+                stw_customer_id = await _strowallet_create_customer_id(settings=settings, cfg=cfg, user=user)
                 await db.users.update_one(
                     {"user_id": user["user_id"]},
                     {"$set": {"strowallet_customer_id": stw_customer_id}},
@@ -6368,19 +6276,12 @@ async def admin_strowallet_diagnostics(admin: dict = Depends(get_admin_user)):
         body = res.get("body")
         if cls == "ok" and isinstance(body, dict):
             success = body.get("success")
+            msg = str(body.get("message") or body.get("error") or "").lower()
             if success is False:
-                # Treat validation-style payload errors as "reachable but bad payload".
-                msg_val = body.get("message")
-                if isinstance(body.get("errors"), dict) or isinstance(msg_val, (dict, list)):
-                    cls = "reachable_but_bad_payload (usually OK for auth/path)"
+                if "invalid public key" in msg or "invalid key" in msg or "unauthorized" in msg:
+                    cls = "auth_error"
                 else:
-                    msg = str(msg_val or body.get("error") or "").lower()
-                    if "validation" in msg:
-                        cls = "reachable_but_bad_payload (usually OK for auth/path)"
-                    elif "invalid public key" in msg or "invalid key" in msg or "unauthorized" in msg:
-                        cls = "auth_error"
-                    else:
-                        cls = "provider_error"
+                    cls = "provider_error"
 
         p["classification"] = cls
 
