@@ -385,61 +385,6 @@ def _extract_first(d: Any, *paths: str) -> Optional[Any]:
     return None
 
 
-def _mask_secret(value: Optional[str], *, keep_last: int = 4) -> str:
-    """
-    Mask a secret for UI display. Never returns the full value.
-    """
-    v = (value or "").strip()
-    if not v:
-        return ""
-    if len(v) <= keep_last:
-        return "*" * len(v)
-    return ("*" * (len(v) - keep_last)) + v[-keep_last:]
-
-
-_SENSITIVE_KEY_SUBSTRINGS = {
-    "card_number",
-    "pan",
-    "cvv",
-    "cvc",
-    "security_code",
-    "pin",
-}
-
-_SENSITIVE_KEY_EXACT = {
-    # Some providers use generic key names for PAN/CVV
-    "number",
-    "cardnumber",
-}
-
-
-def _redact_sensitive_payload(obj: Any) -> Any:
-    """
-    Recursively redact common sensitive fields in provider payloads.
-    SECURITY: this is best-effort; never rely on it as the only control.
-    """
-    if isinstance(obj, dict):
-        out: Dict[str, Any] = {}
-        for k, v in obj.items():
-            kl = str(k).lower()
-            if (kl in _SENSITIVE_KEY_EXACT) or any(s in kl for s in _SENSITIVE_KEY_SUBSTRINGS):
-                # If it's a likely PAN, keep last 4 for debugging.
-                if isinstance(v, str):
-                    digits = "".join(ch for ch in v if ch.isdigit())
-                    if 12 <= len(digits) <= 19:
-                        out[k] = _mask_secret(digits, keep_last=4)
-                    else:
-                        out[k] = "***REDACTED***"
-                else:
-                    out[k] = "***REDACTED***"
-            else:
-                out[k] = _redact_sensitive_payload(v)
-        return out
-    if isinstance(obj, list):
-        return [_redact_sensitive_payload(v) for v in obj]
-    return obj
-
-
 def _safe_float(v: Any) -> Optional[float]:
     try:
         if v is None:
@@ -1028,8 +973,7 @@ async def _strowallet_issue_card_for_order(
         "processed_by": "system",
         "provider": "strowallet",
         "provider_card_id": str(provider_card_id) if provider_card_id else None,
-        # Keep provider payloads redacted (do not store PAN/CVV).
-        "provider_raw": _redact_sensitive_payload({"create": stw_resp, "detail": stw_detail} if stw_detail else {"create": stw_resp}),
+        "provider_raw": {"create": stw_resp, "detail": stw_detail} if stw_detail else {"create": stw_resp},
         "card_status": "active",
         "failed_payment_count": int(order.get("failed_payment_count", 0) or 0),
         "spending_limit_usd": float(order.get("spending_limit_usd", 500.0) or 500.0),
@@ -4021,7 +3965,7 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
                     "delivery_info": f"Auto delivered via Strowallet{(' (txn ' + str(provider_txn_id) + ')') if provider_txn_id else ''}",
                     "provider": "strowallet",
                     "provider_txn_id": provider_txn_id,
-                    "provider_raw": _redact_sensitive_payload(stw_resp),
+                    "provider_raw": stw_resp,
                 }}
             )
 
@@ -4198,7 +4142,7 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
         "status": "approved",
         "provider": "strowallet",
         "provider_txn_id": provider_txn_id,
-        "provider_raw": _redact_sensitive_payload(stw_resp),
+        "provider_raw": stw_resp,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "processed_at": datetime.now(timezone.utc).isoformat(),
         "processed_by": "system",
@@ -4519,7 +4463,6 @@ async def admin_get_card_orders(
             "card_image": 0,  # can be large base64
             "card_number": 0,  # sensitive
             "card_cvv": 0,  # sensitive
-            "provider_raw": 0,  # omit from list payload (even redacted it can be large)
         },
     ).sort("created_at", -1).limit(limit).to_list(limit)
 
@@ -4737,7 +4680,7 @@ async def admin_process_card_order(
                             attempts=4,
                         )
                         if stw_detail:
-                            update_doc["provider_raw"] = _redact_sensitive_payload({"linked": True, "detail": stw_detail})
+                            update_doc["provider_raw"] = {"linked": True, "detail": stw_detail}
 
                         card_number = _extract_first(stw_detail, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
                         card_expiry = _extract_first(stw_detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
@@ -4866,7 +4809,7 @@ async def admin_process_card_order(
                 # Persist provider metadata immediately so we don't lose it if a follow-up call fails.
                 update_doc["provider"] = "strowallet"
                 update_doc["provider_card_id"] = str(provider_card_id) if provider_card_id else None
-                update_doc["provider_raw"] = _redact_sensitive_payload({"create": stw_resp})
+                update_doc["provider_raw"] = {"create": stw_resp}
 
                 # If a fetch-card-detail endpoint is configured, use it to get full card details.
                 # IMPORTANT: do not fail the approval flow if detail fetch fails; card might already be created.
@@ -4883,10 +4826,10 @@ async def admin_process_card_order(
                             attempts=4,
                         )
                         if stw_detail:
-                            update_doc["provider_raw"] = _redact_sensitive_payload({"create": stw_resp, "detail": stw_detail})
+                            update_doc["provider_raw"] = {"create": stw_resp, "detail": stw_detail}
                     except Exception as e:
                         stw_detail_error = str(e)
-                        update_doc["provider_raw"] = _redact_sensitive_payload({"create": stw_resp, "detail_error": stw_detail_error})
+                        update_doc["provider_raw"] = {"create": stw_resp, "detail_error": stw_detail_error}
 
                 src = stw_detail or stw_resp
                 card_number = _extract_first(src, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
@@ -7262,21 +7205,6 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
                 settings[k] = v
     else:
         settings = defaults
-
-    # SECURITY: never return raw Strowallet secrets to the browser (even in admin UI).
-    # Admin can still UPDATE them via PUT /admin/settings, but GET will only show masked hints.
-    try:
-        cfg = _strowallet_config(settings)
-        settings["strowallet_api_key_masked"] = _mask_secret(cfg.get("api_key"))
-        settings["strowallet_api_secret_masked"] = _mask_secret(cfg.get("api_secret"))
-        settings["strowallet_has_keys"] = bool(cfg.get("api_key") and cfg.get("api_secret"))
-    except Exception:
-        settings["strowallet_api_key_masked"] = ""
-        settings["strowallet_api_secret_masked"] = ""
-        settings["strowallet_has_keys"] = False
-
-    settings["strowallet_api_key"] = ""
-    settings["strowallet_api_secret"] = ""
     return {"settings": settings}
 
 
@@ -7469,55 +7397,6 @@ async def admin_strowallet_apply_default_endpoints(admin: dict = Depends(get_adm
     return {"message": "Default Strowallet endpoints applied", "settings": settings}
 
 
-class AdminStrowalletFetchCardDetail(BaseModel):
-    card_id: str = Field(min_length=1)
-    user_id: Optional[str] = None  # optional: use stored strowallet_customer_id if present
-    customer_id: Optional[str] = None  # optional override for some provider setups
-    reference: Optional[str] = None
-
-
-@api_router.post("/admin/strowallet/fetch-card-detail")
-async def admin_strowallet_fetch_card_detail(
-    payload: AdminStrowalletFetchCardDetail,
-    admin: dict = Depends(get_admin_user),
-):
-    """
-    Admin-only: fetch full provider card detail on-demand.
-    SECURITY: response may contain sensitive fields (PAN/CVV) depending on provider.
-    We do NOT store the provider response in DB.
-    """
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _strowallet_enabled(settings):
-        raise HTTPException(status_code=400, detail="Strowallet is disabled")
-
-    cfg = _strowallet_config(settings)
-    if not cfg.get("fetch_detail_path"):
-        raise HTTPException(status_code=400, detail="Strowallet fetch detail endpoint not configured")
-
-    card_id = str(payload.card_id).strip()
-    if not card_id:
-        raise HTTPException(status_code=400, detail="card_id is required")
-
-    stw_customer_id: Optional[str] = (payload.customer_id or "").strip() or None
-    if not stw_customer_id and payload.user_id:
-        u = await db.users.find_one({"user_id": str(payload.user_id).strip()}, {"_id": 0})
-        if u:
-            stw_customer_id = (u.get("strowallet_customer_id") or u.get("strowallet_user_id") or "").strip() or None
-
-    ref = (payload.reference or "").strip() or f"admin-fetch-{uuid.uuid4()}"
-    req: Dict[str, Any] = {"card_id": card_id, "reference": ref}
-    if stw_customer_id:
-        req["customer_id"] = stw_customer_id
-        req["card_user_id"] = stw_customer_id
-    req = _with_aliases(req, "card_id", "cardId", "id")
-
-    detail = await _strowallet_post(settings, cfg["fetch_detail_path"], req)
-    return {
-        "warning": "Sensitive data may be present in this response. Do not copy/share it.",
-        "detail": detail,
-    }
-
-
 @api_router.post("/admin/strowallet/sync-user-cards")
 async def admin_strowallet_sync_user_cards(
     email: Optional[str] = Query(default=None, description="User email to sync cards for"),
@@ -7586,7 +7465,7 @@ async def admin_strowallet_sync_user_cards(
         update_doc: Dict[str, Any] = {
             "provider": "strowallet",
             "provider_card_id": str(provider_card_id),
-            "provider_raw": _redact_sensitive_payload({"detail": stw_detail}),
+            "provider_raw": {"detail": stw_detail},
         }
 
         if card_number:
@@ -7677,18 +7556,10 @@ async def admin_update_settings(settings: AdminSettingsUpdate, admin: dict = Dep
     try:
         # Convert empty strings to None for optional fields, but keep other values
         update_doc = {}
-        # Do not allow accidental clearing of secrets by sending empty strings from the UI.
-        # (Admin settings GET intentionally redacts these fields.)
-        no_clear_on_empty = {
-            "strowallet_api_key",
-            "strowallet_api_secret",
-        }
         for k, v in settings.model_dump().items():
             if v is not None:
                 # Convert empty strings to None for string fields
                 if isinstance(v, str) and v.strip() == "":
-                    if k in no_clear_on_empty:
-                        continue
                     update_doc[k] = None
                 else:
                     update_doc[k] = v
@@ -7877,7 +7748,7 @@ async def admin_auto_issue_virtual_card_order(
             )
             card_currency = _extract_first(stw_detail, "data.currency", "currency", "data.card.currency")
 
-            update_doc: Dict[str, Any] = {"provider_raw": _redact_sensitive_payload({"detail": stw_detail})}
+            update_doc: Dict[str, Any] = {"provider_raw": {"detail": stw_detail}}
             if card_number:
                 card_number_str = str(card_number).replace(" ", "")
                 update_doc["card_last4"] = card_number_str[-4:]

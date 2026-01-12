@@ -142,8 +142,6 @@ export default function AdminVirtualCards() {
           strowallet_brand_name: settings.strowallet_brand_name || 'KAYICOM',
           strowallet_api_key: settings.strowallet_api_key || '',
           strowallet_api_secret: settings.strowallet_api_secret || '',
-          strowallet_api_key_masked: settings.strowallet_api_key_masked || '',
-          strowallet_api_secret_masked: settings.strowallet_api_secret_masked || '',
           strowallet_base_url: settings.strowallet_base_url || '',
           strowallet_create_user_path: settings.strowallet_create_user_path || '',
           strowallet_create_card_path: settings.strowallet_create_card_path || '',
@@ -619,11 +617,6 @@ export default function AdminVirtualCards() {
                         className="mt-1 font-mono text-sm"
                         placeholder="••••••••"
                       />
-                      {cardSettings.strowallet_api_key_masked ? (
-                        <p className="text-xs text-stone-500 mt-1">
-                          {getText('Kle aktyèl:', 'Clé actuelle:', 'Current key:')} <span className="font-mono">{cardSettings.strowallet_api_key_masked}</span>
-                        </p>
-                      ) : null}
                     </div>
                     <div>
                       <Label>API Secret</Label>
@@ -634,11 +627,6 @@ export default function AdminVirtualCards() {
                         className="mt-1 font-mono text-sm"
                         placeholder="••••••••"
                       />
-                      {cardSettings.strowallet_api_secret_masked ? (
-                        <p className="text-xs text-stone-500 mt-1">
-                          {getText('Sekrè aktyèl:', 'Secret actuel:', 'Current secret:')} <span className="font-mono">{cardSettings.strowallet_api_secret_masked}</span>
-                        </p>
-                      ) : null}
                     </div>
                   </div>
 
