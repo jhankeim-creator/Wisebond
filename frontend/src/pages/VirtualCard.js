@@ -112,7 +112,7 @@ export default function VirtualCard() {
     try {
       setLoadError(null);
       const [ordersRes, depositsRes, withdrawalsRes] = await Promise.all([
-        axios.get(`${API}/virtual-cards/orders?refresh=1`),
+        axios.get(`${API}/virtual-cards/orders`),
         axios.get(`${API}/virtual-cards/deposits`),
         axios.get(`${API}/virtual-cards/withdrawals`)
       ]);
@@ -1117,6 +1117,18 @@ export default function VirtualCard() {
             
             {selectedCard && (
               <div className="space-y-4 py-4">
+                {/* Quick info */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
+                    <p className="text-xs text-stone-500">{getText('Email Kat', 'Email Carte', 'Card Email')}</p>
+                    <p className="font-medium break-all">{selectedCard.card_email || user?.email || '—'}</p>
+                  </div>
+                  <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
+                    <p className="text-xs text-stone-500">{getText('ID Kat (Provider)', 'ID Carte (Provider)', 'Card ID (Provider)')}</p>
+                    <p className="font-mono text-sm break-all">{selectedCard.provider_card_id || '—'}</p>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
                     <p className="text-xs text-stone-500">{getText('Estati', 'Statut', 'Status')}</p>
@@ -1224,6 +1236,14 @@ export default function VirtualCard() {
                       <Copy size={14} className="mr-2" />
                       {getText('Kopye Adrès', 'Copier Adresse', 'Copy Address')}
                     </Button>
+                  </div>
+                )}
+
+                {selectedCard.admin_notes && (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+                    <p className="text-blue-700 dark:text-blue-400 text-sm">
+                      <strong>{getText('Nòt:', 'Note:', 'Note:')}</strong> {selectedCard.admin_notes}
+                    </p>
                   </div>
                 )}
 
