@@ -391,9 +391,9 @@ export default function VirtualCard() {
     if (!selectedCard?.order_id) return;
     if (!selectedCard?.can_reveal) {
       toast.error(getText(
-        'Detay konplè disponib sèlman pou kat Strowallet yo.',
-        'Les détails complets sont disponibles uniquement pour les cartes Strowallet.',
-        'Full details are only available for Strowallet cards.'
+        'Detay konplè pa disponib pou kat sa a.',
+        'Les détails complets ne sont pas disponibles pour cette carte.',
+        'Full details are not available for this card.'
       ));
       return;
     }
@@ -859,7 +859,7 @@ export default function VirtualCard() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                {c.provider === 'strowallet' ? (
+                                {c.can_transactions ? (
                                   <DropdownMenuItem onSelect={() => openTransactions(c)}>
                                     <History />
                                     {getText('Tranzaksyon', 'Transactions', 'Transactions')}
@@ -950,7 +950,7 @@ export default function VirtualCard() {
                                   {getText('Wè', 'Voir', 'View')}
                                 </Button>
                               ) : null}
-                              {order.status === 'approved' && order.provider === 'strowallet' ? (
+                              {order.status === 'approved' && order.can_transactions ? (
                                 <Button variant="outline" size="sm" onClick={() => openTransactions(order)} className="text-purple-700 border-purple-300 hover:bg-purple-50">
                                   <History size={16} className="mr-1" />
                                   {getText('Tranzaksyon', 'Transactions', 'Transactions')}
@@ -1424,9 +1424,9 @@ export default function VirtualCard() {
                             'Click the eye to view card number + CVV.'
                           )
                         : getText(
-                            'Detay konplè disponib sèlman pou kat Strowallet yo.',
-                            'Les détails complets sont disponibles uniquement pour les cartes Strowallet.',
-                            'Full details are only available for Strowallet cards.'
+                            'Detay konplè pa disponib pou kat sa a.',
+                            'Les détails complets ne sont pas disponibles pour cette carte.',
+                            'Full details are not available for this card.'
                           )}
                     </p>
                     {!selectedCard?.can_reveal ? (
