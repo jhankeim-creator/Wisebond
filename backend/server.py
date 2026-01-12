@@ -524,6 +524,58 @@ def _stw_error_text(detail: Any) -> str:
         return ""
 
 
+def _extract_last4(value: Any) -> Optional[str]:
+    """
+    Extract last4 digits from a card-number-like string.
+    Accepts masked formats like '**** **** **** 1234' or 'XXXXXXXXXXXX1234'.
+    """
+    if value is None:
+        return None
+    digits = re.sub(r"\D", "", str(value))
+    if len(digits) < 4:
+        return None
+    return digits[-4:]
+
+
+async def _upsert_user_virtual_card_summary(user_id: str, summary: Dict[str, Any]) -> None:
+    """
+    Store a safe (non-sensitive) card summary inside the user document.
+    This helps make the card "appear in db user" without storing PAN/CVV.
+    """
+    user_id = str(user_id or "").strip()
+    if not user_id:
+        return
+
+    order_id = str(summary.get("order_id") or "").strip()
+    if not order_id:
+        return
+
+    safe = {
+        "order_id": order_id,
+        "status": summary.get("status"),
+        "card_email": summary.get("card_email"),
+        "card_brand": summary.get("card_brand"),
+        "card_type": summary.get("card_type"),
+        "card_holder_name": summary.get("card_holder_name"),
+        "card_last4": summary.get("card_last4"),
+        "card_expiry": summary.get("card_expiry"),
+        "provider": summary.get("provider"),
+        "provider_card_id": summary.get("provider_card_id"),
+        "updated_at": summary.get("updated_at") or datetime.now(timezone.utc).isoformat(),
+    }
+    safe = {k: v for k, v in safe.items() if v not in (None, "")}
+
+    # Update existing entry if present; otherwise append.
+    await db.users.update_one(
+        {"user_id": user_id, "virtual_cards.order_id": order_id},
+        {"$set": {"has_virtual_card": True, "active_virtual_card_order_id": order_id, "virtual_cards.$": safe}},
+    )
+    await db.users.update_one(
+        {"user_id": user_id, "virtual_cards.order_id": {"$ne": order_id}},
+        {"$set": {"has_virtual_card": True, "active_virtual_card_order_id": order_id}, "$push": {"virtual_cards": safe}},
+    )
+
+
 async def _strowallet_create_customer_id(
     *,
     settings: Optional[dict],
@@ -3198,16 +3250,36 @@ async def virtual_card_detail(
     payload = _with_aliases(payload, "card_id", "cardId", "id")
 
     stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
-    card_number = _extract_first(stw_detail, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
+    card_number = _extract_first(
+        stw_detail,
+        "data.card_number",
+        "data.cardNumber",
+        "data.number",
+        "data.pan",
+        "card_number",
+        "cardNumber",
+        "number",
+        "pan",
+        "data.card.card_number",
+        "data.card.cardNumber",
+        "data.card.number",
+        "data.card.pan",
+        "response.card_number",
+        "response.cardNumber",
+        "response.pan",
+        "data.response.card_number",
+        "data.response.cardNumber",
+        "data.response.pan",
+    )
     card_expiry = _extract_first(stw_detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
     card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
     card_brand = _extract_first(stw_detail, "data.brand", "brand", "data.card.brand")
     card_type = _extract_first(stw_detail, "data.type", "type", "data.card.type")
 
     update_doc: Dict[str, Any] = {}
-    if card_number:
-        card_number_str = str(card_number).replace(" ", "")
-        update_doc["card_last4"] = card_number_str[-4:]
+    last4 = _extract_last4(card_number)
+    if last4:
+        update_doc["card_last4"] = last4
     if card_expiry:
         update_doc["card_expiry"] = str(card_expiry)
     if card_holder_name:
@@ -4009,6 +4081,24 @@ async def admin_create_card_manually(
     }
     
     await db.virtual_card_orders.insert_one(order)
+
+    # Ensure the card "appears in user DB" with safe summary fields.
+    try:
+        await _upsert_user_virtual_card_summary(payload.user_id, {
+            "order_id": order.get("order_id"),
+            "status": order.get("status"),
+            "card_email": order.get("card_email"),
+            "card_brand": order.get("card_brand"),
+            "card_type": order.get("card_type"),
+            "card_holder_name": order.get("card_holder_name"),
+            "card_last4": order.get("card_last4"),
+            "card_expiry": order.get("card_expiry"),
+            "provider": order.get("provider"),
+            "provider_card_id": order.get("provider_card_id"),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
     
     # If user was referred, count this approved card toward affiliate milestones
     if user.get("referred_by"):
@@ -4226,7 +4316,28 @@ async def admin_process_card_order(
                 stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], detail_payload)
 
             src = stw_detail or stw_resp
-            card_number = _extract_first(src, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
+            # Provider schemas vary; support common keys/casing.
+            card_number = _extract_first(
+                src,
+                "data.card_number",
+                "data.cardNumber",
+                "data.number",
+                "data.pan",
+                "card_number",
+                "cardNumber",
+                "number",
+                "pan",
+                "data.card.card_number",
+                "data.card.cardNumber",
+                "data.card.number",
+                "data.card.pan",
+                "response.card_number",
+                "response.cardNumber",
+                "response.pan",
+                "data.response.card_number",
+                "data.response.cardNumber",
+                "data.response.pan",
+            )
             card_expiry = _extract_first(src, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
             card_brand = _extract_first(src, "data.brand", "brand", "data.card.brand")
             card_type = _extract_first(src, "data.type", "type", "data.card.type")
@@ -4252,9 +4363,9 @@ async def admin_process_card_order(
             elif user.get("full_name"):
                 update_doc["card_holder_name"] = str(user["full_name"]).upper()
 
-            if card_number:
-                card_number_str = str(card_number).replace(" ", "")
-                update_doc["card_last4"] = card_number_str[-4:]
+            last4 = _extract_last4(card_number)
+            if last4:
+                update_doc["card_last4"] = last4
             if card_expiry:
                 update_doc["card_expiry"] = str(card_expiry)
 
@@ -4293,6 +4404,24 @@ async def admin_process_card_order(
         {"order_id": order_id},
         {"$set": update_doc}
     )
+
+    # Ensure the card "appears in user DB" with safe summary fields (no PAN/CVV).
+    try:
+        await _upsert_user_virtual_card_summary(order.get("user_id") or "", {
+            "order_id": order_id,
+            "status": new_status,
+            "card_email": order.get("card_email"),
+            "card_brand": update_doc.get("card_brand") or order.get("card_brand"),
+            "card_type": update_doc.get("card_type") or order.get("card_type"),
+            "card_holder_name": update_doc.get("card_holder_name") or order.get("card_holder_name"),
+            "card_last4": update_doc.get("card_last4") or order.get("card_last4"),
+            "card_expiry": update_doc.get("card_expiry") or order.get("card_expiry"),
+            "provider": update_doc.get("provider") or order.get("provider"),
+            "provider_card_id": update_doc.get("provider_card_id") or order.get("provider_card_id"),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
     
     if action == "approve":
         # Process affiliate reward if user was referred
