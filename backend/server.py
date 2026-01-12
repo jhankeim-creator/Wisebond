@@ -5508,58 +5508,6 @@ async def admin_review_kyc(
     return {"message": f"KYC {action}d successfully"}
 
 
-class KYCReopenRequest(BaseModel):
-    reason: Optional[str] = None
-
-
-@api_router.post("/admin/kyc/{kyc_id}/reopen")
-async def admin_reopen_kyc(
-    kyc_id: str,
-    payload: KYCReopenRequest,
-    admin: dict = Depends(get_admin_user),
-):
-    """
-    Re-open a KYC submission (set back to pending) so the user can resubmit.
-    Useful when an approved KYC was incorrect and must be redone.
-    """
-    kyc = await db.kyc.find_one({"kyc_id": kyc_id}, {"_id": 0})
-    if not kyc:
-        raise HTTPException(status_code=404, detail="KYC submission not found")
-
-    prev_status = str(kyc.get("status") or "pending")
-    update_doc: Dict[str, Any] = {
-        "status": "pending",
-        "reviewed_at": None,
-        "reviewed_by": None,
-        "rejection_reason": None,
-        "reopened_at": datetime.now(timezone.utc).isoformat(),
-        "reopened_by": admin["user_id"],
-        "reopened_from": prev_status,
-        "reopened_reason": (payload.reason or "").strip() or None,
-    }
-    await db.kyc.update_one({"kyc_id": kyc_id}, {"$set": update_doc})
-    await db.users.update_one({"user_id": kyc["user_id"]}, {"$set": {"kyc_status": "pending"}})
-    await log_action(admin["user_id"], "kyc_reopen", {"kyc_id": kyc_id, "from": prev_status})
-
-    # Optional: notify user (best-effort)
-    try:
-        user = await db.users.find_one({"user_id": kyc["user_id"]}, {"_id": 0, "email": 1, "full_name": 1})
-        if user and user.get("email"):
-            subject = "KAYICOM - KYC Re-opened"
-            content = f"""
-            <h2>KYC Re-opened</h2>
-            <p>Hello {user.get('full_name', 'User')},</p>
-            <p>Your KYC verification has been re-opened and is now pending. Please resubmit your KYC with the correct information.</p>
-            {'<p><strong>Reason:</strong> ' + str(update_doc.get('reopened_reason')) + '</p>' if update_doc.get('reopened_reason') else ''}
-            """
-            await send_email(user["email"], subject, content)
-    except Exception:
-        # Do not block the admin action if email fails.
-        pass
-
-    return {"message": "KYC reopened", "kyc_id": kyc_id, "status": "pending"}
-
-
 @api_router.post("/admin/kyc/migrate-images")
 async def admin_migrate_kyc_images(
     limit: int = Query(default=25, le=100),
