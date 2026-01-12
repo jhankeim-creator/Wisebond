@@ -953,44 +953,6 @@ export default function AdminVirtualCards() {
                   'Note: this report does not show keys; only status codes + responses.'
                 )}
               </p>
-              <div className="border rounded-lg p-3 bg-white dark:bg-stone-950">
-                <p className="text-sm font-semibold">
-                  {getText(
-                    'Egzanp request LIVE (kòrèk)',
-                    'Exemples de requêtes LIVE (correctes)',
-                    'LIVE request examples (correct)'
-                  )}
-                </p>
-                <p className="text-xs text-stone-500 mt-1">
-                  {getText(
-                    'Pou “fetch-card-detail”, ou dwe voye card_id + kle yo. Pa voye “mode” pou bitvcard LIVE.',
-                    'Pour “fetch-card-detail”, vous devez envoyer card_id + les clés. Ne pas envoyer “mode” en LIVE.',
-                    'For “fetch-card-detail”, you must send card_id + keys. Do not send “mode” for bitvcard LIVE.'
-                  )}
-                </p>
-                <pre className="text-xs whitespace-pre-wrap bg-stone-50 dark:bg-stone-900 border rounded-lg p-3 overflow-x-auto mt-2">
-                  {(() => {
-                    const baseUrl = stwDiag?.summary?.base_url || 'https://strowallet.com';
-                    const fetchDetailPath = stwDiag?.summary?.paths?.fetch_detail_path || '/api/bitvcard/fetch-card-detail/';
-                    const createCardPath = stwDiag?.summary?.paths?.create_card_path || '/api/bitvcard/create-card/';
-                    return [
-                      '# fetch-card-detail (LIVE)',
-                      `curl --request POST \\`,
-                      `  --url ${baseUrl}${fetchDetailPath} \\`,
-                      `  --header 'accept: application/json' \\`,
-                      `  --header 'content-type: application/json' \\`,
-                      `  --data '{ "public_key": "YOUR_PUBLIC_KEY", "secret_key": "YOUR_SECRET_KEY", "card_id": "YOUR_CARD_ID" }'`,
-                      '',
-                      '# create-card (LIVE)',
-                      `curl --request POST \\`,
-                      `  --url ${baseUrl}${createCardPath} \\`,
-                      `  --header 'accept: application/json' \\`,
-                      `  --header 'content-type: application/json' \\`,
-                      `  --data '{ "public_key": "YOUR_PUBLIC_KEY", "secret_key": "YOUR_SECRET_KEY", "customerEmail": "user@email.com", "amount": 3, "card_type": "visa" }'`,
-                    ].join('\n');
-                  })()}
-                </pre>
-              </div>
               <pre className="text-xs whitespace-pre-wrap bg-stone-50 dark:bg-stone-900 border rounded-lg p-3 overflow-x-auto">
                 {stwDiag ? JSON.stringify(stwDiag, null, 2) : ''}
               </pre>
