@@ -623,23 +623,6 @@ async def send_email(to_email: str, subject: str, html_content: str):
         logger.error(f"Failed to send email: {e}")
         return False
 
-
-async def notify_admin(subject: str, html: str):
-    """
-    Notify all active admins by email.
-    """
-    db = get_db()
-    try:
-        admins = await db.users.find(
-            {"is_admin": True, "is_active": True},
-            {"_id": 0, "email": 1},
-        ).to_list(50)
-        for a in admins:
-            if a.get("email"):
-                await send_email(a["email"], subject, html)
-    except Exception as e:
-        logger.error(f"Admin email notify error: {e}")
-
 # ==================== AUTH ROUTES ====================
 
 @api_router.post("/auth/register")
@@ -808,21 +791,6 @@ async def create_deposit(request: DepositRequest, current_user: dict = Depends(g
     }
     
     await db.deposits.insert_one(deposit)
-    # Notify admins by email
-    try:
-        await notify_admin(
-            subject="KAYICOM - New Deposit Request",
-            html=f"""
-            <h2>New Deposit Request</h2>
-            <p><strong>Client:</strong> {current_user.get('full_name', '')} ({current_user.get('client_id', '')})</p>
-            <p><strong>Amount:</strong> {deposit['amount']} {deposit['currency']}</p>
-            <p><strong>Method:</strong> {deposit.get('method') or ''}</p>
-            <p><strong>Status:</strong> pending</p>
-            <p>Deposit ID: <code>{deposit['deposit_id']}</code></p>
-            """,
-        )
-    except Exception as e:
-        logger.error(f"Failed to notify admins for deposit: {e}")
     await log_action(current_user["user_id"], "deposit_request", {"amount": request.amount, "method": request.method})
     
     if "_id" in deposit:
