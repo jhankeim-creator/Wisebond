@@ -4035,20 +4035,64 @@ async def admin_fetch_external_card_details(
     # Log what we found for debugging
     logger.info(f"Extracted card_number: {'YES - ' + str(card_number)[:6] + '...' if card_number else 'NO'}")
     
-    expiry_month = (
-        card_data.get("expiry_month") or card_data.get("expiryMonth") or 
-        card_data.get("exp_month") or card_data.get("expMonth") or
-        card_data.get("month") or card_data.get("expiry_mm") or
-        card_data.get("card_expiry_month") or
-        _extract_first(stw_detail, "response.card_detail.expiry_month", "response.expiry_month", "data.expiry_month")
+    # Try to get expiry from combined field first (e.g., "expiry": "12/26" or "valid_thru": "2026-12")
+    combined_expiry = (
+        card_data.get("expiry") or card_data.get("expiry_date") or 
+        card_data.get("valid_thru") or card_data.get("validity") or
+        card_data.get("card_expiry") or card_data.get("expiration") or
+        card_data.get("expiration_date") or card_data.get("exp_date") or
+        _extract_first(stw_detail, "response.card_detail.expiry", "response.card_detail.expiry_date",
+                       "response.card_detail.validity", "response.card_detail.valid_thru")
     )
-    expiry_year = (
-        card_data.get("expiry_year") or card_data.get("expiryYear") or 
-        card_data.get("exp_year") or card_data.get("expYear") or
-        card_data.get("year") or card_data.get("expiry_yy") or
-        card_data.get("card_expiry_year") or
-        _extract_first(stw_detail, "response.card_detail.expiry_year", "response.expiry_year", "data.expiry_year")
-    )
+    
+    expiry_month = None
+    expiry_year = None
+    
+    # Try to parse combined expiry field
+    if combined_expiry:
+        exp_str = str(combined_expiry)
+        logger.info(f"Found combined expiry: {exp_str}")
+        # Try various formats: MM/YY, MM/YYYY, YYYY-MM, MM-YY
+        if "/" in exp_str:
+            parts = exp_str.split("/")
+            if len(parts) == 2:
+                if len(parts[0]) <= 2:  # MM/YY or MM/YYYY
+                    expiry_month = parts[0]
+                    expiry_year = parts[1]
+                else:  # YYYY/MM
+                    expiry_year = parts[0]
+                    expiry_month = parts[1]
+        elif "-" in exp_str:
+            parts = exp_str.split("-")
+            if len(parts) >= 2:
+                if len(parts[0]) == 4:  # YYYY-MM
+                    expiry_year = parts[0]
+                    expiry_month = parts[1]
+                else:  # MM-YY
+                    expiry_month = parts[0]
+                    expiry_year = parts[1]
+    
+    # If not from combined, try individual fields
+    if not expiry_month:
+        expiry_month = (
+            card_data.get("expiry_month") or card_data.get("expiryMonth") or 
+            card_data.get("exp_month") or card_data.get("expMonth") or
+            card_data.get("month") or card_data.get("expiry_mm") or
+            card_data.get("card_expiry_month") or card_data.get("validity_month") or
+            card_data.get("expiration_month") or
+            _extract_first(stw_detail, "response.card_detail.expiry_month", "response.expiry_month", "data.expiry_month")
+        )
+    if not expiry_year:
+        expiry_year = (
+            card_data.get("expiry_year") or card_data.get("expiryYear") or 
+            card_data.get("exp_year") or card_data.get("expYear") or
+            card_data.get("year") or card_data.get("expiry_yy") or
+            card_data.get("card_expiry_year") or card_data.get("validity_year") or
+            card_data.get("expiration_year") or
+            _extract_first(stw_detail, "response.card_detail.expiry_year", "response.expiry_year", "data.expiry_year")
+        )
+    
+    logger.info(f"Extracted expiry_month: {expiry_month}, expiry_year: {expiry_year}")
     cvv = (
         card_data.get("cvv") or card_data.get("cvc") or 
         card_data.get("cvv2") or card_data.get("security_code") or
@@ -4227,46 +4271,84 @@ async def admin_link_external_card(
     if not stw_detail:
         raise HTTPException(status_code=400, detail=f"Failed to verify card: {last_error}")
 
-    # Extract card details
-    card_number = _extract_first(
-        stw_detail,
-        "data.card_number", "data.cardNumber", "data.card.card_number",
-        "data.pan", "card_number", "cardNumber", "pan",
+    # Find card data in response.card_detail (Strowallet actual format)
+    card_data = None
+    if isinstance(stw_detail.get("response"), dict):
+        r = stw_detail["response"]
+        if isinstance(r.get("card_detail"), dict):
+            card_data = r["card_detail"]
+            logger.info(f"[link] Found card data in 'response.card_detail': {list(card_data.keys())}")
+        elif r.get("card_number") or r.get("cardNumber") or r.get("pan"):
+            card_data = r
+    if not card_data and isinstance(stw_detail.get("data"), dict):
+        d = stw_detail["data"]
+        if isinstance(d.get("card_detail"), dict):
+            card_data = d["card_detail"]
+        elif d.get("card_number") or d.get("cardNumber") or d.get("pan"):
+            card_data = d
+    if not card_data and isinstance(stw_detail.get("card_detail"), dict):
+        card_data = stw_detail["card_detail"]
+    if not card_data:
+        card_data = stw_detail
+
+    logger.info(f"[link] card_data keys: {list(card_data.keys()) if isinstance(card_data, dict) else 'N/A'}")
+
+    # Extract card details - try card_data first, then fallback paths
+    card_number = (
+        card_data.get("card_number") or card_data.get("cardNumber") or 
+        card_data.get("pan") or card_data.get("card_pan") or
+        card_data.get("masked_pan") or card_data.get("unmasked_pan") or
+        card_data.get("number") or card_data.get("card_no") or
+        _extract_first(stw_detail, "response.card_detail.card_number", "data.card_number", "card_number")
     )
     if not card_number:
-        raise HTTPException(status_code=400, detail="Could not verify card with provider")
+        import json
+        try:
+            debug_info = json.dumps(stw_detail, indent=2, default=str)[:500]
+        except:
+            debug_info = str(stw_detail)[:500]
+        raise HTTPException(status_code=400, detail=f"Could not verify card with provider. API Response: {debug_info}")
 
-    expiry_month = _extract_first(
-        stw_detail,
-        "data.expiry_month", "data.expiryMonth", "data.card.expiry_month",
-        "expiry_month", "expiryMonth",
+    expiry_month = (
+        card_data.get("expiry_month") or card_data.get("expiryMonth") or 
+        card_data.get("exp_month") or card_data.get("expMonth") or
+        card_data.get("month") or card_data.get("expiry_mm") or
+        card_data.get("card_expiry_month") or card_data.get("validity_month") or
+        _extract_first(stw_detail, "response.card_detail.expiry_month", "data.expiry_month")
     )
-    expiry_year = _extract_first(
-        stw_detail,
-        "data.expiry_year", "data.expiryYear", "data.card.expiry_year",
-        "expiry_year", "expiryYear",
+    expiry_year = (
+        card_data.get("expiry_year") or card_data.get("expiryYear") or 
+        card_data.get("exp_year") or card_data.get("expYear") or
+        card_data.get("year") or card_data.get("expiry_yy") or
+        card_data.get("card_expiry_year") or card_data.get("validity_year") or
+        _extract_first(stw_detail, "response.card_detail.expiry_year", "data.expiry_year")
     )
-    holder_name = _extract_first(
-        stw_detail,
-        "data.card_holder_name", "data.cardHolderName", "data.card.card_holder_name",
-        "data.name_on_card", "card_holder_name", "cardHolderName", "name_on_card",
+    holder_name = (
+        card_data.get("card_holder_name") or card_data.get("cardHolderName") or 
+        card_data.get("name_on_card") or card_data.get("cardholder_name") or
+        card_data.get("card_name") or
+        _extract_first(stw_detail, "response.card_detail.card_holder_name", "data.card_holder_name")
     )
-    card_type = _extract_first(
-        stw_detail,
-        "data.card_type", "data.cardType", "data.type", "data.brand",
-        "card_type", "cardType", "type", "brand",
+    card_type = (
+        card_data.get("card_type") or card_data.get("cardType") or 
+        card_data.get("card_brand") or card_data.get("brand") or card_data.get("type") or
+        _extract_first(stw_detail, "response.card_detail.card_type", "response.card_detail.card_brand", "data.card_type")
     ) or "visa"
-    billing_address = _extract_first(
-        stw_detail, "data.billing_address", "data.address", "billing_address", "address",
+    billing_address = (
+        card_data.get("billing_address") or card_data.get("address") or card_data.get("street") or
+        _extract_first(stw_detail, "response.card_detail.billing_address", "data.billing_address")
     )
-    billing_city = _extract_first(
-        stw_detail, "data.billing_city", "data.city", "billing_city", "city",
+    billing_city = (
+        card_data.get("billing_city") or card_data.get("city") or
+        _extract_first(stw_detail, "response.card_detail.billing_city", "data.billing_city")
     )
-    billing_country = _extract_first(
-        stw_detail, "data.billing_country", "data.country", "billing_country", "country",
+    billing_country = (
+        card_data.get("billing_country") or card_data.get("country") or
+        _extract_first(stw_detail, "response.card_detail.billing_country", "data.billing_country")
     )
-    billing_zip = _extract_first(
-        stw_detail, "data.billing_zip", "data.zip_code", "data.zipCode", "billing_zip", "zip_code", "zipCode",
+    billing_zip = (
+        card_data.get("billing_zip") or card_data.get("zip_code") or card_data.get("zipCode") or card_data.get("postal_code") or
+        _extract_first(stw_detail, "response.card_detail.billing_zip", "data.billing_zip")
     )
 
     # Format card details
