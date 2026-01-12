@@ -58,22 +58,8 @@ export default function VirtualCard() {
   const [txLoading, setTxLoading] = useState(false);
   const [txData, setTxData] = useState(null);
   const [refreshingDetails, setRefreshingDetails] = useState(false);
-  // UI-only: customers can toggle mask style
+  // UI-only: customers can toggle mask style (never reveals full PAN/CVV)
   const [maskStyleByOrderId, setMaskStyleByOrderId] = useState({});
-  // PIN / Reveal full details
-  const [hasCardPin, setHasCardPin] = useState(!!user?.has_card_pin);
-  const [showSetPinModal, setShowSetPinModal] = useState(false);
-  const [pinSetValue, setPinSetValue] = useState('');
-  const [pinSetLoading, setPinSetLoading] = useState(false);
-  const [showRevealModal, setShowRevealModal] = useState(false);
-  const [revealPin, setRevealPin] = useState('');
-  const [revealing, setRevealing] = useState(false);
-  const [revealedCard, setRevealedCard] = useState(null);
-  const [showPinResetModal, setShowPinResetModal] = useState(false);
-  const [pinResetToken, setPinResetToken] = useState('');
-  const [pinResetNew, setPinResetNew] = useState('');
-  const [sendingReset, setSendingReset] = useState(false);
-  const [resettingPin, setResettingPin] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [cardFee, setCardFee] = useState(500);
   const [defaultCardBg, setDefaultCardBg] = useState(null);
@@ -152,19 +138,6 @@ export default function VirtualCard() {
     fetchData();
     fetchConfig();
   }, [fetchData, fetchConfig]);
-
-  useEffect(() => {
-    setHasCardPin(!!user?.has_card_pin);
-  }, [user?.has_card_pin]);
-
-  const fetchPinStatus = useCallback(async () => {
-    try {
-      const res = await axios.get(`${API}/virtual-cards/pin/status`);
-      if (typeof res.data?.has_pin === 'boolean') setHasCardPin(res.data.has_pin);
-    } catch {
-      // ignore
-    }
-  }, []);
 
   const orderCard = async () => {
     const email = String(user?.email || '').trim();
@@ -313,92 +286,10 @@ export default function VirtualCard() {
 
   const viewCardDetails = (order) => {
     setSelectedCard(order);
-    setRevealedCard(null);
     setTxData(null);
     setSpendingLimit(order?.spending_limit_usd != null ? String(order.spending_limit_usd) : '');
     setSpendingPeriod(order?.spending_limit_period || 'monthly');
     setShowCardDetails(true);
-  };
-
-  const setPin = async () => {
-    const pin = String(pinSetValue || '').trim();
-    if (!/^\d{4}$/.test(pin)) {
-      toast.error(getText('PIN nan dwe 4 chif.', 'Le PIN doit avoir 4 chiffres.', 'PIN must be 4 digits.'));
-      return;
-    }
-    setPinSetLoading(true);
-    try {
-      await axios.post(`${API}/virtual-cards/pin/set`, { pin });
-      toast.success(getText('PIN mete!', 'PIN enregistré!', 'PIN set!'));
-      setPinSetValue('');
-      setShowSetPinModal(false);
-      fetchPinStatus();
-      refreshUser();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || e.message || 'Error');
-    } finally {
-      setPinSetLoading(false);
-    }
-  };
-
-  const sendPinReset = async () => {
-    setSendingReset(true);
-    try {
-      await axios.post(`${API}/virtual-cards/pin/forgot`, {});
-      toast.success(getText('Kòd reset voye sou imèl ou.', 'Code envoyé sur votre email.', 'Reset code sent to your email.'));
-    } catch (e) {
-      toast.error(e.response?.data?.detail || e.message || 'Error');
-    } finally {
-      setSendingReset(false);
-    }
-  };
-
-  const confirmPinReset = async () => {
-    const token = String(pinResetToken || '').trim();
-    const newPin = String(pinResetNew || '').trim();
-    if (!token) {
-      toast.error(getText('Antre kòd la.', 'Entrez le code.', 'Enter the code.'));
-      return;
-    }
-    if (!/^\d{4}$/.test(newPin)) {
-      toast.error(getText('PIN nouvo a dwe 4 chif.', 'Le nouveau PIN doit avoir 4 chiffres.', 'New PIN must be 4 digits.'));
-      return;
-    }
-    setResettingPin(true);
-    try {
-      await axios.post(`${API}/virtual-cards/pin/reset`, { token, new_pin: newPin });
-      toast.success(getText('PIN chanje!', 'PIN changé!', 'PIN reset!'));
-      setPinResetToken('');
-      setPinResetNew('');
-      setShowPinResetModal(false);
-      fetchPinStatus();
-      refreshUser();
-    } catch (e) {
-      toast.error(e.response?.data?.detail || e.message || 'Error');
-    } finally {
-      setResettingPin(false);
-    }
-  };
-
-  const revealFullDetails = async () => {
-    if (!selectedCard?.order_id) return;
-    const pin = String(revealPin || '').trim();
-    if (!/^\d{4}$/.test(pin)) {
-      toast.error(getText('PIN nan dwe 4 chif.', 'Le PIN doit avoir 4 chiffres.', 'PIN must be 4 digits.'));
-      return;
-    }
-    setRevealing(true);
-    try {
-      const res = await axios.post(`${API}/virtual-cards/${selectedCard.order_id}/reveal`, { pin });
-      setRevealedCard(res.data?.card || null);
-      toast.success(getText('Detay revele!', 'Détails révélés!', 'Details revealed!'));
-      setShowRevealModal(false);
-      setRevealPin('');
-    } catch (e) {
-      toast.error(e.response?.data?.detail || e.message || 'Error');
-    } finally {
-      setRevealing(false);
-    }
   };
 
   const openTransactions = async (order) => {
@@ -1383,7 +1274,7 @@ export default function VirtualCard() {
                     <div className="mb-6">
                       <div className="flex items-start gap-2">
                         <span className="font-mono text-lg sm:text-xl tracking-wider break-all">
-                          {revealedCard?.card_number ? String(revealedCard.card_number) : formatCardNumber(selectedCard.card_last4)}
+                          {formatCardNumber(selectedCard.card_last4)}
                         </span>
                       </div>
                     </div>
@@ -1397,57 +1288,11 @@ export default function VirtualCard() {
                       </div>
                       <div className="text-right">
                         <p className="text-white/60 text-xs uppercase mb-1">{getText('Ekspire', 'Expire', 'Expires')}</p>
-                        <p className="font-mono font-medium">{revealedCard?.expiry || selectedCard.card_expiry || 'MM/YY'}</p>
+                        <p className="font-mono font-medium">{selectedCard.card_expiry || 'MM/YY'}</p>
                       </div>
                     </div>
                   </div>
                 </div>
-
-                {/* Full reveal controls */}
-                {selectedCard?.provider === 'strowallet' ? (
-                  <div className="border rounded-xl p-4 space-y-3 bg-stone-50 dark:bg-stone-800">
-                    <p className="text-sm text-stone-700 dark:text-stone-200">
-                      <strong>{getText('Detay sansib:', 'Détails sensibles:', 'Sensitive details:')}</strong>{' '}
-                      {getText(
-                        'Ou dwe mete PIN 4 chif ou pou revele nimewo kat + CVV.',
-                        'Vous devez entrer votre PIN (4 chiffres) pour révéler le numéro + CVV.',
-                        'Enter your 4-digit PIN to reveal card number + CVV.'
-                      )}
-                    </p>
-
-                    {revealedCard?.cvv ? (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-white dark:bg-stone-900 rounded-lg p-3 border">
-                          <p className="text-xs text-stone-500">CVV</p>
-                          <p className="font-mono text-lg font-semibold">{String(revealedCard.cvv)}</p>
-                        </div>
-                        <div className="bg-white dark:bg-stone-900 rounded-lg p-3 border">
-                          <p className="text-xs text-stone-500">{getText('Non sou kat', 'Nom sur carte', 'Name on card')}</p>
-                          <p className="font-semibold">{String(revealedCard.card_holder_name || '').toUpperCase()}</p>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <div className="flex gap-2 flex-wrap">
-                      {!hasCardPin ? (
-                        <Button onClick={() => setShowSetPinModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white">
-                          {getText('Mete PIN', 'Définir PIN', 'Set PIN')}
-                        </Button>
-                      ) : (
-                        <Button onClick={() => setShowRevealModal(true)} className="bg-purple-600 hover:bg-purple-700 text-white">
-                          {getText('Revele detay', 'Révéler détails', 'Reveal details')}
-                        </Button>
-                      )}
-
-                      <Button
-                        variant="outline"
-                        onClick={() => { setShowPinResetModal(true); }}
-                      >
-                        {getText('Mwen bliye PIN', 'J’ai oublié le PIN', 'Forgot PIN')}
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
 
                 {(selectedCard.billing_address || selectedCard.billing_city || selectedCard.billing_country) && (
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
@@ -1666,96 +1511,6 @@ export default function VirtualCard() {
                 </div>
               </div>
             )}
-          </DialogContent>
-        </Dialog>
-
-        {/* Set PIN modal */}
-        <Dialog open={showSetPinModal} onOpenChange={setShowSetPinModal}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>{getText('Mete PIN Kat la', 'Définir le PIN', 'Set card PIN')}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div>
-                <Label>{getText('PIN (4 chif)', 'PIN (4 chiffres)', 'PIN (4 digits)')}</Label>
-                <Input
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={pinSetValue}
-                  onChange={(e) => setPinSetValue(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="mt-2 font-mono text-lg"
-                  placeholder="1234"
-                />
-              </div>
-              <Button onClick={setPin} disabled={pinSetLoading || pinSetValue.length !== 4} className="w-full bg-purple-600 hover:bg-purple-700 text-white">
-                {pinSetLoading ? getText('Ap sove...', 'Enregistrement...', 'Saving...') : getText('Sove PIN', 'Enregistrer', 'Save PIN')}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Reveal modal */}
-        <Dialog open={showRevealModal} onOpenChange={setShowRevealModal}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>{getText('Revele detay kat la', 'Révéler les détails', 'Reveal card details')}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div>
-                <Label>{getText('Antre PIN ou', 'Entrez votre PIN', 'Enter your PIN')}</Label>
-                <Input
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={revealPin}
-                  onChange={(e) => setRevealPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="mt-2 font-mono text-lg"
-                  placeholder="••••"
-                />
-              </div>
-              <Button onClick={revealFullDetails} disabled={revealing || revealPin.length !== 4} className="w-full bg-purple-600 hover:bg-purple-700 text-white">
-                {revealing ? getText('Ap verifye...', 'Vérification...', 'Verifying...') : getText('Revele', 'Révéler', 'Reveal')}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Reset PIN modal */}
-        <Dialog open={showPinResetModal} onOpenChange={setShowPinResetModal}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>{getText('Reset PIN Kat la', 'Réinitialiser le PIN', 'Reset PIN')}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-sm">
-                {getText(
-                  'Nou pral voye yon kòd reset sou imèl kont ou. Kòd la valab 15 minit.',
-                  'Nous enverrons un code sur votre email. Code valable 15 minutes.',
-                  'We will send a reset code to your account email. Code valid for 15 minutes.'
-                )}
-              </div>
-              <Button variant="outline" onClick={sendPinReset} disabled={sendingReset} className="w-full">
-                {sendingReset ? getText('Ap voye...', 'Envoi...', 'Sending...') : getText('Voye kòd reset la', 'Envoyer le code', 'Send reset code')}
-              </Button>
-
-              <div>
-                <Label>{getText('Kòd reset', 'Code', 'Code')}</Label>
-                <Input value={pinResetToken} onChange={(e) => setPinResetToken(e.target.value)} className="mt-2 font-mono" placeholder="ex: AbC..."/>
-              </div>
-              <div>
-                <Label>{getText('Nouvo PIN (4 chif)', 'Nouveau PIN (4 chiffres)', 'New PIN (4 digits)')}</Label>
-                <Input
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={pinResetNew}
-                  onChange={(e) => setPinResetNew(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  className="mt-2 font-mono text-lg"
-                  placeholder="1234"
-                />
-              </div>
-              <Button onClick={confirmPinReset} disabled={resettingPin || !pinResetToken || pinResetNew.length !== 4} className="w-full bg-purple-600 hover:bg-purple-700 text-white">
-                {resettingPin ? getText('Ap chanje...', 'Changement...', 'Resetting...') : getText('Konfime reset', 'Confirmer', 'Confirm reset')}
-              </Button>
-            </div>
           </DialogContent>
         </Dialog>
       </div>

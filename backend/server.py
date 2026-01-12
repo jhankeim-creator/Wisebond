@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Request, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Query, Request
 from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
@@ -1128,31 +1128,6 @@ class UserResponse(BaseModel):
     is_admin: bool
     created_at: str
     telegram_chat_id: Optional[str] = None
-    # Virtual card PIN status (never return the PIN itself)
-    has_card_pin: Optional[bool] = None
-
-
-class CardPinSetRequest(BaseModel):
-    pin: str = Field(min_length=4, max_length=4)
-
-
-class CardPinChangeRequest(BaseModel):
-    current_pin: str = Field(min_length=4, max_length=4)
-    new_pin: str = Field(min_length=4, max_length=4)
-
-
-class CardPinForgotRequest(BaseModel):
-    # Send a reset code to this email (defaults to user's email)
-    email: Optional[EmailStr] = None
-
-
-class CardPinResetConfirmRequest(BaseModel):
-    token: str = Field(min_length=8)
-    new_pin: str = Field(min_length=4, max_length=4)
-
-
-class CardRevealRequest(BaseModel):
-    pin: str = Field(min_length=4, max_length=4)
 
 class PasswordReset(BaseModel):
     email: EmailStr
@@ -1488,20 +1463,6 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
-
-_PIN_RE = re.compile(r"^\d{4}$")
-
-
-def _hash_pin(pin: str) -> str:
-    return bcrypt.hashpw(pin.encode(), bcrypt.gensalt()).decode()
-
-
-def _verify_pin(pin: str, hashed: str) -> bool:
-    return bcrypt.checkpw(pin.encode(), hashed.encode())
-
-
-def _is_valid_pin(pin: str) -> bool:
-    return bool(_PIN_RE.match(str(pin or "").strip()))
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
@@ -2093,11 +2054,7 @@ async def reset_password(request: PasswordResetConfirm):
 
 @api_router.get("/auth/me", response_model=UserResponse)
 async def get_me(current_user: dict = Depends(get_current_user)):
-    # Never expose card PIN hash; only expose whether a PIN is set.
-    u = dict(current_user or {})
-    u["has_card_pin"] = bool(u.get("card_pin_hash"))
-    u.pop("card_pin_hash", None)
-    return UserResponse(**u)
+    return UserResponse(**current_user)
 
 @api_router.patch("/profile")
 async def update_profile(
@@ -4308,226 +4265,6 @@ async def virtual_card_transactions(
     resp = await _strowallet_post(settings, cfg["card_tx_path"], payload)
     return {"provider": "strowallet", "order_id": order_id, "response": resp}
 
-
-@api_router.get("/virtual-cards/pin/status")
-async def virtual_card_pin_status(current_user: dict = Depends(get_current_user)):
-    return {"has_pin": bool((current_user or {}).get("card_pin_hash"))}
-
-
-@api_router.post("/virtual-cards/pin/set")
-async def virtual_card_pin_set(req: CardPinSetRequest, current_user: dict = Depends(get_current_user)):
-    pin = str(req.pin or "").strip()
-    if not _is_valid_pin(pin):
-        raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
-
-    await db.users.update_one(
-        {"user_id": current_user["user_id"]},
-        {"$set": {
-            "card_pin_hash": _hash_pin(pin),
-            "card_pin_set_at": datetime.now(timezone.utc).isoformat(),
-            "card_pin_failed_attempts": 0,
-            "card_pin_locked_until": None,
-        }},
-    )
-    await log_action(current_user["user_id"], "card_pin_set", {})
-    return {"message": "PIN set successfully"}
-
-
-@api_router.post("/virtual-cards/pin/change")
-async def virtual_card_pin_change(req: CardPinChangeRequest, current_user: dict = Depends(get_current_user)):
-    cur = str(req.current_pin or "").strip()
-    new = str(req.new_pin or "").strip()
-    if not _is_valid_pin(cur) or not _is_valid_pin(new):
-        raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
-    if cur == new:
-        raise HTTPException(status_code=400, detail="New PIN must be different")
-
-    user = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0})
-    if not user or not user.get("card_pin_hash"):
-        raise HTTPException(status_code=400, detail="PIN is not set")
-
-    locked_until = user.get("card_pin_locked_until")
-    if locked_until:
-        try:
-            if datetime.fromisoformat(str(locked_until)) > datetime.now(timezone.utc):
-                raise HTTPException(status_code=429, detail="Too many attempts. Try again later.")
-        except ValueError:
-            pass
-
-    if not _verify_pin(cur, user["card_pin_hash"]):
-        attempts = int(user.get("card_pin_failed_attempts", 0) or 0) + 1
-        update: Dict[str, Any] = {"card_pin_failed_attempts": attempts}
-        if attempts >= 5:
-            update["card_pin_locked_until"] = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
-        raise HTTPException(status_code=401, detail="Invalid PIN")
-
-    await db.users.update_one(
-        {"user_id": user["user_id"]},
-        {"$set": {
-            "card_pin_hash": _hash_pin(new),
-            "card_pin_changed_at": datetime.now(timezone.utc).isoformat(),
-            "card_pin_failed_attempts": 0,
-            "card_pin_locked_until": None,
-        }},
-    )
-    await log_action(user["user_id"], "card_pin_change", {})
-    return {"message": "PIN changed successfully"}
-
-
-@api_router.post("/virtual-cards/pin/forgot")
-async def virtual_card_pin_forgot(req: CardPinForgotRequest, current_user: dict = Depends(get_current_user)):
-    user = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    to_email = str((req.email or user.get("email") or "")).strip().lower()
-    if not to_email:
-        raise HTTPException(status_code=400, detail="Email is required")
-
-    token = secrets.token_urlsafe(16)
-    expires = datetime.now(timezone.utc) + timedelta(minutes=15)
-    await db.card_pin_resets.insert_one({
-        "token": token,
-        "user_id": user["user_id"],
-        "email": to_email,
-        "expires": expires.isoformat(),
-        "used": False,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
-
-    await send_email(
-        to_email,
-        "KAYICOM - PIN Kat Vityèl (Reset)",
-        f"""
-        <h2>Reset PIN Kat Vityèl</h2>
-        <p>Men kòd reset ou:</p>
-        <p style="font-size:20px;font-weight:bold;letter-spacing:2px;"><code>{token}</code></p>
-        <p>Kòd sa a ap ekspire nan 15 minit.</p>
-        <p>Si ou pa t mande sa, inyore mesaj sa a.</p>
-        """,
-    )
-    await log_action(user["user_id"], "card_pin_forgot", {"email": to_email})
-    return {"message": "Reset code sent"}
-
-
-@api_router.post("/virtual-cards/pin/reset")
-async def virtual_card_pin_reset(req: CardPinResetConfirmRequest, current_user: dict = Depends(get_current_user)):
-    token = str(req.token or "").strip()
-    new = str(req.new_pin or "").strip()
-    if not token:
-        raise HTTPException(status_code=400, detail="Token is required")
-    if not _is_valid_pin(new):
-        raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
-
-    doc = await db.card_pin_resets.find_one({"token": token, "used": False, "user_id": current_user["user_id"]}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=400, detail="Invalid or used token")
-    try:
-        if datetime.fromisoformat(str(doc["expires"])) < datetime.now(timezone.utc):
-            raise HTTPException(status_code=400, detail="Token expired")
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Token expired")
-
-    await db.users.update_one(
-        {"user_id": current_user["user_id"]},
-        {"$set": {
-            "card_pin_hash": _hash_pin(new),
-            "card_pin_changed_at": datetime.now(timezone.utc).isoformat(),
-            "card_pin_failed_attempts": 0,
-            "card_pin_locked_until": None,
-        }},
-    )
-    await db.card_pin_resets.update_one({"token": token}, {"$set": {"used": True, "used_at": datetime.now(timezone.utc).isoformat()}})
-    await log_action(current_user["user_id"], "card_pin_reset", {})
-    return {"message": "PIN reset successfully"}
-
-
-@api_router.post("/virtual-cards/{order_id}/reveal")
-async def virtual_card_reveal(
-    order_id: str,
-    req: CardRevealRequest,
-    response: Response,
-    current_user: dict = Depends(get_current_user),
-):
-    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-    response.headers["Pragma"] = "no-cache"
-
-    pin = str(req.pin or "").strip()
-    if not _is_valid_pin(pin):
-        raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
-
-    user = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not user.get("card_pin_hash"):
-        raise HTTPException(status_code=400, detail="PIN is not set")
-
-    locked_until = user.get("card_pin_locked_until")
-    if locked_until:
-        try:
-            if datetime.fromisoformat(str(locked_until)) > datetime.now(timezone.utc):
-                raise HTTPException(status_code=429, detail="Too many attempts. Try again later.")
-        except ValueError:
-            pass
-
-    if not _verify_pin(pin, user["card_pin_hash"]):
-        attempts = int(user.get("card_pin_failed_attempts", 0) or 0) + 1
-        update: Dict[str, Any] = {"card_pin_failed_attempts": attempts}
-        if attempts >= 5:
-            update["card_pin_locked_until"] = (datetime.now(timezone.utc) + timedelta(minutes=15)).isoformat()
-        await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
-        raise HTTPException(status_code=401, detail="Invalid PIN")
-
-    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"card_pin_failed_attempts": 0, "card_pin_locked_until": None}})
-
-    order = await db.virtual_card_orders.find_one({"order_id": order_id, "user_id": user["user_id"], "status": "approved"}, {"_id": 0})
-    if not order:
-        raise HTTPException(status_code=404, detail="Card not found")
-    if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
-        raise HTTPException(status_code=400, detail="Full details are only available for provider-issued cards")
-
-    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    if not _strowallet_enabled(settings):
-        raise HTTPException(status_code=400, detail="Strowallet is disabled")
-    cfg = _strowallet_config(settings)
-    if not cfg.get("fetch_detail_path"):
-        raise HTTPException(status_code=400, detail="Provider card detail endpoint not configured")
-
-    stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
-    payload: Dict[str, Any] = {"card_id": order.get("provider_card_id"), "reference": f"reveal-{order_id}-{uuid.uuid4()}"}
-    if stw_customer_id:
-        payload["customer_id"] = stw_customer_id
-        payload["card_user_id"] = stw_customer_id
-    payload = _with_aliases(payload, "card_id", "cardId", "id")
-
-    detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
-
-    pan = _extract_first(detail, "data.card_number", "data.number", "card_number", "number", "data.card.card_number", "data.card.number")
-    cvv = _extract_first(detail, "data.cvv", "cvv", "data.card.cvv", "data.security_code", "security_code")
-    expiry = _extract_first(detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
-    exp_month = _extract_first(detail, "data.expiry_month", "expiry_month", "data.card.expiry_month")
-    exp_year = _extract_first(detail, "data.expiry_year", "expiry_year", "data.card.expiry_year")
-
-    expiry_norm = None
-    if exp_month and exp_year:
-        expiry_norm = f"{str(exp_month).zfill(2)}/{str(exp_year)[-2:]}"
-    elif expiry:
-        expiry_norm = str(expiry)
-
-    await log_action(user["user_id"], "card_reveal", {"order_id": order_id, "provider": "strowallet"})
-
-    return {
-        "card": {
-            "order_id": order_id,
-            "provider_card_id": order.get("provider_card_id"),
-            "card_number": str(pan) if pan is not None else None,
-            "cvv": str(cvv) if cvv is not None else None,
-            "expiry": expiry_norm,
-            "card_holder_name": order.get("card_holder_name") or (user.get("full_name") or ""),
-        },
-        "warning": "Sensitive data: do not share or screenshot.",
-    }
 
 @api_router.get("/virtual-cards/{order_id}/history")
 async def virtual_card_full_history(
