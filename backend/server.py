@@ -4166,19 +4166,13 @@ async def admin_process_card_order(
             # Some Strowallet deployments validate mode against a different enum.
             # If we see "selected mode is invalid", retry with common alternatives (test/production) and/or omit it.
             def _mode_candidates(v: str) -> List[Optional[str]]:
-                """
-                Return mode candidates without accidentally creating sandbox cards in live mode.
-                - If configured mode is live: try live-like variants only.
-                - If configured mode is sandbox: try test-like variants only.
-                - Always allow omitting mode as last resort.
-                """
                 base = (v or "").strip().lower()
-                # Normalize common inputs
-                base = {"sandbox": "sandbox", "test": "sandbox", "live": "live", "prod": "live", "production": "live"}.get(base, base or "live")
-                if base == "sandbox":
-                    candidates: List[Optional[str]] = ["test", "sandbox", None]
-                else:
-                    candidates = ["live", "production", "prod", None]
+                mapped = {"sandbox": "test", "live": "live"}.get(base, base or None)
+                candidates: List[Optional[str]] = [mapped]
+                # Common provider values
+                candidates += ["test", "live", "production", "prod", "sandbox"]
+                # Also allow omitting mode entirely
+                candidates += [None]
                 # Deduplicate while preserving order
                 out: List[Optional[str]] = []
                 for c in candidates:
@@ -4191,7 +4185,7 @@ async def admin_process_card_order(
 
             stw_resp = None
             last_mode_err = None
-            for m in _mode_candidates(str(cfg.get("mode") or create_payload.get("mode") or "")):
+            for m in _mode_candidates(str(create_payload.get("mode") or "")):
                 try_payload = dict(create_payload)
                 if m:
                     try_payload["mode"] = m
