@@ -3968,31 +3968,53 @@ async def admin_fetch_external_card_details(
             raise HTTPException(status_code=400, detail="Kle API Strowallet la pa bon. Ale nan Admin Settings pou mete bon kle a.")
         raise HTTPException(status_code=404, detail=f"Kat pa jwenn: {last_error}")
 
-    # Extract card details from the provider response
+    # Log the response for debugging
+    logger.info(f"Strowallet fetch-external response keys: {list(stw_detail.keys()) if isinstance(stw_detail, dict) else type(stw_detail)}")
+    if isinstance(stw_detail, dict) and "data" in stw_detail:
+        logger.info(f"Strowallet data keys: {list(stw_detail['data'].keys()) if isinstance(stw_detail.get('data'), dict) else stw_detail.get('data')}")
+
+    # Extract card details from the provider response (try many possible paths)
     card_number = _extract_first(
         stw_detail,
-        "data.card_number", "data.cardNumber", "data.card.card_number",
-        "data.pan", "card_number", "cardNumber", "pan",
+        # Common paths
+        "data.card_number", "data.cardNumber", "data.card.card_number", "data.card.cardNumber",
+        "data.pan", "data.card_pan", "data.masked_pan", "data.card.pan",
+        # Direct paths
+        "card_number", "cardNumber", "pan", "card_pan", "masked_pan",
+        # Nested card object
+        "card.card_number", "card.cardNumber", "card.pan",
+        # Message wrapper (some APIs use this)
+        "message.card_number", "message.data.card_number",
+        "response.card_number", "response.data.card_number",
     )
     expiry_month = _extract_first(
         stw_detail,
-        "data.expiry_month", "data.expiryMonth", "data.card.expiry_month",
-        "expiry_month", "expiryMonth",
+        "data.expiry_month", "data.expiryMonth", "data.expiry.month", "data.card.expiry_month",
+        "expiry_month", "expiryMonth", "exp_month", "expMonth",
+        "card.expiry_month", "card.expiryMonth",
+        "message.expiry_month", "response.expiry_month",
     )
     expiry_year = _extract_first(
         stw_detail,
-        "data.expiry_year", "data.expiryYear", "data.card.expiry_year",
-        "expiry_year", "expiryYear",
+        "data.expiry_year", "data.expiryYear", "data.expiry.year", "data.card.expiry_year",
+        "expiry_year", "expiryYear", "exp_year", "expYear",
+        "card.expiry_year", "card.expiryYear",
+        "message.expiry_year", "response.expiry_year",
     )
     cvv = _extract_first(
         stw_detail,
-        "data.cvv", "data.cvc", "data.card.cvv", "data.card.cvc",
-        "cvv", "cvc",
+        "data.cvv", "data.cvc", "data.cvv2", "data.card.cvv", "data.card.cvc",
+        "cvv", "cvc", "cvv2", "security_code",
+        "card.cvv", "card.cvc",
+        "message.cvv", "response.cvv",
     )
     holder_name = _extract_first(
         stw_detail,
-        "data.card_holder_name", "data.cardHolderName", "data.card.card_holder_name",
-        "data.name_on_card", "card_holder_name", "cardHolderName", "name_on_card",
+        "data.card_holder_name", "data.cardHolderName", "data.cardholder_name", "data.name_on_card",
+        "data.card.card_holder_name", "data.card.name_on_card", "data.holder_name",
+        "card_holder_name", "cardHolderName", "cardholder_name", "name_on_card", "holder_name",
+        "card.card_holder_name", "card.name_on_card",
+        "message.card_holder_name", "response.card_holder_name",
     )
     balance = _extract_first(
         stw_detail,
@@ -4025,7 +4047,10 @@ async def admin_fetch_external_card_details(
     )
 
     if not card_number:
-        raise HTTPException(status_code=400, detail="Could not retrieve card number from provider")
+        # Return debug info so admin can see what the API returned
+        sample_keys = list(stw_detail.keys())[:5] if isinstance(stw_detail, dict) else []
+        data_keys = list(stw_detail.get("data", {}).keys())[:10] if isinstance(stw_detail.get("data"), dict) else []
+        raise HTTPException(status_code=400, detail=f"Pa ka jwenn nimewo kat. API keys: {sample_keys}, data: {data_keys}")
 
     # Format expiry
     card_expiry = None
