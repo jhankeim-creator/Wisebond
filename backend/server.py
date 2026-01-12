@@ -109,15 +109,6 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
     if not brand_name:
         brand_name = "KAYICOM"
 
-    # Some Strowallet deployments require passing `mode` and an initial `amount` when creating cards.
-    stw_mode = ((settings or {}).get("strowallet_mode") or os.environ.get("STROWALLET_MODE") or "live").strip().lower()
-    if stw_mode not in {"live", "sandbox"}:
-        stw_mode = "live"
-    try:
-        stw_amount = float((settings or {}).get("strowallet_create_card_amount_usd") or os.environ.get("STROWALLET_CREATE_CARD_AMOUNT_USD") or 5)
-    except Exception:
-        stw_amount = 5.0
-
     # Endpoint paths can vary by Strowallet plan; allow overrides.
     # Defaults tuned for Strowallet bitvcard endpoints.
     create_user_path = _normalize_strowallet_path(
@@ -171,8 +162,6 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
         "fetch_detail_path": fetch_detail_path,
         "card_tx_path": card_tx_path,
         "brand_name": brand_name,
-        "mode": stw_mode,
-        "create_card_amount_usd": stw_amount,
         "set_limit_path": set_limit_path,
         "freeze_path": freeze_path,
         "unfreeze_path": unfreeze_path,
@@ -519,9 +508,6 @@ class AdminSettingsUpdate(BaseModel):
     strowallet_card_transactions_path: Optional[str] = None
     # White-label branding for automated cards (displayed in UI as card_brand)
     strowallet_brand_name: Optional[str] = None
-    # Strowallet create-card options (some deployments require these)
-    strowallet_mode: Optional[str] = None  # "live" | "sandbox" (provider-specific)
-    strowallet_create_card_amount_usd: Optional[float] = None  # default initial amount (USD) for create-card
     # Optional Strowallet controls endpoints (plans vary)
     strowallet_set_limit_path: Optional[str] = None
     strowallet_freeze_card_path: Optional[str] = None
@@ -3122,39 +3108,28 @@ async def admin_process_card_order(
                 create_user_payload = {k: v for k, v in create_user_payload.items() if v not in (None, "")}
                 # Provide common aliases for provider schemas
                 create_user_payload = _with_aliases(create_user_payload, "phone", "mobile", "msisdn")
-                # Best-effort: some deployments may not support POST on this endpoint (405),
-                # or may not require creating a customer first. Do not block card creation.
-                try:
-                    stw_user_resp = await _strowallet_post(settings, cfg["create_user_path"], create_user_payload)
-                    stw_customer_id = _extract_first(
-                        stw_user_resp,
-                        "data.customer_id",
-                        "data.user_id",
-                        "data.card_user_id",
-                        "customer_id",
-                        "user_id",
-                        "card_user_id",
-                        "data.id",
-                        "id",
+                stw_user_resp = await _strowallet_post(settings, cfg["create_user_path"], create_user_payload)
+                stw_customer_id = _extract_first(
+                    stw_user_resp,
+                    "data.customer_id",
+                    "data.user_id",
+                    "data.card_user_id",
+                    "customer_id",
+                    "user_id",
+                    "card_user_id",
+                    "data.id",
+                    "id",
+                )
+                if stw_customer_id:
+                    await db.users.update_one(
+                        {"user_id": user["user_id"]},
+                        {"$set": {"strowallet_customer_id": stw_customer_id}},
                     )
-                    if stw_customer_id:
-                        await db.users.update_one(
-                            {"user_id": user["user_id"]},
-                            {"$set": {"strowallet_customer_id": stw_customer_id}},
-                        )
-                except Exception as e:
-                    logger.warning(f"Strowallet create-user step skipped: {e}")
 
             create_payload: Dict[str, Any] = {
                 # Common fields across many Strowallet deployments (best-effort).
                 "email": order.get("card_email") or user.get("email"),
                 "card_email": order.get("card_email") or user.get("email"),
-                # Strowallet bitvcard schema (per docs)
-                "customerEmail": order.get("card_email") or user.get("email"),
-                "name_on_card": (user.get("full_name") or "").upper(),
-                "card_type": (order.get("card_type") or "visa"),
-                "amount": str(cfg.get("create_card_amount_usd") or 5),
-                "mode": cfg.get("mode") or "live",
                 "full_name": user.get("full_name"),
                 "name": user.get("full_name"),
                 "phone": user.get("phone"),
@@ -3170,7 +3145,6 @@ async def admin_process_card_order(
 
             # Provide common aliases for provider schemas
             create_payload = _with_aliases(create_payload, "phone", "mobile", "msisdn")
-            create_payload = _with_aliases(create_payload, "customerEmail", "customer_email", "customeremail")
 
             # Remove empty values to avoid API rejections.
             create_payload = {k: v for k, v in create_payload.items() if v not in (None, "")}
@@ -5300,8 +5274,6 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
         "strowallet_fetch_card_detail_path": os.environ.get("STROWALLET_FETCH_CARD_DETAIL_PATH", "") or "/api/bitvcard/fetch-card-detail/",
         "strowallet_card_transactions_path": os.environ.get("STROWALLET_CARD_TRANSACTIONS_PATH", "") or "/api/bitvcard/card-transactions/",
         "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", "") or "KAYICOM",
-        "strowallet_mode": os.environ.get("STROWALLET_MODE", "") or "live",
-        "strowallet_create_card_amount_usd": float(os.environ.get("STROWALLET_CREATE_CARD_AMOUNT_USD", "5") or "5"),
         "strowallet_set_limit_path": os.environ.get("STROWALLET_SET_LIMIT_PATH", ""),
         "strowallet_freeze_card_path": os.environ.get("STROWALLET_FREEZE_CARD_PATH", ""),
         "strowallet_unfreeze_card_path": os.environ.get("STROWALLET_UNFREEZE_CARD_PATH", ""),
@@ -5449,8 +5421,6 @@ async def admin_strowallet_apply_default_endpoints(admin: dict = Depends(get_adm
         "strowallet_fund_card_path": "/api/bitvcard/fund-card/",
         "strowallet_fetch_card_detail_path": "/api/bitvcard/fetch-card-detail/",
         "strowallet_card_transactions_path": "/api/bitvcard/card-transactions/",
-        "strowallet_mode": "live",
-        "strowallet_create_card_amount_usd": 5.0,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
 

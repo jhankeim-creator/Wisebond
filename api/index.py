@@ -228,8 +228,6 @@ class AdminSettingsUpdate(BaseModel):
     strowallet_fetch_card_detail_path: Optional[str] = None
     strowallet_card_transactions_path: Optional[str] = None
     strowallet_brand_name: Optional[str] = None
-    strowallet_mode: Optional[str] = None
-    strowallet_create_card_amount_usd: Optional[float] = None
 
     # Fees & Affiliate
     card_order_fee_htg: Optional[int] = None
@@ -1584,8 +1582,6 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
         "strowallet_fetch_card_detail_path": os.environ.get("STROWALLET_FETCH_CARD_DETAIL_PATH", "") or "/api/bitvcard/fetch-card-detail/",
         "strowallet_card_transactions_path": os.environ.get("STROWALLET_CARD_TRANSACTIONS_PATH", "") or "/api/bitvcard/card-transactions/",
         "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", "") or "KAYICOM",
-        "strowallet_mode": os.environ.get("STROWALLET_MODE", "") or "live",
-        "strowallet_create_card_amount_usd": float(os.environ.get("STROWALLET_CREATE_CARD_AMOUNT_USD", "5") or "5"),
 
         # Fees & Affiliate
         "card_order_fee_htg": 500,
