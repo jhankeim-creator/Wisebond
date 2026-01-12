@@ -2626,13 +2626,7 @@ async def get_card_orders(current_user: dict = Depends(get_current_user)):
         return {"orders": []}
     orders = await db.virtual_card_orders.find(
         {"user_id": current_user["user_id"]},
-        {
-            "_id": 0,
-            # Never expose sensitive card data to clients.
-            "card_number": 0,
-            "card_cvv": 0,
-            "provider_raw": 0,
-        }
+        {"_id": 0}
     ).sort("created_at", -1).to_list(50)
     return {"orders": orders}
 
@@ -3372,8 +3366,10 @@ class ManualCardCreate(BaseModel):
     card_brand: Optional[str] = None
     card_type: Optional[str] = "visa"
     card_holder_name: Optional[str] = None
+    card_number: Optional[str] = None
     card_last4: Optional[str] = None
     card_expiry: Optional[str] = None
+    card_cvv: Optional[str] = None
     billing_address: Optional[str] = None
     billing_city: Optional[str] = None
     billing_country: Optional[str] = None
@@ -3405,9 +3401,10 @@ async def admin_create_card_manually(
         "card_brand": payload.card_brand,
         "card_type": payload.card_type,
         "card_holder_name": payload.card_holder_name,
-        # SECURITY: store only last4 (never store full PAN / CVV).
-        "card_last4": payload.card_last4,
+        "card_number": payload.card_number,
+        "card_last4": payload.card_number[-4:] if payload.card_number else payload.card_last4,
         "card_expiry": payload.card_expiry,
+        "card_cvv": payload.card_cvv,
         "billing_address": payload.billing_address,
         "billing_city": payload.billing_city,
         "billing_country": payload.billing_country,
@@ -3459,8 +3456,10 @@ class CardDetailsPayload(BaseModel):
     card_brand: Optional[str] = None  # Wise, Payoneer, etc.
     card_type: Optional[str] = None  # visa or mastercard
     card_holder_name: Optional[str] = None
+    card_number: Optional[str] = None
     card_last4: Optional[str] = None
     card_expiry: Optional[str] = None
+    card_cvv: Optional[str] = None
     billing_address: Optional[str] = None
     billing_city: Optional[str] = None
     billing_country: Optional[str] = None
@@ -3505,8 +3504,10 @@ async def admin_process_card_order(
         # If Strowallet is enabled and admin didn't manually enter card details,
         # create the card automatically and store the returned details.
         manual_details_provided = any([
+            payload.card_number,
             payload.card_last4,
             payload.card_expiry,
+            payload.card_cvv,
         ])
 
         auto_created = False
@@ -3620,6 +3621,7 @@ async def admin_process_card_order(
 
             src = stw_detail or stw_resp
             card_number = _extract_first(src, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
+            card_cvv = _extract_first(src, "data.cvv", "cvv", "data.card.cvv", "data.card.cvv2", "cvv2")
             card_expiry = _extract_first(src, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
             card_brand = _extract_first(src, "data.brand", "brand", "data.card.brand")
             card_type = _extract_first(src, "data.type", "type", "data.card.type")
@@ -3647,7 +3649,10 @@ async def admin_process_card_order(
 
             if card_number:
                 card_number_str = str(card_number).replace(" ", "")
+                update_doc["card_number"] = card_number_str
                 update_doc["card_last4"] = card_number_str[-4:]
+            if card_cvv:
+                update_doc["card_cvv"] = str(card_cvv)
             if card_expiry:
                 update_doc["card_expiry"] = str(card_expiry)
 
@@ -3659,10 +3664,16 @@ async def admin_process_card_order(
                 update_doc["card_type"] = payload.card_type
             if payload.card_holder_name:
                 update_doc["card_holder_name"] = payload.card_holder_name
-            if payload.card_last4:
+            if payload.card_number:
+                update_doc["card_number"] = payload.card_number
+                # Auto-extract last 4 digits
+                update_doc["card_last4"] = payload.card_number[-4:]
+            elif payload.card_last4:
                 update_doc["card_last4"] = payload.card_last4
             if payload.card_expiry:
                 update_doc["card_expiry"] = payload.card_expiry
+            if payload.card_cvv:
+                update_doc["card_cvv"] = payload.card_cvv
         if payload.billing_address:
             update_doc["billing_address"] = payload.billing_address
         if payload.billing_city:
@@ -3701,13 +3712,8 @@ async def admin_process_card_order(
             <p>Hello {user.get('full_name', 'User')},</p>
             <p>Great news! Your virtual card order has been approved.</p>
             <p><strong>Card Email:</strong> {order.get('card_email', 'N/A')}</p>
-            <p><strong>Brand:</strong> {update_doc.get('card_brand') or order.get('card_brand') or 'N/A'}</p>
-            <p><strong>Type:</strong> {update_doc.get('card_type') or order.get('card_type') or 'N/A'}</p>
-            <p><strong>Last 4:</strong> {update_doc.get('card_last4') or order.get('card_last4') or 'N/A'}</p>
-            <p><strong>Expiry:</strong> {update_doc.get('card_expiry') or order.get('card_expiry') or 'N/A'}</p>
             <p>Order ID: <code>{order_id}</code></p>
-            <p>You can now use your virtual card for transactions.</p>
-            <p><em>Security note:</em> for your protection, we do not display full card number/CVV in the app.</p>
+            <p>You can now use your virtual card for transactions. The card details have been sent to your registered email.</p>
             <p>Thank you for using KAYICOM!</p>
             """
             await send_email(user["email"], subject, content)
@@ -6228,10 +6234,15 @@ async def admin_update_card_details(
         update_doc["card_type"] = payload.card_type
     if payload.card_holder_name:
         update_doc["card_holder_name"] = payload.card_holder_name
-    if payload.card_last4:
+    if payload.card_number:
+        update_doc["card_number"] = payload.card_number
+        update_doc["card_last4"] = payload.card_number[-4:]
+    elif payload.card_last4:
         update_doc["card_last4"] = payload.card_last4
     if payload.card_expiry:
         update_doc["card_expiry"] = payload.card_expiry
+    if payload.card_cvv:
+        update_doc["card_cvv"] = payload.card_cvv
     if payload.billing_address:
         update_doc["billing_address"] = payload.billing_address
     if payload.billing_city:
@@ -6717,37 +6728,38 @@ async def startup():
     await db.payment_gateway_methods.create_index([("payment_type", 1), ("status", 1)])
     await db.webhook_events.create_index([("provider", 1), ("received_at", -1)])
     
-    # Optional: create a first admin via env (disabled by default).
-    # SECURITY: never ship hardcoded default credentials.
-    if _env_bool("CREATE_DEFAULT_ADMIN", False):
-        existing_admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
-        if not existing_admin:
-            email = (os.environ.get("DEFAULT_ADMIN_EMAIL") or "").strip().lower()
-            password = (os.environ.get("DEFAULT_ADMIN_PASSWORD") or "").strip()
-            if not email or not password:
-                logger.warning("CREATE_DEFAULT_ADMIN is true but DEFAULT_ADMIN_EMAIL/DEFAULT_ADMIN_PASSWORD not set; skipping admin creation")
-            else:
-                admin_doc = {
-                    "user_id": str(uuid.uuid4()),
-                    "client_id": "KCADMIN001",
-                    "email": email,
-                    "password_hash": hash_password(password),
-                    "full_name": "System Admin",
-                    "phone": "+509 0000 0000",
-                    "language": "fr",
-                    "kyc_status": "approved",
-                    "wallet_htg": 0.0,
-                    "wallet_usd": 0.0,
-                    "affiliate_code": generate_affiliate_code(),
-                    "affiliate_earnings": 0.0,
-                    "referred_by": None,
-                    "is_active": True,
-                    "is_admin": True,
-                    "two_factor_enabled": False,
-                    "created_at": datetime.now(timezone.utc).isoformat(),
-                }
-                await db.users.insert_one(admin_doc)
-                logger.info("Default admin created via DEFAULT_ADMIN_EMAIL (password not logged)")
+    # Create default admin if not exists, or update existing admin email
+    admin = await db.users.find_one({"is_admin": True}, {"_id": 0})
+    if not admin:
+        admin_doc = {
+            "user_id": str(uuid.uuid4()),
+            "client_id": "KCADMIN001",
+            "email": "kayicom509@gmail.com",
+            "password_hash": hash_password("Admin123!"),
+            "full_name": "System Admin",
+            "phone": "+509 0000 0000",
+            "language": "fr",
+            "kyc_status": "approved",
+            "wallet_htg": 0.0,
+            "wallet_usd": 0.0,
+            "affiliate_code": "ADMINCODE",
+            "affiliate_earnings": 0.0,
+            "referred_by": None,
+            "is_active": True,
+            "is_admin": True,
+            "two_factor_enabled": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.users.insert_one(admin_doc)
+        logger.info("Default admin created: kayicom509@gmail.com / Admin123!")
+    else:
+        # Update admin email if it's the old one
+        if admin.get("email") == "admin@kayicom.com":
+            await db.users.update_one(
+                {"user_id": admin["user_id"]},
+                {"$set": {"email": "kayicom509@gmail.com"}}
+            )
+            logger.info("Admin email updated from admin@kayicom.com to kayicom509@gmail.com")
     
     # Create default exchange rates
     rates = await db.exchange_rates.find_one({"rate_id": "main"}, {"_id": 0})
