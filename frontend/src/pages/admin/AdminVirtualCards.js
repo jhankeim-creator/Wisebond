@@ -189,28 +189,6 @@ export default function AdminVirtualCards() {
     }
   };
 
-  const applyDefaultEndpoints = async () => {
-    setSavingCardSettings(true);
-    try {
-      const res = await axios.post(`${API}/admin/strowallet/apply-default-endpoints`);
-      const s = res.data?.settings || {};
-      setCardSettings((prev) => ({
-        ...(prev || {}),
-        strowallet_base_url: s.strowallet_base_url || 'https://strowallet.com',
-        strowallet_create_user_path: s.strowallet_create_user_path || '/api/bitvcard/card-user',
-        strowallet_create_card_path: s.strowallet_create_card_path || '/api/bitvcard/create-card/',
-        strowallet_fund_card_path: s.strowallet_fund_card_path || '/api/bitvcard/fund-card/',
-        strowallet_fetch_card_detail_path: s.strowallet_fetch_card_detail_path || '/api/bitvcard/fetch-card-detail/',
-        strowallet_card_transactions_path: s.strowallet_card_transactions_path || '/api/bitvcard/card-transactions/',
-      }));
-      toast.success(getText('Default endpoints mete!', 'Endpoints par défaut appliqués!', 'Default endpoints applied!'));
-    } catch (e) {
-      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
-    } finally {
-      setSavingCardSettings(false);
-    }
-  };
-
   const testStrowallet = async () => {
     setTestingStrowallet(true);
     try {
@@ -606,24 +584,6 @@ export default function AdminVirtualCards() {
                       {getText('Avanse (Base URL & endpoints)', 'Avancé (Base URL & endpoints)', 'Advanced (Base URL & endpoints)')}
                     </summary>
                     <div className="mt-3 space-y-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={applyDefaultEndpoints}
-                          disabled={savingCardSettings}
-                          className="border-purple-300 text-purple-700 hover:bg-purple-50"
-                        >
-                          {getText('Default endpoints', 'Endpoints par défaut', 'Default endpoints')}
-                        </Button>
-                        <span className="text-xs text-stone-500 self-center">
-                          {getText(
-                            'Sa ap ranplase endpoints yo otomatikman (bitvcard).',
-                            'Remplace automatiquement les endpoints (bitvcard).',
-                            'Automatically sets the correct bitvcard endpoints.'
-                          )}
-                        </span>
-                      </div>
                       <div>
                         <Label>Base URL</Label>
                         <Input
