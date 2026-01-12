@@ -3930,7 +3930,7 @@ async def admin_fetch_external_card_details(
             "card_id": card_id,
             "public_key": cfg.get("api_key", ""),
             "mode": cfg.get("mode", "live"),
-            "reference": f"fetch-ext-{current_user['user_id']}-{card_id[:8]}",
+            "reference": f"fetch-ext-{admin['user_id']}-{card_id[:8]}",
         }
         # Add secret if available
         if cfg.get("api_secret"):
@@ -3953,7 +3953,7 @@ async def admin_fetch_external_card_details(
                 data = resp.json()
                 
                 # Check if successful
-                if resp.status_code == 200 and data.get("status") != "error":
+                if resp.status_code == 200 and data.get("status") != "error" and data.get("success") != False:
                     stw_detail = data
                     break
                 else:
@@ -3963,7 +3963,10 @@ async def admin_fetch_external_card_details(
             continue
 
     if not stw_detail:
-        raise HTTPException(status_code=404, detail=f"Card not found or API error: {last_error}")
+        # Provide helpful error message
+        if last_error and ("Invalid Public Key" in str(last_error) or "Invalid API" in str(last_error)):
+            raise HTTPException(status_code=400, detail="Kle API Strowallet la pa bon. Ale nan Admin Settings pou mete bon kle a.")
+        raise HTTPException(status_code=404, detail=f"Kat pa jwenn: {last_error}")
 
     # Extract card details from the provider response
     card_number = _extract_first(
@@ -4133,7 +4136,7 @@ async def admin_link_external_card(
                 resp = await client.post(url, json=payload, headers=headers)
                 data = resp.json()
                 
-                if resp.status_code == 200 and data.get("status") != "error":
+                if resp.status_code == 200 and data.get("status") != "error" and data.get("success") != False:
                     stw_detail = data
                     break
                 else:
