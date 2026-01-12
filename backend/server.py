@@ -566,15 +566,14 @@ async def _strowallet_post(settings: Optional[dict], path: str, payload: Dict[st
             data = {"raw": resp.text}
 
     if resp.status_code >= 400:
-        # Keep provider name out of customer-facing errors.
-        raise HTTPException(status_code=502, detail=f"Card provider API error ({resp.status_code}): {data}")
+        raise HTTPException(status_code=502, detail=f"Strowallet API error ({resp.status_code}): {data}")
 
     # Some APIs return 200 with an error field; treat obvious failures as errors.
     success = _extract_first(data, "success", "status", "data.status")
     if isinstance(success, bool) and success is False:
-        raise HTTPException(status_code=502, detail=f"Card provider API error: {data}")
+        raise HTTPException(status_code=502, detail=f"Strowallet API error: {data}")
     if isinstance(success, str) and success.lower() in {"failed", "error", "false"}:
-        raise HTTPException(status_code=502, detail=f"Card provider API error: {data}")
+        raise HTTPException(status_code=502, detail=f"Strowallet API error: {data}")
 
     return data
 
@@ -602,13 +601,13 @@ async def _strowallet_get(settings: Optional[dict], path: str, params: Optional[
             data = {"raw": resp.text}
 
     if resp.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Card provider API error ({resp.status_code}): {data}")
+        raise HTTPException(status_code=502, detail=f"Strowallet API error ({resp.status_code}): {data}")
 
     success = _extract_first(data, "success", "status", "data.status")
     if isinstance(success, bool) and success is False:
-        raise HTTPException(status_code=502, detail=f"Card provider API error: {data}")
+        raise HTTPException(status_code=502, detail=f"Strowallet API error: {data}")
     if isinstance(success, str) and success.lower() in {"failed", "error", "false"}:
-        raise HTTPException(status_code=502, detail=f"Card provider API error: {data}")
+        raise HTTPException(status_code=502, detail=f"Strowallet API error: {data}")
 
     return data
 
@@ -818,9 +817,9 @@ async def _strowallet_create_customer_id(
         raise HTTPException(
             status_code=400,
             detail={
-                "message": "Missing required fields for card provider onboarding. Ensure user KYC includes these fields.",
+                "message": "Missing required fields for Strowallet create-user. Ensure user KYC includes these fields.",
                 "missing": missing,
-                "note": "This is required by your card program before creating a card.",
+                "note": "This is required by your Strowallet plan before creating a card.",
             },
         )
 
@@ -4307,7 +4306,7 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
         "amount": amt,
         "currency": "USD",
         "status": "completed",
-        "description": f"Card withdrawal from {card_order.get('card_email')}",
+        "description": f"Card withdrawal from {card_order.get('card_email')} (Strowallet)",
         "reference_id": withdrawal_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
@@ -4543,8 +4542,7 @@ async def virtual_card_reveal(
 
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
     if not _strowallet_enabled(settings):
-        # Keep provider name out of customer-facing errors.
-        raise HTTPException(status_code=400, detail="Card provider is disabled")
+        raise HTTPException(status_code=400, detail="Strowallet is disabled")
     cfg = _strowallet_config(settings)
     if not cfg.get("fetch_detail_path"):
         raise HTTPException(status_code=400, detail="Provider card detail endpoint not configured")
@@ -4558,80 +4556,11 @@ async def virtual_card_reveal(
 
     detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
 
-    # Provider schemas vary; support common keys/casing.
-    pan = _extract_first(
-        detail,
-        "data.card_number",
-        "data.cardNumber",
-        "data.number",
-        "data.pan",
-        "card_number",
-        "cardNumber",
-        "number",
-        "pan",
-        "data.card.card_number",
-        "data.card.cardNumber",
-        "data.card.number",
-        "data.card.pan",
-        "response.card_number",
-        "response.cardNumber",
-        "response.pan",
-        "data.response.card_number",
-        "data.response.cardNumber",
-        "data.response.pan",
-    )
-    cvv = _extract_first(
-        detail,
-        "data.cvv",
-        "data.cvv2",
-        "data.cvvCode",
-        "data.cvv_code",
-        "cvv",
-        "cvv2",
-        "cvvCode",
-        "cvv_code",
-        "data.card.cvv",
-        "data.card.cvv2",
-        "data.card.cvvCode",
-        "data.security_code",
-        "data.securityCode",
-        "security_code",
-        "securityCode",
-    )
-    expiry = _extract_first(
-        detail,
-        "data.expiry",
-        "data.expiry_date",
-        "data.expiryDate",
-        "expiry",
-        "expiry_date",
-        "expiryDate",
-        "data.card.expiry",
-        "data.card.expiry_date",
-        "data.card.expiryDate",
-    )
-    exp_month = _extract_first(
-        detail,
-        "data.expiry_month",
-        "data.expiryMonth",
-        "data.expMonth",
-        "expiry_month",
-        "expiryMonth",
-        "expMonth",
-        "data.card.expiry_month",
-        "data.card.expiryMonth",
-    )
-    exp_year = _extract_first(
-        detail,
-        "data.expiry_year",
-        "data.expiryYear",
-        "data.expYear",
-        "expiry_year",
-        "expiryYear",
-        "expYear",
-        "data.card.expiry_year",
-        "data.card.expiryYear",
-    )
+    pan = _extract_first(detail, "data.card_number", "data.number", "card_number", "number", "data.card.card_number", "data.card.number")
+    cvv = _extract_first(detail, "data.cvv", "cvv", "data.card.cvv", "data.security_code", "security_code")
+    expiry = _extract_first(detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
+    exp_month = _extract_first(detail, "data.expiry_month", "expiry_month", "data.card.expiry_month")
+    exp_year = _extract_first(detail, "data.expiry_year", "expiry_year", "data.card.expiry_year")
 
     expiry_norm = None
     if exp_month and exp_year:
