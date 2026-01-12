@@ -70,7 +70,6 @@ export default function AdminVirtualCards() {
   const [savingDefaultBg, setSavingDefaultBg] = useState(false);
   const [purging, setPurging] = useState(false);
   const [purgeDays, setPurgeDays] = useState(30);
-  const [purgeProvider, setPurgeProvider] = useState('all');
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -161,8 +160,7 @@ export default function AdminVirtualCards() {
 
     setPurging(true);
     try {
-      const providerParam = purgeProvider !== 'all' ? `&provider=${encodeURIComponent(purgeProvider)}` : '';
-      const res = await axios.post(`${API}/admin/virtual-card-orders/purge?days=${encodeURIComponent(purgeDays)}&status=approved${providerParam}`);
+      const res = await axios.post(`${API}/admin/virtual-card-orders/purge?days=${encodeURIComponent(purgeDays)}&status=approved`);
       toast.success(getText(
         `${res.data?.deleted || 0} kat efase.`,
         `${res.data?.deleted || 0} cartes supprimées.`,
@@ -472,22 +470,11 @@ export default function AdminVirtualCards() {
                   />
                   <span className="text-sm text-stone-500">{getText('jou', 'jours', 'days')}</span>
                 </div>
-                <div className="flex gap-2 items-center">
-                  <Label className="text-xs text-stone-500">{getText('Provider', 'Provider', 'Provider')}</Label>
-                  <Select value={purgeProvider} onValueChange={setPurgeProvider}>
-                    <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">{getText('Tout', 'Tous', 'All')}</SelectItem>
-                      <SelectItem value="manual">{getText('Manyèl', 'Manuel', 'Manual')}</SelectItem>
-                      <SelectItem value="strowallet">Strowallet</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
                 <p className="text-xs text-stone-500">
                   {getText(
-                    'Sa ap efase kat apwouve ki pi ansyen pase kantite jou a. Ou ka limite sou Manyèl oswa Strowallet. Ireversib.',
-                    'Supprime les cartes approuvées plus anciennes que ce nombre de jours. Filtrable (Manuel/Strowallet). Irréversible.',
-                    'Deletes approved cards older than this many days. You can filter (Manual/Strowallet). Irreversible.'
+                    'Sa ap efase kat ki pi ansyen pase kantite jou a (Approved). Ireversib.',
+                    'Supprime les cartes approuvées plus anciennes que ce nombre de jours. Irréversible.',
+                    'Deletes approved cards older than this many days. Irreversible.'
                   )}
                 </p>
                 <Button variant="destructive" onClick={purgeOldOrders} disabled={purging}>
