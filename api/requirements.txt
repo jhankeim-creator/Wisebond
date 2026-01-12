@@ -23,8 +23,7 @@ email-validator==2.2.0
 python-dotenv==1.0.1
 
 # Email
-# NOTE: 2.5.0 is not published on PyPI; use 2.5.1+
-resend==2.5.1
+resend==2.5.0
 
 # PDF Generation (for receipts)
 reportlab==4.2.5
