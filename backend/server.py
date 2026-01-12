@@ -3878,6 +3878,289 @@ async def virtual_card_upgrade_limit(
     resp = await _strowallet_post(settings, cfg["upgrade_limit_path"], body)
     return {"provider": "strowallet", "order_id": order_id, "response": resp}
 
+
+# ==================== MANUAL CARD INTEGRATION (USER LINKS EXISTING STROWALLET CARD) ====================
+
+class FetchExternalCardRequest(BaseModel):
+    card_id: str
+
+
+@api_router.post("/virtual-cards/fetch-external")
+async def fetch_external_card_details(
+    request: FetchExternalCardRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Fetch card details from Strowallet API by card_id.
+    This allows users to preview a card before linking it to their account.
+    Returns card_number, expiry, cvv, holder_name for display.
+    """
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not _virtual_cards_enabled(settings):
+        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
+    if current_user.get("kyc_status") != "approved":
+        raise HTTPException(status_code=403, detail="KYC verification required to link cards")
+
+    if not request.card_id or not request.card_id.strip():
+        raise HTTPException(status_code=400, detail="Card ID is required")
+
+    cfg = _strowallet_config(settings)
+    if not cfg.get("api_key") or not cfg.get("base_url"):
+        raise HTTPException(status_code=400, detail="Card provider not configured")
+    if not cfg.get("fetch_detail_path"):
+        raise HTTPException(status_code=400, detail="Card detail endpoint not configured")
+
+    payload: Dict[str, Any] = {
+        "card_id": request.card_id.strip(),
+        "reference": f"fetch-ext-{current_user['user_id']}-{request.card_id[:8]}",
+    }
+    payload = _with_aliases(payload, "card_id", "cardId", "id")
+
+    try:
+        stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
+    except HTTPException as e:
+        if "401" in str(e.detail) or "403" in str(e.detail):
+            raise HTTPException(status_code=400, detail="Card provider authentication failed")
+        if "404" in str(e.detail):
+            raise HTTPException(status_code=404, detail="Card not found")
+        raise HTTPException(status_code=400, detail=f"Failed to fetch card: {e.detail}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch card: {str(e)}")
+
+    # Extract card details from the provider response
+    card_number = _extract_first(
+        stw_detail,
+        "data.card_number", "data.cardNumber", "data.card.card_number",
+        "data.pan", "card_number", "cardNumber", "pan",
+    )
+    expiry_month = _extract_first(
+        stw_detail,
+        "data.expiry_month", "data.expiryMonth", "data.card.expiry_month",
+        "expiry_month", "expiryMonth",
+    )
+    expiry_year = _extract_first(
+        stw_detail,
+        "data.expiry_year", "data.expiryYear", "data.card.expiry_year",
+        "expiry_year", "expiryYear",
+    )
+    cvv = _extract_first(
+        stw_detail,
+        "data.cvv", "data.cvc", "data.card.cvv", "data.card.cvc",
+        "cvv", "cvc",
+    )
+    holder_name = _extract_first(
+        stw_detail,
+        "data.card_holder_name", "data.cardHolderName", "data.card.card_holder_name",
+        "data.name_on_card", "card_holder_name", "cardHolderName", "name_on_card",
+    )
+    balance = _extract_first(
+        stw_detail,
+        "data.balance", "data.card.balance", "balance",
+    )
+    currency = _extract_first(
+        stw_detail,
+        "data.currency", "data.card.currency", "currency",
+    ) or "USD"
+    card_status = _extract_first(
+        stw_detail,
+        "data.status", "data.card.status", "data.card_status", "status", "card_status",
+    ) or "active"
+    card_type = _extract_first(
+        stw_detail,
+        "data.card_type", "data.cardType", "data.type", "data.brand",
+        "card_type", "cardType", "type", "brand",
+    ) or "visa"
+    billing_address = _extract_first(
+        stw_detail, "data.billing_address", "data.address", "billing_address", "address",
+    )
+    billing_city = _extract_first(
+        stw_detail, "data.billing_city", "data.city", "billing_city", "city",
+    )
+    billing_country = _extract_first(
+        stw_detail, "data.billing_country", "data.country", "billing_country", "country",
+    )
+    billing_zip = _extract_first(
+        stw_detail, "data.billing_zip", "data.zip_code", "data.zipCode", "billing_zip", "zip_code", "zipCode",
+    )
+
+    if not card_number:
+        raise HTTPException(status_code=400, detail="Could not retrieve card number from provider")
+
+    # Format expiry
+    card_expiry = None
+    if expiry_month and expiry_year:
+        em = str(expiry_month).zfill(2)
+        ey = str(expiry_year)[-2:] if len(str(expiry_year)) == 4 else str(expiry_year)
+        card_expiry = f"{em}/{ey}"
+
+    return {
+        "card_id": request.card_id.strip(),
+        "card_number": str(card_number),
+        "card_expiry": card_expiry,
+        "expiry_month": str(expiry_month) if expiry_month else None,
+        "expiry_year": str(expiry_year) if expiry_year else None,
+        "cvv": str(cvv) if cvv else None,
+        "card_holder_name": str(holder_name) if holder_name else None,
+        "balance": float(balance) if balance else None,
+        "currency": str(currency),
+        "card_status": str(card_status),
+        "card_type": str(card_type).lower() if card_type else "visa",
+        "billing_address": str(billing_address) if billing_address else None,
+        "billing_city": str(billing_city) if billing_city else None,
+        "billing_country": str(billing_country) if billing_country else None,
+        "billing_zip": str(billing_zip) if billing_zip else None,
+    }
+
+
+class LinkExternalCardRequest(BaseModel):
+    card_id: str
+    card_email: Optional[str] = None  # User can override the email for the card
+
+
+@api_router.post("/virtual-cards/link-external")
+async def link_external_card(
+    request: LinkExternalCardRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Link an existing Strowallet card to the user's account.
+    The card_id must be valid and the card must not already be linked.
+    """
+    settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
+    if not _virtual_cards_enabled(settings):
+        raise HTTPException(status_code=403, detail="Virtual cards are currently disabled")
+    if current_user.get("kyc_status") != "approved":
+        raise HTTPException(status_code=403, detail="KYC verification required to link cards")
+
+    if not request.card_id or not request.card_id.strip():
+        raise HTTPException(status_code=400, detail="Card ID is required")
+
+    card_id = request.card_id.strip()
+
+    # Check if card is already linked to any user
+    existing = await db.virtual_card_orders.find_one(
+        {"provider_card_id": card_id, "provider": "strowallet"},
+        {"_id": 0, "user_id": 1, "order_id": 1},
+    )
+    if existing:
+        if existing.get("user_id") == current_user["user_id"]:
+            raise HTTPException(status_code=400, detail="This card is already linked to your account")
+        raise HTTPException(status_code=400, detail="This card is already linked to another account")
+
+    # Fetch card details from provider
+    cfg = _strowallet_config(settings)
+    if not cfg.get("api_key") or not cfg.get("base_url"):
+        raise HTTPException(status_code=400, detail="Card provider not configured")
+    if not cfg.get("fetch_detail_path"):
+        raise HTTPException(status_code=400, detail="Card detail endpoint not configured")
+
+    payload: Dict[str, Any] = {
+        "card_id": card_id,
+        "reference": f"link-{current_user['user_id']}-{card_id[:8]}",
+    }
+    payload = _with_aliases(payload, "card_id", "cardId", "id")
+
+    try:
+        stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
+    except HTTPException as e:
+        raise HTTPException(status_code=400, detail=f"Failed to verify card: {e.detail}")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to verify card: {str(e)}")
+
+    # Extract card details
+    card_number = _extract_first(
+        stw_detail,
+        "data.card_number", "data.cardNumber", "data.card.card_number",
+        "data.pan", "card_number", "cardNumber", "pan",
+    )
+    if not card_number:
+        raise HTTPException(status_code=400, detail="Could not verify card with provider")
+
+    expiry_month = _extract_first(
+        stw_detail,
+        "data.expiry_month", "data.expiryMonth", "data.card.expiry_month",
+        "expiry_month", "expiryMonth",
+    )
+    expiry_year = _extract_first(
+        stw_detail,
+        "data.expiry_year", "data.expiryYear", "data.card.expiry_year",
+        "expiry_year", "expiryYear",
+    )
+    holder_name = _extract_first(
+        stw_detail,
+        "data.card_holder_name", "data.cardHolderName", "data.card.card_holder_name",
+        "data.name_on_card", "card_holder_name", "cardHolderName", "name_on_card",
+    )
+    card_type = _extract_first(
+        stw_detail,
+        "data.card_type", "data.cardType", "data.type", "data.brand",
+        "card_type", "cardType", "type", "brand",
+    ) or "visa"
+    billing_address = _extract_first(
+        stw_detail, "data.billing_address", "data.address", "billing_address", "address",
+    )
+    billing_city = _extract_first(
+        stw_detail, "data.billing_city", "data.city", "billing_city", "city",
+    )
+    billing_country = _extract_first(
+        stw_detail, "data.billing_country", "data.country", "billing_country", "country",
+    )
+    billing_zip = _extract_first(
+        stw_detail, "data.billing_zip", "data.zip_code", "data.zipCode", "billing_zip", "zip_code", "zipCode",
+    )
+
+    # Format card details
+    card_last4 = str(card_number)[-4:] if card_number else None
+    card_expiry = None
+    if expiry_month and expiry_year:
+        em = str(expiry_month).zfill(2)
+        ey = str(expiry_year)[-2:] if len(str(expiry_year)) == 4 else str(expiry_year)
+        card_expiry = f"{em}/{ey}"
+
+    # Use provided email or user's email
+    card_email = (request.card_email or "").strip() or current_user.get("email") or ""
+    brand_name = cfg.get("brand_name") or "Strowallet"
+
+    # Create the card order entry (already approved since card exists)
+    order_id = str(uuid.uuid4())
+    order_doc = {
+        "order_id": order_id,
+        "user_id": current_user["user_id"],
+        "client_id": current_user.get("client_id"),
+        "card_email": card_email,
+        "card_brand": brand_name,
+        "card_type": str(card_type).lower() if card_type else "visa",
+        "card_holder_name": str(holder_name).upper() if holder_name else (current_user.get("full_name") or "").upper(),
+        "card_last4": card_last4,
+        "card_expiry": card_expiry,
+        "billing_address": str(billing_address) if billing_address else None,
+        "billing_city": str(billing_city) if billing_city else None,
+        "billing_country": str(billing_country) if billing_country else None,
+        "billing_zip": str(billing_zip) if billing_zip else None,
+        "fee": 0,  # No fee for linking existing card
+        "status": "approved",
+        "provider": "strowallet",
+        "provider_card_id": card_id,
+        "card_status": "active",
+        "admin_notes": "Linked by user via manual integration",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+        "approved_by": "user_self_link",
+    }
+
+    await db.virtual_card_orders.insert_one(order_doc)
+    await log_action(current_user["user_id"], "card_linked", {"order_id": order_id, "card_id": card_id})
+
+    # Remove _id for response
+    if "_id" in order_doc:
+        del order_doc["_id"]
+
+    return {
+        "message": "Card linked successfully",
+        "order": order_doc,
+    }
+
+
 # ==================== STROWALLET WEBHOOK (FAILED PAYMENTS AUTO-LOCK) ====================
 
 @api_router.post("/strowallet/webhook")

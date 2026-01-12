@@ -29,7 +29,9 @@ import {
   Plus,
   ArrowRight,
   ArrowDown,
-  RefreshCw
+  RefreshCw,
+  Link2,
+  Search
 } from 'lucide-react';
 
 // Card logos
@@ -72,6 +74,15 @@ export default function VirtualCard() {
   const [updatingControls, setUpdatingControls] = useState(false);
   const [spendingLimit, setSpendingLimit] = useState('');
   const [spendingPeriod, setSpendingPeriod] = useState('monthly');
+
+  // Manual card integration state
+  const [showLinkCardModal, setShowLinkCardModal] = useState(false);
+  const [externalCardId, setExternalCardId] = useState('');
+  const [fetchingCard, setFetchingCard] = useState(false);
+  const [fetchedCard, setFetchedCard] = useState(null);
+  const [linkingCard, setLinkingCard] = useState(false);
+  const [linkCardEmail, setLinkCardEmail] = useState('');
+  const [showCardSensitive, setShowCardSensitive] = useState(false);
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -345,6 +356,55 @@ export default function VirtualCard() {
     toast.success(getText(`${label} kopye!`, `${label} copié!`, `${label} copied!`));
   };
 
+  // Manual card integration functions
+  const fetchExternalCard = async () => {
+    if (!externalCardId.trim()) {
+      toast.error(getText('Tanpri antre ID kat la', 'Veuillez entrer l\'ID de la carte', 'Please enter the card ID'));
+      return;
+    }
+    setFetchingCard(true);
+    setFetchedCard(null);
+    try {
+      const res = await axios.post(`${API}/virtual-cards/fetch-external`, { card_id: externalCardId.trim() });
+      setFetchedCard(res.data);
+      setLinkCardEmail(user?.email || '');
+      toast.success(getText('Kat jwenn!', 'Carte trouvée!', 'Card found!'));
+    } catch (err) {
+      const msg = err.response?.data?.detail || getText('Kat la pa jwenn oswa ID la pa bon', 'Carte non trouvée ou ID invalide', 'Card not found or invalid ID');
+      toast.error(msg);
+      setFetchedCard(null);
+    } finally {
+      setFetchingCard(false);
+    }
+  };
+
+  const linkExternalCard = async () => {
+    if (!fetchedCard) return;
+    setLinkingCard(true);
+    try {
+      await axios.post(`${API}/virtual-cards/link-external`, { 
+        card_id: externalCardId.trim(),
+        card_email: linkCardEmail.trim() || user?.email || ''
+      });
+      toast.success(getText('Kat la lye avèk kont ou!', 'Carte liée à votre compte!', 'Card linked to your account!'));
+      setShowLinkCardModal(false);
+      setExternalCardId('');
+      setFetchedCard(null);
+      setLinkCardEmail('');
+      setShowCardSensitive(false);
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || getText('Erè nan lyaj kat la', 'Erreur de liaison', 'Error linking card'));
+    } finally {
+      setLinkingCard(false);
+    }
+  };
+
+  const formatFullCardNumber = (num) => {
+    if (!num) return '•••• •••• •••• ••••';
+    return String(num).replace(/(.{4})/g, '$1 ').trim();
+  };
+
   const formatCardNumber = (last4) => {
     if (!last4) return '•••• •••• •••• ••••';
     return `•••• •••• •••• ${String(last4).slice(-4)}`;
@@ -488,7 +548,7 @@ export default function VirtualCard() {
                   {getText('Jere kat vityèl ou yo', 'Gérez vos cartes virtuelles', 'Manage your virtual cards')}
                 </p>
               </div>
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 {approvedCards.length > 0 && (
                   <Button onClick={openTopUpModal} className="bg-emerald-500 hover:bg-emerald-600 text-white">
                     <Plus className="mr-2" size={18} />
@@ -504,6 +564,20 @@ export default function VirtualCard() {
                 <Button onClick={() => setShowOrderModal(true)} className="btn-primary">
                   <ShoppingCart className="mr-2" size={18} />
                   {getText('Komande yon kat', 'Commander une carte', 'Order a card')}
+                </Button>
+                <Button 
+                  onClick={() => {
+                    setShowLinkCardModal(true);
+                    setExternalCardId('');
+                    setFetchedCard(null);
+                    setLinkCardEmail('');
+                    setShowCardSensitive(false);
+                  }} 
+                  variant="outline" 
+                  className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                >
+                  <Link2 className="mr-2" size={18} />
+                  {getText('Lye kat egzistan', 'Lier carte existante', 'Link existing card')}
                 </Button>
               </div>
             </div>
@@ -1341,6 +1415,225 @@ export default function VirtualCard() {
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Link External Card Modal */}
+        <Dialog open={showLinkCardModal} onOpenChange={setShowLinkCardModal}>
+          <DialogContent className="w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Link2 className="text-purple-600" size={24} />
+                {getText('Lye Kat Egzistan', 'Lier une Carte Existante', 'Link Existing Card')}
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="space-y-6 py-4">
+              {/* Info Banner */}
+              <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="text-purple-500 mt-0.5" size={20} />
+                  <div>
+                    <p className="font-medium text-purple-800 dark:text-purple-400">
+                      {getText('Entegrasyon Kat Manyèl', 'Intégration Carte Manuelle', 'Manual Card Integration')}
+                    </p>
+                    <p className="text-sm text-purple-700 dark:text-purple-500 mt-1">
+                      {getText(
+                        'Si ou gentan gen yon kat Strowallet, ou ka lye li ak kont ou isit la. Antre ID kat la pou wè detay yo.',
+                        'Si vous avez déjà une carte Strowallet, vous pouvez la lier à votre compte ici. Entrez l\'ID de la carte pour voir les détails.',
+                        'If you already have a Strowallet card, you can link it to your account here. Enter the card ID to see the details.'
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card ID Input */}
+              <div>
+                <Label>{getText('ID Kat la', 'ID de la Carte', 'Card ID')}</Label>
+                <div className="flex gap-2 mt-2">
+                  <Input
+                    placeholder={getText('Antre ID kat ou a', 'Entrez l\'ID de votre carte', 'Enter your card ID')}
+                    value={externalCardId}
+                    onChange={(e) => setExternalCardId(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && fetchExternalCard()}
+                    className="flex-1"
+                  />
+                  <Button 
+                    onClick={fetchExternalCard} 
+                    disabled={fetchingCard || !externalCardId.trim()}
+                    className="bg-purple-600 hover:bg-purple-700"
+                  >
+                    {fetchingCard ? (
+                      <RefreshCw size={18} className="animate-spin" />
+                    ) : (
+                      <Search size={18} />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-xs text-stone-500 mt-1">
+                  {getText(
+                    'ID kat la se yon kòd inik ou te resevwa lè ou te kreye kat la.',
+                    'L\'ID de la carte est un code unique que vous avez reçu lors de la création de la carte.',
+                    'The card ID is a unique code you received when creating the card.'
+                  )}
+                </p>
+              </div>
+
+              {/* Fetched Card Preview */}
+              {fetchedCard && (
+                <div className="space-y-4">
+                  <div className="border-t pt-4">
+                    <h4 className="font-semibold text-stone-900 dark:text-white mb-3 flex items-center gap-2">
+                      <CreditCard size={18} className="text-emerald-600" />
+                      {getText('Kat Jwenn', 'Carte Trouvée', 'Card Found')}
+                    </h4>
+                    
+                    {/* Card Visual */}
+                    <div className={`relative rounded-2xl p-4 sm:p-6 text-white overflow-hidden ${
+                      fetchedCard.card_type === 'mastercard' 
+                        ? 'bg-gradient-to-br from-orange-500 via-red-500 to-pink-600' 
+                        : 'bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800'
+                    }`}>
+                      <div className="relative z-10">
+                        <div className="flex justify-between items-start mb-4">
+                          <span className="text-white/90 font-bold text-sm">Strowallet</span>
+                          <img 
+                            src={fetchedCard.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
+                            alt={fetchedCard.card_type}
+                            className="h-8 w-auto"
+                          />
+                        </div>
+                        
+                        <div className="mb-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-lg tracking-wider">
+                              {showCardSensitive 
+                                ? formatFullCardNumber(fetchedCard.card_number)
+                                : '•••• •••• •••• ' + (fetchedCard.card_number?.slice(-4) || '••••')
+                              }
+                            </span>
+                            <button 
+                              onClick={() => setShowCardSensitive(!showCardSensitive)}
+                              className="text-white/70 hover:text-white"
+                            >
+                              {showCardSensitive ? <EyeOff size={16} /> : <Eye size={16} />}
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <div className="flex justify-between items-end">
+                          <div>
+                            <p className="text-white/60 text-xs uppercase mb-1">{getText('Pòtè Kat', 'Titulaire', 'Card Holder')}</p>
+                            <p className="font-medium tracking-wide text-sm">
+                              {fetchedCard.card_holder_name || user?.full_name?.toUpperCase() || 'N/A'}
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-white/60 text-xs uppercase mb-1">EXP</p>
+                            <p className="font-mono font-medium text-sm">
+                              {fetchedCard.card_expiry || `${fetchedCard.expiry_month}/${fetchedCard.expiry_year}`}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-white/60 text-xs uppercase mb-1">CVV</p>
+                            <p className="font-mono font-medium text-sm">
+                              {showCardSensitive ? (fetchedCard.cvv || '•••') : '•••'}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Details */}
+                    {fetchedCard.balance !== null && fetchedCard.balance !== undefined && (
+                      <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3 mt-3">
+                        <div className="flex justify-between items-center">
+                          <span className="text-emerald-700 dark:text-emerald-400 text-sm">
+                            {getText('Balans', 'Solde', 'Balance')}
+                          </span>
+                          <span className="font-bold text-emerald-800 dark:text-emerald-300">
+                            ${Number(fetchedCard.balance).toFixed(2)} {fetchedCard.currency}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Billing Address */}
+                    {(fetchedCard.billing_address || fetchedCard.billing_city || fetchedCard.billing_country) && (
+                      <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3 mt-3">
+                        <div className="flex items-start gap-2">
+                          <MapPin className="text-stone-500 mt-0.5" size={14} />
+                          <div>
+                            <p className="text-stone-500 text-xs mb-1">{getText('Adrès Faktirasyon', 'Adresse de Facturation', 'Billing Address')}</p>
+                            <p className="text-sm text-stone-700 dark:text-stone-300">
+                              {[fetchedCard.billing_address, fetchedCard.billing_city, fetchedCard.billing_country, fetchedCard.billing_zip].filter(Boolean).join(', ')}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Email for Card */}
+                  <div>
+                    <Label>{getText('Email pou kat la', 'Email pour la carte', 'Email for card')}</Label>
+                    <Input
+                      type="email"
+                      value={linkCardEmail}
+                      onChange={(e) => setLinkCardEmail(e.target.value)}
+                      placeholder={user?.email || 'email@example.com'}
+                      className="mt-2"
+                    />
+                    <p className="text-xs text-stone-500 mt-1">
+                      {getText(
+                        'Email sa a ap asosye ak kat la nan kont ou.',
+                        'Cet email sera associé à la carte dans votre compte.',
+                        'This email will be associated with the card in your account.'
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Warning */}
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
+                    <p className="text-amber-700 dark:text-amber-400 text-sm flex items-start gap-2">
+                      <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                      {getText(
+                        'Asire ou ke kat sa a se pa ou. Ou pa ka delye kat la apre ou fin lye li.',
+                        'Assurez-vous que cette carte vous appartient. Vous ne pouvez pas dissocier la carte après l\'avoir liée.',
+                        'Make sure this card belongs to you. You cannot unlink the card after linking it.'
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Link Button */}
+                  <Button
+                    onClick={linkExternalCard}
+                    disabled={linkingCard}
+                    className="w-full bg-emerald-500 hover:bg-emerald-600"
+                  >
+                    {linkingCard ? (
+                      <>
+                        <RefreshCw size={18} className="mr-2 animate-spin" />
+                        {getText('Ap lye kat la...', 'Liaison en cours...', 'Linking card...')}
+                      </>
+                    ) : (
+                      <>
+                        <Link2 size={18} className="mr-2" />
+                        {getText('Lye kat la ak kont mwen', 'Lier à mon compte', 'Link to my account')}
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+
+              {/* Close Button when no card fetched */}
+              {!fetchedCard && (
+                <Button variant="outline" onClick={() => setShowLinkCardModal(false)} className="w-full">
+                  {getText('Fèmen', 'Fermer', 'Close')}
+                </Button>
+              )}
+            </div>
           </DialogContent>
         </Dialog>
       </div>
