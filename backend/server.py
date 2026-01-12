@@ -3830,7 +3830,41 @@ async def virtual_card_detail(
         payload["card_user_id"] = stw_customer_id
     payload = _with_aliases(payload, "card_id", "cardId", "id")
 
-    stw_detail = await _strowallet_post(settings, cfg["fetch_detail_path"], payload)
+    # Best-effort provider refresh (with retry). If it fails, return stored details instead of erroring.
+    try:
+        stw_detail = await _strowallet_fetch_detail_with_retry(
+            settings=settings,
+            cfg=cfg,
+            provider_card_id=str(order_full.get("provider_card_id")),
+            stw_customer_id=stw_customer_id,
+            reference=f"detail-{order_id}",
+            attempts=4,
+        )
+        if not stw_detail:
+            raise RuntimeError("Provider detail unavailable")
+    except Exception as e:
+        # Return the sanitized record without provider refresh.
+        safe = await db.virtual_card_orders.find_one(
+            {"order_id": order_id, "user_id": current_user["user_id"]},
+            {
+                "_id": 0,
+                "card_number": 0,
+                "card_cvv": 0,
+                "provider_raw": 0,
+                "provider_card_id": 0,
+                "admin_notes": 0,
+                "processed_by": 0,
+                "processed_at": 0,
+                "user_id": 0,
+                "client_id": 0,
+            },
+        )
+        return {
+            "provider": "strowallet",
+            "card": safe or {},
+            "note": "Provider refresh failed; showing stored card details.",
+            "error": str(e),
+        }
     card_number = _extract_first(stw_detail, "data.card_number", "data.number", "card_number", "number", "data.card.number", "data.card.card_number")
     card_expiry = _extract_first(stw_detail, "data.expiry", "data.expiry_date", "expiry", "expiry_date", "data.card.expiry", "data.card.expiry_date")
     card_holder_name = _extract_first(stw_detail, "data.name_on_card", "data.card_name", "name_on_card", "card_name", "data.card.name_on_card")
