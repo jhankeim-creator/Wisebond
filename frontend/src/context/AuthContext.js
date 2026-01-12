@@ -89,14 +89,7 @@ export const AuthProvider = ({ children }) => {
       forgotPassword,
       resetPassword,
       isAuthenticated: !!user,
-      isAdmin: user?.is_admin || false,
-      adminRole: user?.is_admin ? (user?.admin_role || 'admin') : null,
-      hasAdminRole: (roles = []) => {
-        if (!user?.is_admin) return false;
-        const role = (user?.admin_role || 'admin').toLowerCase();
-        if (role === 'superadmin') return true;
-        return Array.isArray(roles) ? roles.map(r => String(r).toLowerCase()).includes(role) : false;
-      }
+      isAdmin: user?.is_admin || false
     }}>
       {children}
     </AuthContext.Provider>

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Query, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -452,138 +452,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-def _normalize_admin_role(user: dict) -> str:
-    if not user or not user.get("is_admin"):
-        return ""
-    role = str(user.get("admin_role") or "").strip().lower()
-    return role or "admin"
-
-
-def _rbac_is_allowed(*, role: str, path: str) -> bool:
-    """
-    Server-side RBAC for /api/admin/* endpoints.
-    Keep frontend route/menu permissions aligned with this.
-    """
-    if not role:
-        return False
-    if role == "superadmin":
-        return True
-
-    allow: Dict[str, List[str]] = {
-        "support": [
-            "/api/admin/dashboard",
-            "/api/admin/users",
-            "/api/admin/kyc",
-            "/api/admin/kyc-image-storage-status",
-            "/api/admin/virtual-card-orders",
-            "/api/admin/card-topups",
-            "/api/admin/topup-orders",
-        ],
-        "finance": [
-            "/api/admin/dashboard",
-            "/api/admin/deposits",
-            "/api/admin/withdrawals",
-            "/api/admin/exchange-rates",
-            "/api/admin/rates",
-            "/api/admin/fees",
-            "/api/admin/card-fees",
-            "/api/admin/withdrawal-limits",
-            "/api/admin/payment-gateway",
-            "/api/admin/virtual-card-orders",
-            "/api/admin/card-topups",
-            "/api/admin/topup-orders",
-            "/api/admin/agent-deposits",
-            "/api/admin/agent-settings",
-            "/api/admin/agent-commission-withdrawals",
-            "/api/admin/agent-requests",
-            "/api/admin/agents",
-            "/api/admin/recharge-agent",
-            "/api/admin/client-reports",
-        ],
-        "manager": [
-            "/api/admin/dashboard",
-            "/api/admin/users",
-            "/api/admin/kyc",
-            "/api/admin/kyc-image-storage-status",
-            "/api/admin/deposits",
-            "/api/admin/withdrawals",
-            "/api/admin/virtual-card-orders",
-            "/api/admin/card-topups",
-            "/api/admin/topup-orders",
-            "/api/admin/bulk-email",
-            "/api/admin/logs",
-            "/api/admin/webhook-events",
-            "/api/admin/payment-gateway",
-            "/api/admin/agent-deposits",
-            "/api/admin/agent-settings",
-            "/api/admin/agent-commission-withdrawals",
-            "/api/admin/agent-requests",
-            "/api/admin/agents",
-            "/api/admin/recharge-agent",
-            "/api/admin/client-reports",
-            "/api/admin/whatsapp-notifications",
-            "/api/admin/test-whatsapp",
-            "/api/admin/test-telegram",
-            "/api/admin/telegram/setup-webhook",
-        ],
-        "admin": [
-            "/api/admin/dashboard",
-            "/api/admin/users",
-            "/api/admin/kyc",
-            "/api/admin/kyc-image-storage-status",
-            "/api/admin/deposits",
-            "/api/admin/withdrawals",
-            "/api/admin/exchange-rates",
-            "/api/admin/rates",
-            "/api/admin/fees",
-            "/api/admin/card-fees",
-            "/api/admin/withdrawal-limits",
-            "/api/admin/payment-gateway",
-            "/api/admin/virtual-card-orders",
-            "/api/admin/card-topups",
-            "/api/admin/topup-orders",
-            "/api/admin/bulk-email",
-            "/api/admin/logs",
-            "/api/admin/webhook-events",
-            "/api/admin/agent-deposits",
-            "/api/admin/agent-settings",
-            "/api/admin/agent-commission-withdrawals",
-            "/api/admin/agent-requests",
-            "/api/admin/agents",
-            "/api/admin/recharge-agent",
-            "/api/admin/client-reports",
-            "/api/admin/whatsapp-notifications",
-            "/api/admin/test-whatsapp",
-            "/api/admin/test-telegram",
-            "/api/admin/telegram/setup-webhook",
-            "/api/admin/strowallet",
-        ],
-    }
-
-    blocked_prefixes = [
-        "/api/admin/settings",
-        "/api/admin/team",
-        "/api/admin/purge-old-records",
-    ]
-    for bp in blocked_prefixes:
-        if path.startswith(bp):
-            return False
-
-    prefixes = allow.get(role, [])
-    return any(path == p or path.startswith(p + "/") for p in prefixes)
-
-
-async def get_admin_user(request: Request, current_user: dict = Depends(get_current_user)):
+async def get_admin_user(current_user: dict = Depends(get_current_user)):
     if not current_user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
-
-    role = _normalize_admin_role(current_user)
-    path = str(request.url.path or "")
-
-    if path.startswith("/api/admin"):
-        if not _rbac_is_allowed(role=role, path=path):
-            raise HTTPException(status_code=403, detail="Insufficient role permissions")
-
     return current_user
 
 async def log_action(user_id: str, action: str, details: dict):
