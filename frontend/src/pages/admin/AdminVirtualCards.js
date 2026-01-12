@@ -1970,6 +1970,21 @@ export default function AdminVirtualCards() {
                       </div>
                     </div>
                   )}
+
+                  {/* Debug: Show all available fields from API */}
+                  {fetchedExternalCard._debug_available_fields && (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-3">
+                      <p className="text-yellow-700 dark:text-yellow-400 text-xs font-medium mb-2">🔍 DEBUG: Champ disponib nan API Strowallet:</p>
+                      <div className="text-xs text-yellow-600 dark:text-yellow-500 font-mono max-h-40 overflow-y-auto">
+                        {Object.entries(fetchedExternalCard._debug_available_fields).map(([key, value]) => (
+                          <div key={key} className="flex gap-2">
+                            <span className="font-semibold">{key}:</span>
+                            <span className="break-all">{value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

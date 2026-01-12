@@ -4213,6 +4213,19 @@ async def admin_fetch_external_card_details(
         ey = str(expiry_year)[-2:] if len(str(expiry_year)) == 4 else str(expiry_year)
         card_expiry = f"{em}/{ey}"
 
+    # Build debug info showing all available fields from API
+    debug_available_fields = {}
+    if isinstance(card_data, dict):
+        for k, v in card_data.items():
+            if isinstance(v, dict):
+                debug_available_fields[k] = f"[object with keys: {list(v.keys())}]"
+            elif isinstance(v, (str, int, float, bool)) or v is None:
+                # Show value preview (truncated for long strings)
+                val_str = str(v)
+                debug_available_fields[k] = val_str[:50] + "..." if len(val_str) > 50 else val_str
+            else:
+                debug_available_fields[k] = f"[{type(v).__name__}]"
+    
     return {
         "card_id": request.card_id.strip(),
         "card_number": str(card_number),
@@ -4230,6 +4243,8 @@ async def admin_fetch_external_card_details(
         "billing_state": str(billing_state) if billing_state else None,
         "billing_country": str(billing_country) if billing_country else None,
         "billing_zip": str(billing_zip) if billing_zip else None,
+        # Debug: show all available fields from API response
+        "_debug_available_fields": debug_available_fields,
     }
 
 
