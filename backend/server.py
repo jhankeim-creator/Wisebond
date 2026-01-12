@@ -504,6 +504,25 @@ def _strowallet_kyc_can_create_user(create_user_payload: Dict[str, Any]) -> bool
     except Exception:
         return False
 
+
+async def _append_card_provider_event(order_id: str, event: Dict[str, Any]) -> None:
+    """
+    Append a provider event to the card order record (bounded).
+    Stored for admin/support troubleshooting; never returned to customers.
+    """
+    try:
+        if not order_id:
+            return
+        evt = dict(event or {})
+        evt.setdefault("at", datetime.now(timezone.utc).isoformat())
+        await db.virtual_card_orders.update_one(
+            {"order_id": order_id},
+            {"$push": {"provider_events": {"$each": [evt], "$slice": -50}}},
+        )
+    except Exception:
+        # best-effort
+        return
+
 def _with_aliases(payload: Dict[str, Any], key: str, *aliases: str) -> Dict[str, Any]:
     """
     Add common alias keys for a given payload field if present.
@@ -4250,25 +4269,70 @@ async def update_virtual_card_controls(
     try:
         if _strowallet_enabled(settings):
             if ("spending_limit_usd" in update_doc or "spending_limit_period" in update_doc) and cfg.get("set_limit_path"):
-                await _strowallet_post(settings, cfg["set_limit_path"], {
+                resp = await _strowallet_post(settings, cfg["set_limit_path"], {
                     "card_id": order.get("provider_card_id"),
                     "limit": float(update_doc.get("spending_limit_usd", order.get("spending_limit_usd", 500.0))),
                     "period": str(update_doc.get("spending_limit_period", order.get("spending_limit_period", "monthly"))),
                     "reference": f"limit-{order_id}",
                 })
+                await _append_card_provider_event(order_id, {
+                    "type": "strowallet_set_limit",
+                    "path_used": cfg.get("set_limit_path"),
+                    "request": {"limit": update_doc.get("spending_limit_usd"), "period": update_doc.get("spending_limit_period")},
+                    "response": _redact_sensitive_payload(resp),
+                })
             if payload.lock is True and cfg.get("freeze_path"):
-                await _strowallet_post(settings, cfg["freeze_path"], {
-                    "card_id": order.get("provider_card_id"),
-                    "reference": f"freeze-{order_id}",
-                })
+                # Prefer unified endpoint when configured.
+                if cfg.get("freeze_unfreeze_path"):
+                    body = {"card_id": order.get("provider_card_id"), "action": "freeze", "reference": f"freeze-{order_id}"}
+                    body = _with_aliases(body, "card_id", "cardId", "id")
+                    resp = await _strowallet_post(settings, cfg["freeze_unfreeze_path"], body)
+                    await _append_card_provider_event(order_id, {
+                        "type": "strowallet_freeze",
+                        "path_used": cfg.get("freeze_unfreeze_path"),
+                        "request": {"action": "freeze"},
+                        "response": _redact_sensitive_payload(resp),
+                    })
+                else:
+                    resp = await _strowallet_post(settings, cfg["freeze_path"], {
+                        "card_id": order.get("provider_card_id"),
+                        "reference": f"freeze-{order_id}",
+                    })
+                    await _append_card_provider_event(order_id, {
+                        "type": "strowallet_freeze",
+                        "path_used": cfg.get("freeze_path"),
+                        "request": {"action": "freeze"},
+                        "response": _redact_sensitive_payload(resp),
+                    })
             if payload.lock is False and cfg.get("unfreeze_path"):
-                await _strowallet_post(settings, cfg["unfreeze_path"], {
-                    "card_id": order.get("provider_card_id"),
-                    "reference": f"unfreeze-{order_id}",
-                })
+                if cfg.get("freeze_unfreeze_path"):
+                    body = {"card_id": order.get("provider_card_id"), "action": "unfreeze", "reference": f"unfreeze-{order_id}"}
+                    body = _with_aliases(body, "card_id", "cardId", "id")
+                    resp = await _strowallet_post(settings, cfg["freeze_unfreeze_path"], body)
+                    await _append_card_provider_event(order_id, {
+                        "type": "strowallet_unfreeze",
+                        "path_used": cfg.get("freeze_unfreeze_path"),
+                        "request": {"action": "unfreeze"},
+                        "response": _redact_sensitive_payload(resp),
+                    })
+                else:
+                    resp = await _strowallet_post(settings, cfg["unfreeze_path"], {
+                        "card_id": order.get("provider_card_id"),
+                        "reference": f"unfreeze-{order_id}",
+                    })
+                    await _append_card_provider_event(order_id, {
+                        "type": "strowallet_unfreeze",
+                        "path_used": cfg.get("unfreeze_path"),
+                        "request": {"action": "unfreeze"},
+                        "response": _redact_sensitive_payload(resp),
+                    })
     except Exception as e:
         # Keep local state consistent; provider controls can be retried by admin if needed.
         logger.warning(f"Strowallet controls update failed for order {order_id}: {e}")
+        await _append_card_provider_event(order_id, {
+            "type": "strowallet_controls_error",
+            "error": str(e),
+        })
 
     await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": update_doc})
     updated = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
@@ -4802,15 +4866,33 @@ async def virtual_card_freezeunfreeze(
 
     if cfg.get("freeze_unfreeze_path"):
         resp = await _strowallet_post(settings, cfg["freeze_unfreeze_path"], body)
+        await _append_card_provider_event(order_id, {
+            "type": f"strowallet_{payload.action}",
+            "path_used": cfg.get("freeze_unfreeze_path"),
+            "request": {"action": payload.action},
+            "response": _redact_sensitive_payload(resp),
+        })
     else:
         if payload.action == "freeze":
             if not cfg.get("freeze_path"):
                 raise HTTPException(status_code=400, detail="Freeze endpoint not configured")
             resp = await _strowallet_post(settings, cfg["freeze_path"], body)
+            await _append_card_provider_event(order_id, {
+                "type": "strowallet_freeze",
+                "path_used": cfg.get("freeze_path"),
+                "request": {"action": payload.action},
+                "response": _redact_sensitive_payload(resp),
+            })
         else:
             if not cfg.get("unfreeze_path"):
                 raise HTTPException(status_code=400, detail="Unfreeze endpoint not configured")
             resp = await _strowallet_post(settings, cfg["unfreeze_path"], body)
+            await _append_card_provider_event(order_id, {
+                "type": "strowallet_unfreeze",
+                "path_used": cfg.get("unfreeze_path"),
+                "request": {"action": payload.action},
+                "response": _redact_sensitive_payload(resp),
+            })
 
     return {"provider": "strowallet", "order_id": order_id, "action": payload.action, "response": resp}
 
@@ -4945,9 +5027,16 @@ async def strowallet_webhook(request: Request):
     )
     try:
         if _strowallet_enabled(settings) and cfg.get("freeze_path"):
-            await _strowallet_post(settings, cfg["freeze_path"], {"card_id": card_id, "reference": f"autofreeze-{order['order_id']}"})
+            resp = await _strowallet_post(settings, cfg["freeze_path"], {"card_id": card_id, "reference": f"autofreeze-{order['order_id']}"})
+            await _append_card_provider_event(order["order_id"], {
+                "type": "strowallet_autofreeze",
+                "path_used": cfg.get("freeze_path"),
+                "request": {"action": "freeze"},
+                "response": _redact_sensitive_payload(resp),
+            })
     except Exception as e:
         logger.warning(f"Failed to freeze Strowallet card {card_id} after failed payment: {e}")
+        await _append_card_provider_event(order["order_id"], {"type": "strowallet_autofreeze_error", "error": str(e)})
 
     await log_action(order.get("user_id") or "system", "strowallet_failed_payment", {"order_id": order["order_id"], "card_id": card_id})
     return {"ok": True, "card_status": "locked"}
