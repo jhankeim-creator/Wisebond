@@ -3969,47 +3969,53 @@ async def admin_fetch_external_card_details(
         raise HTTPException(status_code=404, detail=f"Kat pa jwenn: {last_error}")
 
     # Log the response for debugging
-    logger.info(f"Strowallet fetch-external response keys: {list(stw_detail.keys()) if isinstance(stw_detail, dict) else type(stw_detail)}")
+    logger.info(f"Strowallet fetch-external full response: {stw_detail}")
     
-    # Check for response wrapper (Strowallet uses 'response' not 'data')
-    response_obj = stw_detail.get("response") or stw_detail.get("data") or {}
-    if isinstance(response_obj, dict):
-        logger.info(f"Strowallet response/data keys: {list(response_obj.keys())}")
+    # Check for response wrapper - Strowallet may put card data in 'response' directly
+    response_obj = stw_detail.get("response") if isinstance(stw_detail.get("response"), dict) else {}
+    data_obj = stw_detail.get("data") if isinstance(stw_detail.get("data"), dict) else {}
+    message_obj = stw_detail.get("message") if isinstance(stw_detail.get("message"), dict) else {}
+    
+    # If response/data/message is a dict with card fields, use it
+    card_source = response_obj or data_obj or message_obj or stw_detail
+    logger.info(f"Strowallet card_source keys: {list(card_source.keys()) if isinstance(card_source, dict) else type(card_source)}")
 
-    # Extract card details from the provider response (try many possible paths)
+    # Extract card details from the provider response
+    # First, try to get card data from response/data/message wrapper
+    card_data = stw_detail
+    if isinstance(stw_detail.get("response"), dict) and stw_detail.get("response"):
+        card_data = stw_detail["response"]
+    elif isinstance(stw_detail.get("data"), dict) and stw_detail.get("data"):
+        card_data = stw_detail["data"]
+    elif isinstance(stw_detail.get("message"), dict) and stw_detail.get("message"):
+        card_data = stw_detail["message"]
+    
+    logger.info(f"Strowallet card_data type: {type(card_data)}, keys: {list(card_data.keys()) if isinstance(card_data, dict) else 'N/A'}")
+    
+    # Extract from card_data directly (most common case)
     card_number = _extract_first(
+        card_data,
+        "card_number", "cardNumber", "pan", "card_pan", "masked_pan",
+    ) or _extract_first(
         stw_detail,
-        # Response paths (Strowallet actual format)
-        "response.card_number", "response.cardNumber", "response.pan",
-        # Data paths
-        "data.card_number", "data.cardNumber", "data.pan",
-        # Direct paths
-        "card_number", "cardNumber", "pan",
+        "response.card_number", "data.card_number", "card_number",
     )
     expiry_month = _extract_first(
-        stw_detail,
-        "response.expiry_month", "response.expiryMonth",
-        "data.expiry_month", "data.expiryMonth",
-        "expiry_month", "expiryMonth",
-    )
+        card_data,
+        "expiry_month", "expiryMonth", "exp_month",
+    ) or _extract_first(stw_detail, "response.expiry_month", "data.expiry_month")
     expiry_year = _extract_first(
-        stw_detail,
-        "response.expiry_year", "response.expiryYear",
-        "data.expiry_year", "data.expiryYear",
-        "expiry_year", "expiryYear",
-    )
+        card_data,
+        "expiry_year", "expiryYear", "exp_year",
+    ) or _extract_first(stw_detail, "response.expiry_year", "data.expiry_year")
     cvv = _extract_first(
-        stw_detail,
-        "response.cvv", "response.cvc",
-        "data.cvv", "data.cvc",
-        "cvv", "cvc",
-    )
+        card_data,
+        "cvv", "cvc", "cvv2", "security_code",
+    ) or _extract_first(stw_detail, "response.cvv", "data.cvv")
     holder_name = _extract_first(
-        stw_detail,
-        "response.card_holder_name", "response.cardHolderName", "response.name_on_card",
-        "data.card_holder_name", "data.cardHolderName", "data.name_on_card",
-        "card_holder_name", "cardHolderName", "name_on_card",
-    )
+        card_data,
+        "card_holder_name", "cardHolderName", "name_on_card", "cardholder_name", "holder_name",
+    ) or _extract_first(stw_detail, "response.card_holder_name", "data.card_holder_name")
     balance = _extract_first(
         stw_detail,
         "data.balance", "data.card.balance", "balance",
@@ -4042,10 +4048,8 @@ async def admin_fetch_external_card_details(
 
     if not card_number:
         # Return debug info so admin can see what the API returned
-        sample_keys = list(stw_detail.keys())[:5] if isinstance(stw_detail, dict) else []
-        response_keys = list(stw_detail.get("response", {}).keys())[:10] if isinstance(stw_detail.get("response"), dict) else []
-        data_keys = list(stw_detail.get("data", {}).keys())[:10] if isinstance(stw_detail.get("data"), dict) else []
-        raise HTTPException(status_code=400, detail=f"Pa ka jwenn nimewo kat. response_keys: {response_keys}, data_keys: {data_keys}")
+        card_data_keys = list(card_data.keys())[:15] if isinstance(card_data, dict) else []
+        raise HTTPException(status_code=400, detail=f"Pa ka jwenn nimewo kat. card_data_keys: {card_data_keys}. Tcheke log yo pou plis detay.")
 
     # Format expiry
     card_expiry = None
