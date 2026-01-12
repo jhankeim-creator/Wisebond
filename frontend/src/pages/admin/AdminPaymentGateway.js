@@ -35,7 +35,6 @@ const makeEmptyMethod = (paymentType) => ({
   maximum_amount: 0,
   fee_type: 'fixed',
   fee_value: 0,
-  use_card_fee_tiers: false,
   display: {
     instructions: '',
     recipient_details: '',
@@ -213,7 +212,6 @@ export default function AdminPaymentGateway() {
         maximum_amount: Number(editing.maximum_amount || 0),
         fee_type: editing.fee_type,
         fee_value: Number(editing.fee_value || 0),
-        use_card_fee_tiers: !!editing.use_card_fee_tiers,
         display: editing.display || {},
         integration: editing.integration || null,
         custom_fields: (editing.custom_fields || []).map((f) => ({
@@ -679,24 +677,6 @@ export default function AdminPaymentGateway() {
               {editing.payment_type === 'withdrawal' && (
                 <div className="border rounded-xl p-4 space-y-4">
                   <p className="font-semibold">{getText('Opsyon Retrè', 'Options Retrait', 'Withdrawal options')}</p>
-                  <div className="flex items-center justify-between border rounded-lg p-3">
-                    <div>
-                      <p className="text-sm font-medium">
-                        {getText('Frè menm jan ak Kat (tiers)', 'Frais comme Carte (paliers)', 'Use card fee tiers')}
-                      </p>
-                      <p className="text-xs text-stone-500">
-                        {getText(
-                          'Si aktive, sistèm nan ap kalkile frè retrè a ak menm “card fees tiers” yo (rekòmande pou retrè USD).',
-                          'Si activé, le système calcule les frais de retrait avec les mêmes paliers que les cartes (recommandé pour retraits USD).',
-                          'If enabled, withdrawal fee uses the same tiered fees as virtual cards (recommended for USD withdrawals).'
-                        )}
-                      </p>
-                    </div>
-                    <Switch
-                      checked={!!editing.use_card_fee_tiers}
-                      onCheckedChange={(v) => setEditing({ ...editing, use_card_fee_tiers: v })}
-                    />
-                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label>{getText('Tan pwosesis', 'Temps de traitement', 'Processing Time')}</Label>

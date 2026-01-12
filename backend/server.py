@@ -580,9 +580,6 @@ class PaymentGatewayMethodUpsert(BaseModel):
     maximum_amount: float = 0.0
     fee_type: PaymentGatewayFeeType = "fixed"
     fee_value: float = 0.0
-    # If enabled (withdrawal methods only), compute fee using the same tiered fee table used for virtual cards (`card_fees`).
-    # This lets you activate "card-style fees" per payment method.
-    use_card_fee_tiers: bool = False
     display: Optional[PaymentGatewayDisplayConfig] = None
     custom_fields: List[PaymentGatewayCustomField] = Field(default_factory=list)
     withdrawal_config: Optional[PaymentGatewayWithdrawalConfig] = None
@@ -709,6 +706,8 @@ class AdminSettingsUpdate(BaseModel):
 
     # Fees & Affiliate (optional, UI-configurable)
     card_order_fee_htg: Optional[int] = None
+    # Virtual Card: charge fee on withdrawals back to wallet (USD)
+    card_withdraw_fee_enabled: Optional[bool] = None
     affiliate_reward_htg: Optional[int] = None
     affiliate_cards_required: Optional[int] = None
     card_background_image: Optional[str] = None
@@ -2022,17 +2021,8 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
 
     fee_type = method.get("fee_type", "fixed")
     fee_value = float(method.get("fee_value") or 0)
-    fee_source = "method"
-
-    # Optional: apply the same tiered fee table used for virtual cards (USD only).
-    use_card_fee_tiers = bool(method.get("use_card_fee_tiers", False))
     fee = (request.amount * (fee_value / 100.0)) if fee_type == "percentage" else fee_value
     fee = max(0.0, float(fee))
-    if use_card_fee_tiers and target_currency == "USD":
-        card_fees = await db.card_fees.find({}, {"_id": 0}).sort("min_amount", 1).to_list(100)
-        fee = max(0.0, float(_calculate_card_fee_usd(float(request.amount), card_fees)))
-        fee_source = "card_fees"
-
     # Fee is added on top: user receives `amount`, wallet is charged (amount + fee)
     net_amount = max(0.0, float(request.amount))
     total_amount = max(0.0, float(request.amount + fee))
@@ -2074,8 +2064,6 @@ async def create_withdrawal(request: WithdrawalRequest, current_user: dict = Dep
             "payment_type": "withdrawal",
             "fee_type": fee_type,
             "fee_value": fee_value,
-            "fee_source": fee_source,
-            "use_card_fee_tiers": use_card_fee_tiers,
             "minimum_amount": min_amount,
             "maximum_amount": max_amount,
             "supported_currencies": method.get("supported_currencies", []),
@@ -3000,6 +2988,19 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
     if amt < 5:
         raise HTTPException(status_code=400, detail="Minimum amount is $5")
 
+    # Apply the same card fee tiers for withdrawals (optional; enabled by default).
+    card_withdraw_fee_enabled = bool((settings or {}).get("card_withdraw_fee_enabled", True))
+    fee = 0.0
+    if card_withdraw_fee_enabled:
+        card_fees = await db.card_fees.find({}, {"_id": 0}).sort("min_amount", 1).to_list(100)
+        fee = _calculate_card_fee_usd(amt, card_fees)
+        if fee < 0:
+            fee = 0.0
+    fee = round(float(fee or 0), 2)
+    net_amount = round(max(0.0, amt - fee), 2)
+    if net_amount <= 0:
+        raise HTTPException(status_code=400, detail="Withdrawal amount is too small after fee")
+
     if not _strowallet_enabled(settings):
         raise HTTPException(status_code=400, detail="Card withdrawals are not enabled")
     if card_order.get("provider") != "strowallet" or not card_order.get("provider_card_id"):
@@ -3027,7 +3028,9 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
         "card_brand": card_order.get("card_brand"),
         "card_type": card_order.get("card_type"),
         "card_last4": card_order.get("card_last4"),
-        "amount": amt,
+        "amount": amt,  # gross withdrawn from card
+        "fee": fee,
+        "net_amount": net_amount,  # credited to wallet
         "currency": "USD",
         "status": "approved",
         "provider": "strowallet",
@@ -3041,20 +3044,21 @@ async def withdraw_from_virtual_card(request: CardWithdrawRequest, current_user:
     await db.virtual_card_withdrawals.insert_one(record)
     await db.users.update_one(
         {"user_id": current_user["user_id"]},
-        {"$inc": {"wallet_usd": amt}},
+        {"$inc": {"wallet_usd": net_amount}},
     )
     await db.transactions.insert_one({
         "transaction_id": str(uuid.uuid4()),
         "user_id": current_user["user_id"],
         "type": "card_withdrawal",
-        "amount": amt,
+        "amount": net_amount,
+        "fee": fee,
         "currency": "USD",
         "status": "completed",
-        "description": f"Card withdrawal from {card_order.get('card_email')} (Strowallet)",
+        "description": f"Card withdrawal from {card_order.get('card_email')} (Strowallet) - gross ${amt:.2f} fee ${fee:.2f} net ${net_amount:.2f}",
         "reference_id": withdrawal_id,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
-    await log_action(current_user["user_id"], "card_withdrawal", {"withdrawal_id": withdrawal_id, "amount": amt})
+    await log_action(current_user["user_id"], "card_withdrawal", {"withdrawal_id": withdrawal_id, "gross": amt, "fee": fee, "net": net_amount})
 
     if "_id" in record:
         del record["_id"]
@@ -5711,10 +5715,6 @@ def _validate_payment_gateway_method_input(method: PaymentGatewayMethodUpsert) -
     if method.payment_type == "deposit" and method.withdrawal_config is not None:
         raise HTTPException(status_code=400, detail="Deposit methods cannot have withdrawal configuration")
 
-    # use_card_fee_tiers is only applicable to withdrawals; ignore for deposits.
-    if method.payment_type != "withdrawal" and getattr(method, "use_card_fee_tiers", False):
-        raise HTTPException(status_code=400, detail="use_card_fee_tiers can only be enabled for withdrawal methods")
-
     if method.integration and method.integration.provider == "plisio":
         if method.payment_type != "deposit":
             raise HTTPException(status_code=400, detail="Plisio integration is only supported for deposit methods")
@@ -5923,6 +5923,7 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
         "telegram_bot_token": "",
         "telegram_chat_id": "",
         "card_order_fee_htg": 500,
+        "card_withdraw_fee_enabled": True,
         "affiliate_reward_htg": 2000,
         "affiliate_cards_required": 5,
         "card_background_image": None,
@@ -6132,6 +6133,7 @@ async def get_public_app_config():
         return {
             "virtual_cards_enabled": False,
             "card_order_fee_htg": 500,
+            "card_withdraw_fee_enabled": True,
             "card_background_image": None,
             "topup_fee_tiers": [],
             "announcement_enabled": False,
@@ -6145,6 +6147,7 @@ async def get_public_app_config():
     return {
         "virtual_cards_enabled": _virtual_cards_enabled(settings),
         "card_order_fee_htg": settings.get("card_order_fee_htg", 500),
+        "card_withdraw_fee_enabled": settings.get("card_withdraw_fee_enabled", True),
         "card_background_image": settings.get("card_background_image"),
         "topup_fee_tiers": settings.get("topup_fee_tiers", []),
         "announcement_enabled": settings.get("announcement_enabled", False),
