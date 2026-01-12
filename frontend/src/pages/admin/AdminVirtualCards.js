@@ -36,6 +36,7 @@ export default function AdminVirtualCards() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [recoveringOrder, setRecoveringOrder] = useState(false);
   const [adminNotes, setAdminNotes] = useState('');
   
   // Top-ups state
@@ -527,6 +528,25 @@ export default function AdminVirtualCards() {
       toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
     } finally {
       setProcessing(false);
+    }
+  };
+
+  const autoIssueOrSyncOrder = async () => {
+    if (!selectedOrder?.order_id) return;
+    setRecoveringOrder(true);
+    try {
+      const res = await axios.post(`${API}/admin/virtual-card-orders/${selectedOrder.order_id}/auto-issue`);
+      const updated = res.data?.order;
+      if (updated) {
+        setSelectedOrder(updated);
+        setProviderCardId(updated?.provider_card_id || '');
+      }
+      toast.success(getText('Kat la senkro/kreyasyon fèt!', 'Carte synchronisée/émise!', 'Card sync/issue completed!'));
+      fetchOrders();
+    } catch (e) {
+      toast.error(getErrorMessage(e));
+    } finally {
+      setRecoveringOrder(false);
     }
   };
 
@@ -1402,6 +1422,18 @@ export default function AdminVirtualCards() {
 
                 {selectedOrder.status !== 'pending' && (
                   <>
+                    <div className="flex gap-3 flex-wrap">
+                      <Button
+                        variant="outline"
+                        onClick={autoIssueOrSyncOrder}
+                        disabled={recoveringOrder || processing}
+                        className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                      >
+                        <RefreshCw size={16} className={`mr-2 ${recoveringOrder ? 'animate-spin' : ''}`} />
+                        {getText('Auto-issue / Senkro', 'Auto-émettre / Sync', 'Auto-issue / Sync')}
+                      </Button>
+                    </div>
+
                     {/* Edit / Update */}
                     <div className="border rounded-xl p-4 space-y-4">
                       <h4 className="font-semibold flex items-center gap-2">
