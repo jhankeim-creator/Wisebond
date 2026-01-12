@@ -9,7 +9,6 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -31,8 +30,7 @@ import {
   Plus,
   ArrowRight,
   ArrowDown,
-  RefreshCw,
-  MoreVertical
+  RefreshCw
 } from 'lucide-react';
 
 // Card logos
@@ -579,92 +577,102 @@ export default function VirtualCard() {
                 ) : (
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {approvedCards.map((c) => (
-                      <div key={c.order_id} className="rounded-2xl overflow-hidden border border-stone-200 bg-white dark:bg-stone-900 dark:border-stone-700">
-                        {/* Card visual (no actions on the card face) */}
-                        <div
-                          className={`relative overflow-hidden text-white p-4 min-h-[176px] ${
-                            c.card_type === 'mastercard'
-                              ? 'bg-gradient-to-br from-orange-500 via-red-500 to-pink-600'
-                              : 'bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800'
-                          }`}
-                        >
-                          {(c.card_image || defaultCardBg) ? (
-                            <img
-                              src={c.card_image || defaultCardBg}
-                              alt="Card"
-                              className="absolute inset-0 w-full h-full object-cover opacity-80"
-                            />
-                          ) : null}
+                      <div
+                        key={c.order_id}
+                        className={`relative rounded-2xl overflow-hidden text-white p-4 min-h-[176px] ${
+                          c.card_type === 'mastercard'
+                            ? 'bg-gradient-to-br from-orange-500 via-red-500 to-pink-600'
+                            : 'bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800'
+                        }`}
+                      >
+                        {(c.card_image || defaultCardBg) ? (
+                          <img
+                            src={c.card_image || defaultCardBg}
+                            alt="Card"
+                            className="absolute inset-0 w-full h-full object-cover opacity-80"
+                          />
+                        ) : null}
 
-                          <div className="relative z-10 flex flex-col h-full">
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="min-w-0">
-                                <p className="text-xs text-white/80">{c.card_brand || getText('Kat', 'Carte', 'Card')}</p>
-                                <p className="font-mono text-lg tracking-wider mt-1">{formatCardNumber(c.card_last4)}</p>
-                              </div>
-                              <img
-                                src={c.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO}
-                                alt={c.card_type}
-                                className="h-10 w-auto"
-                              />
+                        <div className="relative z-10 flex flex-col h-full">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs text-white/80">{c.card_brand || getText('Kat', 'Carte', 'Card')}</p>
+                              <p className="font-mono text-lg tracking-wider mt-1">{formatCardNumber(c.card_last4)}</p>
                             </div>
+                            <img
+                              src={c.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO}
+                              alt={c.card_type}
+                              className="h-10 w-auto"
+                            />
+                          </div>
 
-                            <div className="flex items-end justify-between mt-auto pt-4">
-                              <div className="min-w-0">
-                                <p className="text-[11px] text-white/70 uppercase">{getText('Ekspire', 'Expire', 'Expires')}</p>
-                                <p className="font-mono">{c.card_expiry || 'MM/YY'}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-[11px] text-white/70 uppercase">{getText('Balans', 'Solde', 'Balance')}</p>
-                                <p className="font-semibold">
-                                  {c.card_balance != null ? `${Number(c.card_balance).toFixed(2)} ${c.card_currency || 'USD'}` : '—'}
-                                </p>
-                              </div>
+                          <div className="flex items-end justify-between mt-auto pt-4">
+                            <div className="min-w-0">
+                              <p className="text-[11px] text-white/70 uppercase">{getText('Ekspire', 'Expire', 'Expires')}</p>
+                              <p className="font-mono">{c.card_expiry || 'MM/YY'}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[11px] text-white/70 uppercase">{getText('Balans', 'Solde', 'Balance')}</p>
+                              <p className="font-semibold">
+                                {c.card_balance != null ? `${Number(c.card_balance).toFixed(2)} ${c.card_currency || 'USD'}` : '—'}
+                              </p>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Action bar (standard pattern: actions below, not on the card) */}
-                        <div className="p-3 flex items-center justify-between gap-2">
-                          <Button size="sm" onClick={() => viewCardDetails(c)} className="btn-primary">
-                            <Eye size={16} className="mr-2" />
-                            {getText('Detay', 'Détails', 'Details')}
-                          </Button>
+                          <div className="flex flex-wrap gap-2 mt-4">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => viewCardDetails(c)}
+                              className="border-white/40 text-white hover:bg-white/10"
+                            >
+                              <Eye size={16} className="mr-1" />
+                              {getText('Detay', 'Détails', 'Details')}
+                            </Button>
 
-                          <div className="flex items-center gap-2">
-                            {getStatusBadge(c.status)}
+                            {c.provider === 'strowallet' ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openTransactions(c)}
+                                className="border-white/40 text-white hover:bg-white/10"
+                              >
+                                <History size={16} className="mr-1" />
+                                {getText('Tranzaksyon', 'Transactions', 'Transactions')}
+                              </Button>
+                            ) : null}
 
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm" className="px-2" aria-label={getText('Plis', 'Plus', 'More')}>
-                                  <MoreVertical size={16} />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {c.provider === 'strowallet' ? (
-                                  <DropdownMenuItem onSelect={() => openTransactions(c)}>
-                                    <History />
-                                    {getText('Tranzaksyon', 'Transactions', 'Transactions')}
-                                  </DropdownMenuItem>
-                                ) : null}
+                            <Button
+                              size="sm"
+                              onClick={() => openTopUpModalForCard(c)}
+                              disabled={virtualCardsEnabled === false}
+                              className="bg-emerald-500 hover:bg-emerald-600"
+                            >
+                              <Plus size={16} className="mr-1" />
+                              {getText('Top-up', 'Recharger', 'Top up')}
+                            </Button>
 
-                                <DropdownMenuItem onSelect={() => refreshCardDetails(c)} disabled={refreshingDetails || virtualCardsEnabled === false}>
-                                  <RefreshCw className={refreshingDetails ? 'animate-spin' : ''} />
-                                  {getText('Ajou detay', 'Rafraîchir', 'Refresh')}
-                                </DropdownMenuItem>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openWithdrawModalForCard(c)}
+                              disabled={virtualCardsEnabled === false}
+                              className="border-white/40 text-white hover:bg-white/10"
+                            >
+                              <ArrowDown size={16} className="mr-1" />
+                              {getText('Retrè', 'Retrait', 'Withdraw')}
+                            </Button>
 
-                                <DropdownMenuSeparator />
-
-                                <DropdownMenuItem onSelect={() => openTopUpModalForCard(c)} disabled={virtualCardsEnabled === false}>
-                                  <Plus />
-                                  {getText('Top-up', 'Recharger', 'Top up')}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => openWithdrawModalForCard(c)} disabled={virtualCardsEnabled === false}>
-                                  <ArrowDown />
-                                  {getText('Retrè', 'Retrait', 'Withdraw')}
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => refreshCardDetails(c)}
+                              disabled={refreshingDetails || virtualCardsEnabled === false}
+                              className="border-white/40 text-white hover:bg-white/10"
+                            >
+                              <RefreshCw size={16} className={`mr-1 ${refreshingDetails ? 'animate-spin' : ''}`} />
+                              {getText('Ajou', 'Maj', 'Sync')}
+                            </Button>
                           </div>
                         </div>
                       </div>
