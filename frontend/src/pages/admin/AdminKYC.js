@@ -18,7 +18,6 @@ export default function AdminKYC() {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('pending');
-  const [stats, setStats] = useState(null);
   const [selectedKyc, setSelectedKyc] = useState(null);
   const [showModal, setShowModal] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
@@ -39,7 +38,6 @@ export default function AdminKYC() {
       if (filter !== 'all') url += `?status=${filter}`;
       const response = await axios.get(url);
       setSubmissions(response.data.submissions || []);
-      setStats(response.data.stats || null);
     } catch (error) {
       console.error('Error fetching KYC:', error);
       toast.error(getText('Erè pandan chajman', 'Erreur lors du chargement', 'Error loading'));
@@ -93,10 +91,9 @@ export default function AdminKYC() {
   };
 
   // Stats
-  const pendingCount = stats?.pending ?? submissions.filter(s => s.status === 'pending').length;
-  const approvedCount = stats?.approved ?? submissions.filter(s => s.status === 'approved').length;
-  const rejectedCount = stats?.rejected ?? submissions.filter(s => s.status === 'rejected').length;
-  const totalCount = stats?.total ?? submissions.length;
+  const pendingCount = submissions.filter(s => s.status === 'pending').length;
+  const approvedCount = submissions.filter(s => s.status === 'approved').length;
+  const rejectedCount = submissions.filter(s => s.status === 'rejected').length;
 
   return (
     <AdminLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
@@ -150,7 +147,7 @@ export default function AdminKYC() {
                   <Users className="text-blue-600" size={20} />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{totalCount}</p>
+                  <p className="text-2xl font-bold">{submissions.length}</p>
                   <p className="text-xs text-stone-500">{getText('Total', 'Total', 'Total')}</p>
                 </div>
               </div>
