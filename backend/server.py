@@ -3929,7 +3929,11 @@ async def admin_fetch_external_card_details(
         payload: Dict[str, Any] = {
             "card_id": card_id,
             "public_key": cfg.get("api_key", ""),
-            "mode": cfg.get("mode", "live"),
+            "mode": "live",  # MUST be "live" to get full card number and CVV
+            "show_cvv": True,
+            "show_pan": True,
+            "include_cvv": True,
+            "include_pan": True,
             "reference": f"fetch-ext-{admin['user_id']}-{card_id[:8]}",
         }
         # Add secret if available
@@ -4029,25 +4033,37 @@ async def admin_fetch_external_card_details(
         card_data = stw_detail
         logger.warning(f"Could not find card data wrapper, using full response")
     
-    # Extract card fields
+    # Extract card fields - try many possible field names
     card_number = (
         card_data.get("card_number") or card_data.get("cardNumber") or 
         card_data.get("pan") or card_data.get("card_pan") or
+        card_data.get("masked_pan") or card_data.get("unmasked_pan") or
+        card_data.get("number") or card_data.get("card_no") or
+        card_data.get("account_number") or card_data.get("cardNo") or
         _extract_first(stw_detail, "response.card_number", "data.card_number", "message.card_number")
     )
+    
+    # Log what we found for debugging
+    logger.info(f"Extracted card_number: {'YES' if card_number else 'NO'}")
+    if not card_number:
+        logger.info(f"Available card_data keys: {list(card_data.keys()) if isinstance(card_data, dict) else 'N/A'}")
+    
     expiry_month = (
         card_data.get("expiry_month") or card_data.get("expiryMonth") or 
-        card_data.get("exp_month") or
+        card_data.get("exp_month") or card_data.get("expMonth") or
+        card_data.get("month") or card_data.get("expiry_mm") or
         _extract_first(stw_detail, "response.expiry_month", "data.expiry_month")
     )
     expiry_year = (
         card_data.get("expiry_year") or card_data.get("expiryYear") or 
-        card_data.get("exp_year") or
+        card_data.get("exp_year") or card_data.get("expYear") or
+        card_data.get("year") or card_data.get("expiry_yy") or
         _extract_first(stw_detail, "response.expiry_year", "data.expiry_year")
     )
     cvv = (
         card_data.get("cvv") or card_data.get("cvc") or 
-        card_data.get("cvv2") or
+        card_data.get("cvv2") or card_data.get("security_code") or
+        card_data.get("cvv_code") or card_data.get("cvc2") or
         _extract_first(stw_detail, "response.cvv", "data.cvv")
     )
     holder_name = (
