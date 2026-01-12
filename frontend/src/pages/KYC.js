@@ -38,7 +38,6 @@ export default function KYC() {
     date_of_birth: '',
     full_address: '',
     city: '',
-    state: '',
     country: 'Haiti',
     nationality: '',
     phone_number: '',
@@ -344,7 +343,7 @@ export default function KYC() {
                 />
               </div>
 
-              <div className="grid md:grid-cols-3 gap-4">
+              <div className="grid md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="city">{getText('Vil', 'Ville', 'City')}</Label>
                   <Input
@@ -352,16 +351,6 @@ export default function KYC() {
                     placeholder={getText('Pòtoprens', 'Port-au-Prince', 'Port-au-Prince')}
                     value={formData.city}
                     onChange={(e) => setFormData({...formData, city: e.target.value})}
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="state">{getText('Eta / Depatman', 'État / Département', 'State / Department')}</Label>
-                  <Input
-                    id="state"
-                    placeholder={getText('Ouest', 'Ouest', 'Ouest')}
-                    value={formData.state}
-                    onChange={(e) => setFormData({...formData, state: e.target.value})}
                     className="mt-1"
                   />
                 </div>
