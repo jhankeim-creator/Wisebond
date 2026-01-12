@@ -73,6 +73,20 @@ export default function VirtualCard() {
   const [spendingLimit, setSpendingLimit] = useState('');
   const [spendingPeriod, setSpendingPeriod] = useState('monthly');
 
+  // PIN state
+  const [hasPin, setHasPin] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [showSetPinModal, setShowSetPinModal] = useState(false);
+  const [showChangePinModal, setShowChangePinModal] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [newPinInput, setNewPinInput] = useState('');
+  const [confirmPinInput, setConfirmPinInput] = useState('');
+  const [oldPinInput, setOldPinInput] = useState('');
+  const [pinLoading, setPinLoading] = useState(false);
+  const [pendingCardOrder, setPendingCardOrder] = useState(null);
+  const [sensitiveCardData, setSensitiveCardData] = useState(null);
+  const [showSensitiveData, setShowSensitiveData] = useState(false);
+
 
   const getText = useCallback((ht, fr, en) => {
     if (language === 'ht') return ht;
@@ -130,10 +144,127 @@ export default function VirtualCard() {
     }
   }, []);
 
+  // Check PIN status on load
+  const checkPinStatus = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API}/virtual-cards/pin-status`);
+      setHasPin(res.data.has_pin);
+    } catch (e) {
+      console.error('Error checking PIN status:', e);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
     fetchConfig();
-  }, [fetchData, fetchConfig]);
+    checkPinStatus();
+  }, [fetchData, fetchConfig, checkPinStatus]);
+
+  // Set PIN for first time
+  const handleSetPin = async () => {
+    if (!newPinInput || newPinInput.length < 4) {
+      toast.error(getText('PIN dwe gen omwen 4 chif', 'Le PIN doit avoir au moins 4 chiffres', 'PIN must have at least 4 digits'));
+      return;
+    }
+    if (newPinInput !== confirmPinInput) {
+      toast.error(getText('PIN yo pa matche', 'Les PINs ne correspondent pas', 'PINs do not match'));
+      return;
+    }
+
+    setPinLoading(true);
+    try {
+      await axios.post(`${API}/virtual-cards/set-pin`, { pin: newPinInput });
+      toast.success(getText('PIN kreye avèk siksè!', 'PIN créé avec succès!', 'PIN created successfully!'));
+      setHasPin(true);
+      setShowSetPinModal(false);
+      setNewPinInput('');
+      setConfirmPinInput('');
+      
+      // If there was a pending card to view, show PIN entry modal
+      if (pendingCardOrder) {
+        setShowPinModal(true);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error');
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  // Change existing PIN
+  const handleChangePin = async () => {
+    if (!oldPinInput) {
+      toast.error(getText('Antre ansyen PIN ou', 'Entrez votre ancien PIN', 'Enter your old PIN'));
+      return;
+    }
+    if (!newPinInput || newPinInput.length < 4) {
+      toast.error(getText('Nouvo PIN dwe gen omwen 4 chif', 'Le nouveau PIN doit avoir au moins 4 chiffres', 'New PIN must have at least 4 digits'));
+      return;
+    }
+    if (newPinInput !== confirmPinInput) {
+      toast.error(getText('PIN yo pa matche', 'Les PINs ne correspondent pas', 'PINs do not match'));
+      return;
+    }
+
+    setPinLoading(true);
+    try {
+      await axios.post(`${API}/virtual-cards/change-pin`, { old_pin: oldPinInput, new_pin: newPinInput });
+      toast.success(getText('PIN chanje avèk siksè!', 'PIN changé avec succès!', 'PIN changed successfully!'));
+      setShowChangePinModal(false);
+      setOldPinInput('');
+      setNewPinInput('');
+      setConfirmPinInput('');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error');
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  // Verify PIN and get card details
+  const handleVerifyPin = async () => {
+    if (!pinInput || !pendingCardOrder) {
+      return;
+    }
+
+    setPinLoading(true);
+    try {
+      const res = await axios.post(`${API}/virtual-cards/verify-pin`, {
+        order_id: pendingCardOrder.order_id,
+        pin: pinInput
+      });
+      
+      setSensitiveCardData(res.data);
+      setShowSensitiveData(true);
+      setShowPinModal(false);
+      setPinInput('');
+      
+      // Now show card details modal with sensitive data
+      setSelectedCard(pendingCardOrder);
+      setSpendingLimit(pendingCardOrder?.spending_limit_usd != null ? String(pendingCardOrder.spending_limit_usd) : '');
+      setSpendingPeriod(pendingCardOrder?.spending_limit_period || 'monthly');
+      setShowCardDetails(true);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || getText('PIN pa kòrèk', 'PIN incorrect', 'Incorrect PIN'));
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  // Open card details - now requires PIN
+  const openCardDetails = (order) => {
+    setPendingCardOrder(order);
+    setSensitiveCardData(null);
+    setShowSensitiveData(false);
+    
+    if (!hasPin) {
+      // User needs to set up PIN first
+      setShowSetPinModal(true);
+    } else {
+      // User has PIN, ask for it
+      setShowPinModal(true);
+    }
+  };
 
   const orderCard = async () => {
     const email = String(user?.email || '').trim();
@@ -619,7 +750,7 @@ export default function VirtualCard() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => viewCardDetails(order)}
+                              onClick={() => openCardDetails(order)}
                               className="text-emerald-600 border-emerald-300 hover:bg-emerald-50"
                             >
                               <Eye size={16} className="mr-1" />
@@ -1091,16 +1222,53 @@ export default function VirtualCard() {
                     <div className="mb-6">
                       <div className="flex items-start gap-2">
                         <span className="font-mono text-lg sm:text-xl tracking-wider break-all">
-                          {formatCardNumber(selectedCard.card_last4)}
+                          {showSensitiveData && sensitiveCardData?.card_number 
+                            ? sensitiveCardData.card_number.replace(/(.{4})/g, '$1 ').trim()
+                            : formatCardNumber(selectedCard.card_last4)
+                          }
                         </span>
+                        {showSensitiveData && sensitiveCardData?.card_number && (
+                          <button 
+                            onClick={() => {
+                              navigator.clipboard.writeText(sensitiveCardData.card_number);
+                              toast.success(getText('Nimewo kat kopye!', 'Numéro copié!', 'Card number copied!'));
+                            }}
+                            className="p-1 hover:bg-white/20 rounded"
+                          >
+                            <Copy size={16} />
+                          </button>
+                        )}
                       </div>
-                      <p className="text-xs text-white/70 mt-2">
+                      
+                      {showSensitiveData && sensitiveCardData ? (
+                        <div className="flex gap-6 mt-3">
+                          <div>
+                            <p className="text-white/60 text-xs uppercase">CVV</p>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-lg">{sensitiveCardData.cvv || '***'}</span>
+                              {sensitiveCardData.cvv && (
+                                <button 
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(sensitiveCardData.cvv);
+                                    toast.success(getText('CVV kopye!', 'CVV copié!', 'CVV copied!'));
+                                  }}
+                                  className="p-1 hover:bg-white/20 rounded"
+                                >
+                                  <Copy size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-white/70 mt-2">
                         {getText(
-                          'Pou sekirite w, app la pa montre nimewo kat konplè oswa CVV. Tcheke email ou / kontakte sipò si ou bezwen detay yo.',
-                          'Pour votre sécurité, l’app n’affiche pas le numéro complet ni le CVV. Vérifiez votre email / contactez le support si besoin.',
-                          'For your security, the app does not show the full card number or CVV. Check your email / contact support if needed.'
+                          ''PIN verifye pou wè nimewo kat konplè ak CVV.',
+                          'PIN vérifié pour voir le numéro complet et CVV.',
+                          'PIN verified to see full card number and CVV.'
                         )}
                       </p>
+                      )}
                     </div>
                     
                     <div className="flex justify-between items-end">
@@ -1112,7 +1280,12 @@ export default function VirtualCard() {
                       </div>
                       <div className="text-right">
                         <p className="text-white/60 text-xs uppercase mb-1">{getText('Ekspire', 'Expire', 'Expires')}</p>
-                        <p className="font-mono font-medium">{selectedCard.card_expiry || 'MM/YY'}</p>
+                        <p className="font-mono font-medium">
+                          {showSensitiveData && sensitiveCardData?.card_expiry 
+                            ? sensitiveCardData.card_expiry 
+                            : (selectedCard.card_expiry || 'MM/YY')
+                          }
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1249,15 +1422,23 @@ export default function VirtualCard() {
                         {getText('Debloke', 'Débloquer', 'Unlock')}
                       </Button>
                     ) : (
-                      <Button
-                        variant="outline"
-                        onClick={() => updateControls({ lock: true })}
-                        disabled={updatingControls}
-                        className="border-red-300 text-red-700 hover:bg-red-50"
-                      >
-                        {getText('Bloke kat la', 'Bloquer la carte', 'Lock card')}
-                      </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => updateControls({ lock: true })}
+                      disabled={updatingControls}
+                      className="border-red-300 text-red-700 hover:bg-red-50"
+                    >
+                      {getText('Bloke kat la', 'Bloquer la carte', 'Lock card')}
+                    </Button>
                     )}
+                    <Button
+                      variant="outline"
+                      onClick={() => { setShowCardDetails(false); setShowChangePinModal(true); }}
+                      className="border-stone-300 text-stone-700 hover:bg-stone-50"
+                    >
+                      <Shield size={16} className="mr-1" />
+                      {getText('Chanje PIN', 'Changer PIN', 'Change PIN')}
+                    </Button>
                   </div>
 
                   {(selectedCard.failed_payment_count >= 3) ? (
@@ -1343,6 +1524,168 @@ export default function VirtualCard() {
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+
+        {/* PIN Entry Modal */}
+        <Dialog open={showPinModal} onOpenChange={setShowPinModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Shield className="text-[#EA580C]" size={24} />
+                {getText('Antre PIN ou', 'Entrez votre PIN', 'Enter your PIN')}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <p className="text-sm text-stone-600 dark:text-stone-400">
+                {getText(
+                  'Pou sekirite w, antre PIN 4-6 chif ou pou wè detay kat la.',
+                  'Pour votre sécurité, entrez votre PIN de 4-6 chiffres pour voir les détails de la carte.',
+                  'For your security, enter your 4-6 digit PIN to view card details.'
+                )}
+              </p>
+              <Input
+                type="password"
+                placeholder="****"
+                maxLength={6}
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
+                className="text-center text-2xl tracking-widest"
+              />
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleVerifyPin}
+                  disabled={pinLoading || pinInput.length < 4}
+                  className="flex-1 bg-[#EA580C] hover:bg-[#C54B0A]"
+                >
+                  {pinLoading ? getText('Ap verifye...', 'Vérification...', 'Verifying...') : getText('Verifye', 'Vérifier', 'Verify')}
+                </Button>
+                <Button variant="outline" onClick={() => { setShowPinModal(false); setPinInput(''); }}>
+                  {getText('Anile', 'Annuler', 'Cancel')}
+                </Button>
+              </div>
+              <button 
+                onClick={() => { setShowPinModal(false); setShowChangePinModal(true); }}
+                className="text-sm text-[#EA580C] hover:underline w-full text-center"
+              >
+                {getText('Bliye PIN? Chanje li', 'PIN oublié? Changez-le', 'Forgot PIN? Change it')}
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Set PIN Modal (First Time) */}
+        <Dialog open={showSetPinModal} onOpenChange={setShowSetPinModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Shield className="text-[#EA580C]" size={24} />
+                {getText('Kreye PIN Kat', 'Créer PIN Carte', 'Create Card PIN')}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <p className="text-sm text-stone-600 dark:text-stone-400">
+                {getText(
+                  'Kreye yon PIN 4-6 chif pou pwoteje detay kat ou. Ou pral bezwen PIN sa a chak fwa ou vle wè nimewo kat la ak CVV.',
+                  'Créez un PIN de 4-6 chiffres pour protéger les détails de votre carte. Vous aurez besoin de ce PIN chaque fois que vous voulez voir le numéro de carte et CVV.',
+                  'Create a 4-6 digit PIN to protect your card details. You will need this PIN every time you want to see the card number and CVV.'
+                )}
+              </p>
+              <div>
+                <Label>{getText('Nouvo PIN', 'Nouveau PIN', 'New PIN')}</Label>
+                <Input
+                  type="password"
+                  placeholder="****"
+                  maxLength={6}
+                  value={newPinInput}
+                  onChange={(e) => setNewPinInput(e.target.value.replace(/\D/g, ''))}
+                  className="text-center text-2xl tracking-widest mt-2"
+                />
+              </div>
+              <div>
+                <Label>{getText('Konfime PIN', 'Confirmer PIN', 'Confirm PIN')}</Label>
+                <Input
+                  type="password"
+                  placeholder="****"
+                  maxLength={6}
+                  value={confirmPinInput}
+                  onChange={(e) => setConfirmPinInput(e.target.value.replace(/\D/g, ''))}
+                  className="text-center text-2xl tracking-widest mt-2"
+                />
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleSetPin}
+                  disabled={pinLoading || newPinInput.length < 4}
+                  className="flex-1 bg-[#EA580C] hover:bg-[#C54B0A]"
+                >
+                  {pinLoading ? getText('Ap kreye...', 'Création...', 'Creating...') : getText('Kreye PIN', 'Créer PIN', 'Create PIN')}
+                </Button>
+                <Button variant="outline" onClick={() => { setShowSetPinModal(false); setNewPinInput(''); setConfirmPinInput(''); }}>
+                  {getText('Anile', 'Annuler', 'Cancel')}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Change PIN Modal */}
+        <Dialog open={showChangePinModal} onOpenChange={setShowChangePinModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Shield className="text-[#EA580C]" size={24} />
+                {getText('Chanje PIN', 'Changer PIN', 'Change PIN')}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div>
+                <Label>{getText('Ansyen PIN', 'Ancien PIN', 'Old PIN')}</Label>
+                <Input
+                  type="password"
+                  placeholder="****"
+                  maxLength={6}
+                  value={oldPinInput}
+                  onChange={(e) => setOldPinInput(e.target.value.replace(/\D/g, ''))}
+                  className="text-center text-2xl tracking-widest mt-2"
+                />
+              </div>
+              <div>
+                <Label>{getText('Nouvo PIN', 'Nouveau PIN', 'New PIN')}</Label>
+                <Input
+                  type="password"
+                  placeholder="****"
+                  maxLength={6}
+                  value={newPinInput}
+                  onChange={(e) => setNewPinInput(e.target.value.replace(/\D/g, ''))}
+                  className="text-center text-2xl tracking-widest mt-2"
+                />
+              </div>
+              <div>
+                <Label>{getText('Konfime Nouvo PIN', 'Confirmer Nouveau PIN', 'Confirm New PIN')}</Label>
+                <Input
+                  type="password"
+                  placeholder="****"
+                  maxLength={6}
+                  value={confirmPinInput}
+                  onChange={(e) => setConfirmPinInput(e.target.value.replace(/\D/g, ''))}
+                  className="text-center text-2xl tracking-widest mt-2"
+                />
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleChangePin}
+                  disabled={pinLoading || oldPinInput.length < 4 || newPinInput.length < 4}
+                  className="flex-1 bg-[#EA580C] hover:bg-[#C54B0A]"
+                >
+                  {pinLoading ? getText('Ap chanje...', 'Changement...', 'Changing...') : getText('Chanje PIN', 'Changer PIN', 'Change PIN')}
+                </Button>
+                <Button variant="outline" onClick={() => { setShowChangePinModal(false); setOldPinInput(''); setNewPinInput(''); setConfirmPinInput(''); }}>
+                  {getText('Anile', 'Annuler', 'Cancel')}
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
 
