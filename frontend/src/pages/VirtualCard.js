@@ -79,7 +79,12 @@ export default function VirtualCard() {
 
   const approvedCards = cardOrders.filter(o => o.status === 'approved');
 
-  const fetchConfig = useCallback(async () => {
+  useEffect(() => {
+    fetchData();
+    fetchConfig();
+  }, []);
+
+  const fetchConfig = async () => {
     try {
       const [configResp, feesResp] = await Promise.all([
         axios.get(`${API}/public/app-config`),
@@ -99,11 +104,11 @@ export default function VirtualCard() {
       }
     } catch (e) {
       // keep default
-      setVirtualCardsEnabled((prev) => (prev === null ? true : prev));
+      if (virtualCardsEnabled === null) setVirtualCardsEnabled(true);
     }
-  }, []);
+  };
 
-  const fetchData = useCallback(async () => {
+  const fetchData = async () => {
     try {
       const [ordersRes, depositsRes, withdrawalsRes] = await Promise.all([
         axios.get(`${API}/virtual-cards/orders`),
@@ -118,12 +123,7 @@ export default function VirtualCard() {
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-    fetchConfig();
-  }, [fetchData, fetchConfig]);
+  };
 
   const orderCard = async () => {
     if (!cardEmail.trim()) {
