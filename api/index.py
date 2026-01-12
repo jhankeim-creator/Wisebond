@@ -1544,66 +1544,60 @@ async def admin_update_withdrawal_limit(limit: WithdrawalLimitUpdate, admin: dic
 async def admin_get_settings(admin: dict = Depends(get_admin_user)):
     db = get_db()
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    defaults = {
-        "setting_id": "main",
-        # Email (Resend)
-        "resend_enabled": False,
-        "resend_api_key": "",
-        "sender_email": "",
+    if not settings:
+        settings = {
+            "setting_id": "main",
+            # Email (Resend)
+            "resend_enabled": False,
+            "resend_api_key": "",
+            "sender_email": "",
 
-        # Live Chat (Crisp)
-        "crisp_enabled": False,
-        "crisp_website_id": "",
+            # Live Chat (Crisp)
+            "crisp_enabled": False,
+            "crisp_website_id": "",
 
-        # WhatsApp (CallMeBot)
-        "whatsapp_enabled": False,
-        "whatsapp_number": "",
-        "callmebot_api_key": "",
+            # WhatsApp (CallMeBot)
+            "whatsapp_enabled": False,
+            "whatsapp_number": "",
+            "callmebot_api_key": "",
 
-        # Telegram
-        "telegram_enabled": False,
-        "telegram_bot_token": "",
-        "telegram_chat_id": "",
+            # Telegram
+            "telegram_enabled": False,
+            "telegram_bot_token": "",
+            "telegram_chat_id": "",
 
-        # USDT (Plisio)
-        "plisio_enabled": False,
-        "plisio_api_key": "",
-        "plisio_secret_key": "",
+            # USDT (Plisio)
+            "plisio_enabled": False,
+            "plisio_api_key": "",
+            "plisio_secret_key": "",
 
-        # Virtual Cards (Strowallet)
-        "strowallet_enabled": False,
-        "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", ""),
-        "strowallet_api_key": "",
-        "strowallet_api_secret": "",
-        "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/card-user",
-        "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", ""),
-        "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", ""),
-        "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", ""),
-        "strowallet_fetch_card_detail_path": os.environ.get("STROWALLET_FETCH_CARD_DETAIL_PATH", "") or "/api/bitvcard/fetch-card-detail/",
-        "strowallet_card_transactions_path": os.environ.get("STROWALLET_CARD_TRANSACTIONS_PATH", "") or "/api/bitvcard/card-transactions/",
-        "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", "") or "KAYICOM",
+            # Virtual Cards (Strowallet)
+            "strowallet_enabled": False,
+            "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", ""),
+            "strowallet_api_key": "",
+            "strowallet_api_secret": "",
+            "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/card-user",
+            "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", ""),
+            "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", ""),
+            "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", ""),
+            "strowallet_fetch_card_detail_path": os.environ.get("STROWALLET_FETCH_CARD_DETAIL_PATH", "") or "/api/bitvcard/fetch-card-detail/",
+            "strowallet_card_transactions_path": os.environ.get("STROWALLET_CARD_TRANSACTIONS_PATH", "") or "/api/bitvcard/card-transactions/",
+            "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", "") or "KAYICOM",
 
-        # Fees & Affiliate
-        "card_order_fee_htg": 500,
-        "affiliate_reward_htg": 2000,
-        "affiliate_cards_required": 5,
-        "card_background_image": None,
-        "topup_fee_tiers": [],
+            # Fees & Affiliate
+            "card_order_fee_htg": 500,
+            "affiliate_reward_htg": 2000,
+            "affiliate_cards_required": 5,
+            "card_background_image": None,
+            "topup_fee_tiers": [],
 
-        # Announcement bar
-        "announcement_enabled": False,
-        "announcement_text_ht": "",
-        "announcement_text_fr": "",
-        "announcement_text_en": "",
-        "announcement_link": ""
-    }
-
-    if settings:
-        for k, v in defaults.items():
-            if k not in settings:
-                settings[k] = v
-    else:
-        settings = defaults
+            # Announcement bar
+            "announcement_enabled": False,
+            "announcement_text_ht": "",
+            "announcement_text_fr": "",
+            "announcement_text_en": "",
+            "announcement_link": ""
+        }
     return {"settings": settings}
 
 @api_router.put("/admin/settings")

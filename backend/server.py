@@ -5158,54 +5158,47 @@ async def get_public_payment_gateway_methods(
 @api_router.get("/admin/settings")
 async def admin_get_settings(admin: dict = Depends(get_admin_user)):
     settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0})
-    defaults = {
-        "setting_id": "main",
-        "resend_enabled": False,
-        "resend_api_key": "",
-        "sender_email": "",
-        "crisp_enabled": False,
-        "crisp_website_id": "",
-        "whatsapp_enabled": False,
-        "whatsapp_number": "",
-        "plisio_enabled": False,
-        "plisio_api_key": "",
-        "plisio_secret_key": "",
-        "strowallet_enabled": False,
-        "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", ""),
-        "strowallet_api_key": "",
-        "strowallet_api_secret": "",
-        "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/card-user",
-        "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", "") or "/api/bitvcard/create-card/",
-        "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", "") or "/api/bitvcard/fund-card/",
-        "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", "") or "",
-        "strowallet_fetch_card_detail_path": os.environ.get("STROWALLET_FETCH_CARD_DETAIL_PATH", "") or "/api/bitvcard/fetch-card-detail/",
-        "strowallet_card_transactions_path": os.environ.get("STROWALLET_CARD_TRANSACTIONS_PATH", "") or "/api/bitvcard/card-transactions/",
-        "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", "") or "KAYICOM",
-        "strowallet_set_limit_path": os.environ.get("STROWALLET_SET_LIMIT_PATH", ""),
-        "strowallet_freeze_card_path": os.environ.get("STROWALLET_FREEZE_CARD_PATH", ""),
-        "strowallet_unfreeze_card_path": os.environ.get("STROWALLET_UNFREEZE_CARD_PATH", ""),
-        "telegram_enabled": False,
-        "telegram_bot_token": "",
-        "telegram_chat_id": "",
-        "card_order_fee_htg": 500,
-        "affiliate_reward_htg": 2000,
-        "affiliate_cards_required": 5,
-        "card_background_image": None,
-        "topup_fee_tiers": [],
-        "announcement_enabled": False,
-        "announcement_text_ht": None,
-        "announcement_text_fr": None,
-        "announcement_text_en": None,
-        "announcement_link": None,
-    }
-
-    # If settings exist already, non-destructively backfill any new keys.
-    if settings:
-        for k, v in defaults.items():
-            if k not in settings:
-                settings[k] = v
-    else:
-        settings = defaults
+    if not settings:
+        settings = {
+            "setting_id": "main",
+            "resend_enabled": False,
+            "resend_api_key": "",
+            "sender_email": "",
+            "crisp_enabled": False,
+            "crisp_website_id": "",
+            "whatsapp_enabled": False,
+            "whatsapp_number": "",
+            "plisio_enabled": False,
+            "plisio_api_key": "",
+            "plisio_secret_key": "",
+            "strowallet_enabled": False,
+            "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", ""),
+            "strowallet_api_key": "",
+            "strowallet_api_secret": "",
+            "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/card-user",
+            "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", "") or "/api/bitvcard/create-card/",
+            "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", "") or "/api/bitvcard/fund-card/",
+            "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", "") or "",
+            "strowallet_fetch_card_detail_path": os.environ.get("STROWALLET_FETCH_CARD_DETAIL_PATH", "") or "/api/bitvcard/fetch-card-detail/",
+            "strowallet_card_transactions_path": os.environ.get("STROWALLET_CARD_TRANSACTIONS_PATH", "") or "/api/bitvcard/card-transactions/",
+            "strowallet_brand_name": os.environ.get("STROWALLET_BRAND_NAME", "") or "KAYICOM",
+            "strowallet_set_limit_path": os.environ.get("STROWALLET_SET_LIMIT_PATH", ""),
+            "strowallet_freeze_card_path": os.environ.get("STROWALLET_FREEZE_CARD_PATH", ""),
+            "strowallet_unfreeze_card_path": os.environ.get("STROWALLET_UNFREEZE_CARD_PATH", ""),
+            "telegram_enabled": False,
+            "telegram_bot_token": "",
+            "telegram_chat_id": "",
+            "card_order_fee_htg": 500,
+            "affiliate_reward_htg": 2000,
+            "affiliate_cards_required": 5,
+            "card_background_image": None,
+            "topup_fee_tiers": [],
+            "announcement_enabled": False,
+            "announcement_text_ht": None,
+            "announcement_text_fr": None,
+            "announcement_text_en": None,
+            "announcement_link": None,
+        }
     return {"settings": settings}
 
 # Public endpoint for chat settings (no auth required)
