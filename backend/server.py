@@ -270,7 +270,7 @@ def _strowallet_config(settings: Optional[dict]) -> Dict[str, str]:
     # Defaults tuned for Strowallet bitvcard endpoints.
     create_user_path = _normalize_strowallet_path(
         (settings or {}).get("strowallet_create_user_path") or os.environ.get("STROWALLET_CREATE_USER_PATH"),
-        "/api/bitvcard/create-user/",
+        "/api/bitvcard/card-user",
     )
     create_path = _normalize_strowallet_path(
         (settings or {}).get("strowallet_create_card_path") or os.environ.get("STROWALLET_CREATE_CARD_PATH"),
@@ -481,86 +481,6 @@ async def _strowallet_post(settings: Optional[dict], path: str, payload: Dict[st
         raise HTTPException(status_code=502, detail=f"Strowallet API error: {data}")
 
     return data
-
-
-async def _strowallet_create_customer_id(
-    *,
-    settings: Optional[dict],
-    cfg: Dict[str, str],
-    user: Dict[str, Any],
-) -> str:
-    """
-    Create (or fetch) a Strowallet customer/user id.
-    Some Strowallet plans require this before card creation.
-    Tries a small set of known endpoint variants and returns the discovered id.
-    """
-    full_name = (user.get("full_name") or "").strip()
-    parts = [p for p in full_name.split(" ") if p]
-    first_name = parts[0] if parts else full_name
-    last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
-
-    create_user_payload: Dict[str, Any] = {
-        "email": user.get("email"),
-        "full_name": user.get("full_name"),
-        "name": user.get("full_name"),
-        "first_name": first_name,
-        "last_name": last_name,
-        "phone": user.get("phone"),
-        "phone_number": user.get("phone"),
-        "reference": user.get("user_id"),
-        "customer_reference": user.get("user_id"),
-    }
-    create_user_payload = {k: v for k, v in create_user_payload.items() if v not in (None, "")}
-    create_user_payload = _with_aliases(create_user_payload, "phone", "mobile", "msisdn")
-
-    # Try configured path first, then common variants.
-    candidates = [
-        cfg.get("create_user_path") or "",
-        "/api/bitvcard/create-user/",
-        "/api/bitvcard/create-user",
-        "/api/bitvcard/card-user",
-    ]
-    tried_paths: List[str] = []
-    last_result: Any = None
-
-    for raw in candidates:
-        p = _normalize_strowallet_path(raw, "")
-        if not p or p in tried_paths:
-            continue
-        tried_paths.append(p)
-        try:
-            resp = await _strowallet_post(settings, p, create_user_payload)
-        except HTTPException as e:
-            # Continue trying other known endpoints; keep the last error for debugging.
-            last_result = {"path": p, "error": getattr(e, "detail", str(e))}
-            continue
-        except Exception as e:
-            last_result = {"path": p, "error": str(e)}
-            continue
-
-        customer_id = _extract_first(
-            resp,
-            "data.customer_id",
-            "data.user_id",
-            "data.card_user_id",
-            "customer_id",
-            "user_id",
-            "card_user_id",
-            "data.id",
-            "id",
-        )
-        if customer_id:
-            return str(customer_id)
-        last_result = {"path": p, "response": resp}
-
-    raise HTTPException(
-        status_code=502,
-        detail={
-            "message": "Strowallet create-user/customer failed; cannot proceed to create-card.",
-            "tried_paths": tried_paths,
-            "last_result": last_result,
-        },
-    )
 
 # ==================== MODELS ====================
 
@@ -3774,18 +3694,46 @@ async def admin_process_card_order(
             # We store the returned customer/user id on our user record to reuse it.
             stw_customer_id = user.get("strowallet_customer_id") or user.get("strowallet_user_id")
             if not stw_customer_id and cfg.get("create_user_path"):
-                stw_customer_id = await _strowallet_create_customer_id(settings=settings, cfg=cfg, user=user)
-                await db.users.update_one(
-                    {"user_id": user["user_id"]},
-                    {"$set": {"strowallet_customer_id": stw_customer_id}},
-                )
-
-            # If configured and still missing, fail fast. This is required by some plans.
-            if cfg.get("create_user_path") and not stw_customer_id:
-                raise HTTPException(
-                    status_code=502,
-                    detail="Strowallet customer id is required but could not be created.",
-                )
+                full_name = (user.get("full_name") or "").strip()
+                parts = [p for p in full_name.split(" ") if p]
+                first_name = parts[0] if parts else full_name
+                last_name = " ".join(parts[1:]) if len(parts) > 1 else ""
+                create_user_payload: Dict[str, Any] = {
+                    "email": user.get("email"),
+                    "full_name": user.get("full_name"),
+                    "name": user.get("full_name"),
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "phone": user.get("phone"),
+                    "phone_number": user.get("phone"),
+                    "reference": user.get("user_id"),
+                    "customer_reference": user.get("user_id"),
+                }
+                create_user_payload = {k: v for k, v in create_user_payload.items() if v not in (None, "")}
+                # Provide common aliases for provider schemas
+                create_user_payload = _with_aliases(create_user_payload, "phone", "mobile", "msisdn")
+                # Best-effort: some deployments may not support POST on this endpoint (405),
+                # or may not require creating a customer first. Do not block card creation.
+                try:
+                    stw_user_resp = await _strowallet_post(settings, cfg["create_user_path"], create_user_payload)
+                    stw_customer_id = _extract_first(
+                        stw_user_resp,
+                        "data.customer_id",
+                        "data.user_id",
+                        "data.card_user_id",
+                        "customer_id",
+                        "user_id",
+                        "card_user_id",
+                        "data.id",
+                        "id",
+                    )
+                    if stw_customer_id:
+                        await db.users.update_one(
+                            {"user_id": user["user_id"]},
+                            {"$set": {"strowallet_customer_id": stw_customer_id}},
+                        )
+                except Exception as e:
+                    logger.warning(f"Strowallet create-user step skipped: {e}")
 
             create_payload: Dict[str, Any] = {
                 # Common fields across many Strowallet deployments (best-effort).
@@ -6093,7 +6041,7 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
         "strowallet_base_url": os.environ.get("STROWALLET_BASE_URL", "") or "https://strowallet.com",
         "strowallet_api_key": "",
         "strowallet_api_secret": "",
-        "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/create-user/",
+        "strowallet_create_user_path": os.environ.get("STROWALLET_CREATE_USER_PATH", "") or "/api/bitvcard/card-user",
         "strowallet_create_card_path": os.environ.get("STROWALLET_CREATE_CARD_PATH", "") or "/api/bitvcard/create-card/",
         "strowallet_fund_card_path": os.environ.get("STROWALLET_FUND_CARD_PATH", "") or "/api/bitvcard/fund-card/",
         "strowallet_withdraw_card_path": os.environ.get("STROWALLET_WITHDRAW_CARD_PATH", "") or "",
@@ -6296,7 +6244,7 @@ async def admin_strowallet_apply_default_endpoints(admin: dict = Depends(get_adm
     """
     defaults = {
         "strowallet_base_url": "https://strowallet.com",
-        "strowallet_create_user_path": "/api/bitvcard/create-user/",
+        "strowallet_create_user_path": "/api/bitvcard/card-user",
         "strowallet_create_card_path": "/api/bitvcard/create-card/",
         "strowallet_fund_card_path": "/api/bitvcard/fund-card/",
         "strowallet_fetch_card_detail_path": "/api/bitvcard/fetch-card-detail/",
