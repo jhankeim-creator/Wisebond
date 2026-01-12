@@ -6089,13 +6089,7 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
     return {"settings": settings}
 
 
-async def _strowallet_probe(
-    settings: Optional[dict],
-    path: str,
-    payload: Optional[Dict[str, Any]] = None,
-    *,
-    method: str = "POST",
-) -> Dict[str, Any]:
+async def _strowallet_probe(settings: Optional[dict], path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Send a raw probe request to Strowallet and return status + body (no secrets).
     We intentionally do NOT raise on 4xx so admin can see if it's auth/path/payload.
@@ -6119,21 +6113,14 @@ async def _strowallet_probe(
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as client:
         try:
-            m = (method or "POST").strip().upper()
-            if m == "GET":
-                # Never send secrets in querystring for probes.
-                resp = await client.get(url, headers=headers)
-            elif m == "HEAD":
-                resp = await client.head(url, headers=headers)
-            else:
-                resp = await client.post(url, json=(payload or {}), headers=headers)
+            resp = await client.post(url, json=payload, headers=headers)
             try:
                 body: Any = resp.json()
             except Exception:
                 body = {"raw": (resp.text or "")[:3000]}
-            return {"url": url, "method": m, "status_code": resp.status_code, "body": body}
+            return {"url": url, "status_code": resp.status_code, "body": body}
         except Exception as e:
-            return {"url": url, "method": (method or "POST").strip().upper(), "status_code": None, "error": str(e)}
+            return {"url": url, "status_code": None, "error": str(e)}
 
 
 @api_router.get("/admin/strowallet/diagnostics")
@@ -6175,27 +6162,13 @@ async def admin_strowallet_diagnostics(admin: dict = Depends(get_admin_user)):
 
     # Probe create-user/customer endpoint (should return 400/422 if reachable+authed; 401/403 if auth; 404 if path)
     if cfg.get("create_user_path"):
-        create_user_post = await _strowallet_probe(settings, cfg["create_user_path"], dict(auth_only), method="POST")
-        probes.append({"name": "create_user_probe", "result": create_user_post})
-        # If we hit a method mismatch, also try GET (without secrets in URL/body) to confirm endpoint behavior.
-        if create_user_post.get("status_code") == 405:
-            probes.append(
-                {
-                    "name": "create_user_probe_get",
-                    "result": await _strowallet_probe(settings, cfg["create_user_path"], None, method="GET"),
-                }
-            )
+        probes.append({"name": "create_user_probe", "result": await _strowallet_probe(settings, cfg["create_user_path"], dict(auth_only))})
     # Probe create-card endpoint with auth-only payload
     if cfg.get("create_path"):
-        probes.append({"name": "create_card_probe", "result": await _strowallet_probe(settings, cfg["create_path"], dict(auth_only), method="POST")})
+        probes.append({"name": "create_card_probe", "result": await _strowallet_probe(settings, cfg["create_path"], dict(auth_only))})
     # Probe fetch detail with dummy card_id (should fail validation but confirms path/auth)
     if cfg.get("fetch_detail_path"):
-        probes.append(
-            {
-                "name": "fetch_detail_probe",
-                "result": await _strowallet_probe(settings, cfg["fetch_detail_path"], {"card_id": "TEST", **auth_only}, method="POST"),
-            }
-        )
+        probes.append({"name": "fetch_detail_probe", "result": await _strowallet_probe(settings, cfg["fetch_detail_path"], {"card_id": "TEST", **auth_only})})
 
     # Interpret common failures for admin readability
     def classify(status_code: Optional[int]) -> str:
