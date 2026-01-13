@@ -54,6 +54,7 @@ export default function VirtualCard() {
   const [showTxModal, setShowTxModal] = useState(false);
   const [txLoading, setTxLoading] = useState(false);
   const [txData, setTxData] = useState(null);
+  const [txLiveMode, setTxLiveMode] = useState(true);
   const [refreshingDetails, setRefreshingDetails] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [cardFee, setCardFee] = useState(500);
@@ -162,6 +163,23 @@ export default function VirtualCard() {
     fetchConfig();
     checkPinStatus();
   }, [fetchData, fetchConfig, checkPinStatus]);
+
+  // Live refresh transactions every 10 seconds when modal is open
+  useEffect(() => {
+    if (!showTxModal || !selectedCard?.order_id || !txLiveMode) return;
+    
+    const refreshTx = async () => {
+      try {
+        const resp = await axios.get(`${API}/virtual-cards/${selectedCard.order_id}/transactions?page=1&take=50`);
+        setTxData(resp.data);
+      } catch (e) {
+        // Silent fail for live refresh
+      }
+    };
+    
+    const interval = setInterval(refreshTx, 10000); // 10 seconds
+    return () => clearInterval(interval);
+  }, [showTxModal, selectedCard?.order_id, txLiveMode]);
 
   // Set PIN for first time
   const handleSetPin = async () => {
@@ -782,51 +800,48 @@ export default function VirtualCard() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {cardOrders.map((order) => (
                       <div key={order.order_id} className="space-y-3">
-                        {/* Card with overlay info */}
+                        {/* Card Visual */}
                         {order.status === 'approved' ? (
-                          <div className="relative rounded-2xl shadow-lg overflow-hidden" style={{ aspectRatio: '1.586/1' }}>
-                            {/* Background - Image or gradient */}
-                            {(order.card_image || defaultCardBg) ? (
-                              <img 
-                                src={order.card_image || defaultCardBg} 
-                                alt="Card" 
-                                className="absolute inset-0 w-full h-full object-cover"
-                              />
-                            ) : (
+                          (order.card_image || defaultCardBg) ? (
+                            /* Card with image - no overlay */
+                            <img 
+                              src={order.card_image || defaultCardBg} 
+                              alt="Card" 
+                              className="w-full h-auto rounded-2xl shadow-lg"
+                            />
+                          ) : (
+                            /* Fallback gradient card with overlay */
+                            <div className="relative rounded-2xl shadow-lg overflow-hidden" style={{ aspectRatio: '1.586/1' }}>
                               <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460]" />
-                            )}
-                            {/* Card Info Overlay */}
-                            <div className="absolute inset-0 p-3 flex flex-col justify-between text-white">
-                              {/* Top Row: KAYICOM + Card Type Logo */}
-                              <div className="flex justify-between items-start">
-                                <span className="font-bold text-sm sm:text-base tracking-wide drop-shadow-lg">KAYICOM</span>
-                                <span className="font-bold text-sm sm:text-base italic drop-shadow-lg">
-                                  {(order.card_brand || order.card_type || 'VISA').toUpperCase()}
-                                </span>
-                              </div>
-                              {/* Middle: Card Number */}
-                              <div>
-                                <p className="font-mono text-xs sm:text-sm tracking-[0.1em] drop-shadow-lg">
-                                  •••• •••• •••• {order.card_last4 || '****'}
-                                </p>
-                              </div>
-                              {/* Bottom Row: Holder, Expiry, CVV */}
-                              <div className="flex justify-between items-end text-[9px] sm:text-[10px]">
-                                <div className="max-w-[40%]">
-                                  <p className="text-white/70 uppercase drop-shadow">{getText('Pòtè', 'Titulaire', 'Holder')}</p>
-                                  <p className="font-medium truncate drop-shadow-lg">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
+                              <div className="absolute inset-0 p-3 flex flex-col justify-between text-white">
+                                <div className="flex justify-between items-start">
+                                  <span className="font-bold text-sm sm:text-base tracking-wide">KAYICOM</span>
+                                  <span className="font-bold text-sm sm:text-base italic">
+                                    {(order.card_brand || order.card_type || 'VISA').toUpperCase()}
+                                  </span>
                                 </div>
-                                <div className="text-center">
-                                  <p className="text-white/70 uppercase drop-shadow">EXP</p>
-                                  <p className="font-mono drop-shadow-lg">{order.card_expiry || '••/••'}</p>
+                                <div>
+                                  <p className="font-mono text-xs sm:text-sm tracking-[0.1em]">
+                                    •••• •••• •••• {order.card_last4 || '****'}
+                                  </p>
                                 </div>
-                                <div className="text-right">
-                                  <p className="text-white/70 uppercase drop-shadow">CVV</p>
-                                  <p className="font-mono drop-shadow-lg">•••</p>
+                                <div className="flex justify-between items-end text-[9px] sm:text-[10px]">
+                                  <div className="max-w-[40%]">
+                                    <p className="text-white/70 uppercase">{getText('Pòtè', 'Titulaire', 'Holder')}</p>
+                                    <p className="font-medium truncate">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
+                                  </div>
+                                  <div className="text-center">
+                                    <p className="text-white/70 uppercase">EXP</p>
+                                    <p className="font-mono">{order.card_expiry || '••/••'}</p>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-white/70 uppercase">CVV</p>
+                                    <p className="font-mono">•••</p>
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
+                          )
                         ) : (
                           <div className="bg-stone-200 dark:bg-stone-800 flex items-center justify-center rounded-2xl shadow-lg" style={{ aspectRatio: '1.586/1' }}>
                             <div className="text-center">
@@ -1316,75 +1331,74 @@ export default function VirtualCard() {
             
             {selectedCard && (
               <div className="space-y-4 py-4">
-                {/* Quick info */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Quick info - Card ID only visible to admin */}
+                <div className={`grid grid-cols-1 ${user?.is_admin ? 'sm:grid-cols-2' : ''} gap-3`}>
                   <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
                     <p className="text-xs text-stone-500">{getText('Email Kat', 'Email Carte', 'Card Email')}</p>
                     <p className="font-medium break-all">{selectedCard.card_email || user?.email || '—'}</p>
                   </div>
-                  <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
-                    <p className="text-xs text-stone-500">{getText('ID Kat (Provider)', 'ID Carte (Provider)', 'Card ID (Provider)')}</p>
-                    <p className="font-mono text-sm break-all">{selectedCard.provider_card_id || '—'}</p>
-                  </div>
+                  {user?.is_admin && (
+                    <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-3">
+                      <p className="text-xs text-stone-500">{getText('ID Kat (Provider)', 'ID Carte (Provider)', 'Card ID (Provider)')}</p>
+                      <p className="font-mono text-sm break-all">{selectedCard.provider_card_id || '—'}</p>
+                    </div>
+                  )}
                 </div>
 
-                {/* Card Visual with overlay - shows real data when PIN verified */}
-                <div className="relative rounded-2xl shadow-lg overflow-hidden" style={{ aspectRatio: '1.586/1' }}>
-                  {/* Background - Image or gradient */}
-                  {(selectedCard.card_image || defaultCardBg) ? (
-                    <img 
-                      src={selectedCard.card_image || defaultCardBg} 
-                      alt="Card" 
-                      className="absolute inset-0 w-full h-full object-cover"
-                    />
-                  ) : (
+                {/* Card Visual */}
+                {(selectedCard.card_image || defaultCardBg) ? (
+                  /* Card with image - no overlay since image has branding */
+                  <img 
+                    src={selectedCard.card_image || defaultCardBg} 
+                    alt="Card" 
+                    className="w-full h-auto rounded-2xl shadow-lg"
+                  />
+                ) : (
+                  /* Fallback gradient card with overlay */
+                  <div className="relative rounded-2xl shadow-lg overflow-hidden" style={{ aspectRatio: '1.586/1' }}>
                     <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460]" />
-                  )}
-                  {/* Card Info Overlay */}
-                  <div className="absolute inset-0 p-3 sm:p-4 flex flex-col justify-between text-white">
-                    {/* Top Row: KAYICOM + Card Type Logo */}
-                    <div className="flex justify-between items-start">
-                      <span className="font-bold text-base sm:text-lg tracking-wide drop-shadow-lg">KAYICOM</span>
-                      <span className="font-bold text-base sm:text-lg italic drop-shadow-lg">
-                        {(selectedCard.card_brand || selectedCard.card_type || 'VISA').toUpperCase()}
-                      </span>
-                    </div>
-                    {/* Middle: Card Number */}
-                    <div>
-                      <p className="font-mono text-sm sm:text-base tracking-[0.1em] drop-shadow-lg">
-                        {showSensitiveData && sensitiveCardData?.card_number 
-                          ? sensitiveCardData.card_number.replace(/(.{4})/g, '$1 ').trim()
-                          : `•••• •••• •••• ${selectedCard.card_last4 || '****'}`
-                        }
-                      </p>
-                    </div>
-                    {/* Bottom Row: Holder, Expiry, CVV */}
-                    <div className="flex justify-between items-end text-[10px] sm:text-xs">
-                      <div className="max-w-[40%]">
-                        <p className="text-white/70 uppercase drop-shadow">{getText('Pòtè', 'Titulaire', 'Holder')}</p>
-                        <p className="font-medium truncate drop-shadow-lg">{selectedCard.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
+                    <div className="absolute inset-0 p-3 sm:p-4 flex flex-col justify-between text-white">
+                      <div className="flex justify-between items-start">
+                        <span className="font-bold text-base sm:text-lg tracking-wide">KAYICOM</span>
+                        <span className="font-bold text-base sm:text-lg italic">
+                          {(selectedCard.card_brand || selectedCard.card_type || 'VISA').toUpperCase()}
+                        </span>
                       </div>
-                      <div className="text-center">
-                        <p className="text-white/70 uppercase drop-shadow">EXP</p>
-                        <p className="font-mono drop-shadow-lg">
-                          {showSensitiveData && sensitiveCardData?.card_expiry 
-                            ? sensitiveCardData.card_expiry 
-                            : (selectedCard.card_expiry || '••/••')
+                      <div>
+                        <p className="font-mono text-sm sm:text-base tracking-[0.1em]">
+                          {showSensitiveData && sensitiveCardData?.card_number 
+                            ? sensitiveCardData.card_number.replace(/(.{4})/g, '$1 ').trim()
+                            : `•••• •••• •••• ${selectedCard.card_last4 || '****'}`
                           }
                         </p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-white/70 uppercase drop-shadow">CVV</p>
-                        <p className="font-mono font-bold drop-shadow-lg">
-                          {showSensitiveData && sensitiveCardData?.cvv 
-                            ? sensitiveCardData.cvv 
-                            : '•••'
-                          }
-                        </p>
+                      <div className="flex justify-between items-end text-[10px] sm:text-xs">
+                        <div className="max-w-[40%]">
+                          <p className="text-white/70 uppercase">{getText('Pòtè', 'Titulaire', 'Holder')}</p>
+                          <p className="font-medium truncate">{selectedCard.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-white/70 uppercase">EXP</p>
+                          <p className="font-mono">
+                            {showSensitiveData && sensitiveCardData?.card_expiry 
+                              ? sensitiveCardData.card_expiry 
+                              : (selectedCard.card_expiry || '••/••')
+                            }
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-white/70 uppercase">CVV</p>
+                          <p className="font-mono font-bold">
+                            {showSensitiveData && sensitiveCardData?.cvv 
+                              ? sensitiveCardData.cvv 
+                              : '•••'
+                            }
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+                )}
 
                 {/* Balance & Copy Buttons */}
                 <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
@@ -1622,22 +1636,29 @@ export default function VirtualCard() {
         <Dialog open={showTxModal} onOpenChange={setShowTxModal}>
           <DialogContent className="w-[95vw] sm:max-w-3xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <History className="text-purple-700" size={20} />
-                {getText('Tranzaksyon Kat', 'Transactions Carte', 'Card Transactions')}
+              <DialogTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <History className="text-purple-700" size={20} />
+                  {getText('Tranzaksyon Kat', 'Transactions Carte', 'Card Transactions')}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs ${txLiveMode ? 'text-emerald-600' : 'text-stone-400'}`}>
+                    {txLiveMode && <span className="inline-block w-2 h-2 bg-emerald-500 rounded-full animate-pulse mr-1"></span>}
+                    LIVE
+                  </span>
+                  <button
+                    onClick={() => setTxLiveMode(!txLiveMode)}
+                    className={`w-10 h-5 rounded-full transition-colors ${txLiveMode ? 'bg-emerald-500' : 'bg-stone-300'}`}
+                  >
+                    <span className={`block w-4 h-4 bg-white rounded-full shadow transform transition-transform ${txLiveMode ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
               </DialogTitle>
             </DialogHeader>
             {txLoading ? (
               <div className="py-8 text-center text-stone-500">{getText('Chajman...', 'Chargement...', 'Loading...')}</div>
             ) : (
               <div className="space-y-3">
-                <p className="text-xs text-stone-500">
-                  {getText(
-                    'Nòt: sa montre repons Strowallet la (si IP whitelist la pa fèt, li ka bay 403).',
-                    'Note: affiche la réponse Strowallet (si IP non whitelist, peut retourner 403).',
-                    'Note: shows Strowallet response (may return 403 if IP is not whitelisted).'
-                  )}
-                </p>
                 {hasTxData(txData) ? (
                   <div className="overflow-x-auto border rounded-lg">
                     <table className="min-w-full text-xs">
