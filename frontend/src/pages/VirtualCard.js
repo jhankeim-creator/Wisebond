@@ -800,48 +800,48 @@ export default function VirtualCard() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {cardOrders.map((order) => (
                       <div key={order.order_id} className="space-y-3">
-                        {/* Card Visual */}
+                        {/* Card Visual with info overlay */}
                         {order.status === 'approved' ? (
-                          (order.card_image || defaultCardBg) ? (
-                            /* Card with image - no overlay */
-                            <img 
-                              src={order.card_image || defaultCardBg} 
-                              alt="Card" 
-                              className="w-full h-auto rounded-2xl shadow-lg"
-                            />
-                          ) : (
-                            /* Fallback gradient card with overlay */
-                            <div className="relative rounded-2xl shadow-lg overflow-hidden" style={{ aspectRatio: '1.586/1' }}>
+                          <div className="relative rounded-2xl shadow-lg overflow-hidden" style={{ aspectRatio: '1.586/1' }}>
+                            {/* Background - Image or gradient */}
+                            {(order.card_image || defaultCardBg) ? (
+                              <img 
+                                src={order.card_image || defaultCardBg} 
+                                alt="Card" 
+                                className="absolute inset-0 w-full h-full object-cover"
+                              />
+                            ) : (
                               <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460]" />
-                              <div className="absolute inset-0 p-3 flex flex-col justify-between text-white">
-                                <div className="flex justify-between items-start">
-                                  <span className="font-bold text-sm sm:text-base tracking-wide">KAYICOM</span>
-                                  <span className="font-bold text-sm sm:text-base italic">
-                                    {(order.card_brand || order.card_type || 'VISA').toUpperCase()}
-                                  </span>
+                            )}
+                            {/* Info Overlay */}
+                            <div className="absolute inset-0 p-3 flex flex-col justify-between text-white">
+                              <div className="flex justify-between items-start">
+                                <span className="font-bold text-sm sm:text-base tracking-wide drop-shadow-lg">KAYICOM</span>
+                                <span className="font-bold text-sm sm:text-base italic drop-shadow-lg">
+                                  {(order.card_brand || order.card_type || 'VISA').toUpperCase()}
+                                </span>
+                              </div>
+                              <div>
+                                <p className="font-mono text-xs sm:text-sm tracking-[0.1em] drop-shadow-lg">
+                                  •••• •••• •••• {order.card_last4 || '****'}
+                                </p>
+                              </div>
+                              <div className="flex justify-between items-end text-[9px] sm:text-[10px]">
+                                <div className="max-w-[40%]">
+                                  <p className="text-white/70 uppercase drop-shadow">{getText('Pòtè', 'Titulaire', 'Holder')}</p>
+                                  <p className="font-medium truncate drop-shadow-lg">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
                                 </div>
-                                <div>
-                                  <p className="font-mono text-xs sm:text-sm tracking-[0.1em]">
-                                    •••• •••• •••• {order.card_last4 || '****'}
-                                  </p>
+                                <div className="text-center">
+                                  <p className="text-white/70 uppercase drop-shadow">EXP</p>
+                                  <p className="font-mono drop-shadow-lg">{order.card_expiry || '••/••'}</p>
                                 </div>
-                                <div className="flex justify-between items-end text-[9px] sm:text-[10px]">
-                                  <div className="max-w-[40%]">
-                                    <p className="text-white/70 uppercase">{getText('Pòtè', 'Titulaire', 'Holder')}</p>
-                                    <p className="font-medium truncate">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
-                                  </div>
-                                  <div className="text-center">
-                                    <p className="text-white/70 uppercase">EXP</p>
-                                    <p className="font-mono">{order.card_expiry || '••/••'}</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="text-white/70 uppercase">CVV</p>
-                                    <p className="font-mono">•••</p>
-                                  </div>
+                                <div className="text-right">
+                                  <p className="text-white/70 uppercase drop-shadow">CVV</p>
+                                  <p className="font-mono drop-shadow-lg">•••</p>
                                 </div>
                               </div>
                             </div>
-                          )
+                          </div>
                         ) : (
                           <div className="bg-stone-200 dark:bg-stone-800 flex items-center justify-center rounded-2xl shadow-lg" style={{ aspectRatio: '1.586/1' }}>
                             <div className="text-center">
@@ -1345,60 +1345,60 @@ export default function VirtualCard() {
                   )}
                 </div>
 
-                {/* Card Visual */}
-                {(selectedCard.card_image || defaultCardBg) ? (
-                  /* Card with image - no overlay since image has branding */
-                  <img 
-                    src={selectedCard.card_image || defaultCardBg} 
-                    alt="Card" 
-                    className="w-full h-auto rounded-2xl shadow-lg"
-                  />
-                ) : (
-                  /* Fallback gradient card with overlay */
-                  <div className="relative rounded-2xl shadow-lg overflow-hidden" style={{ aspectRatio: '1.586/1' }}>
+                {/* Card Visual with info overlay */}
+                <div className="relative rounded-2xl shadow-lg overflow-hidden" style={{ aspectRatio: '1.586/1' }}>
+                  {/* Background - Image or gradient */}
+                  {(selectedCard.card_image || defaultCardBg) ? (
+                    <img 
+                      src={selectedCard.card_image || defaultCardBg} 
+                      alt="Card" 
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  ) : (
                     <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460]" />
-                    <div className="absolute inset-0 p-3 sm:p-4 flex flex-col justify-between text-white">
-                      <div className="flex justify-between items-start">
-                        <span className="font-bold text-base sm:text-lg tracking-wide">KAYICOM</span>
-                        <span className="font-bold text-base sm:text-lg italic">
-                          {(selectedCard.card_brand || selectedCard.card_type || 'VISA').toUpperCase()}
-                        </span>
+                  )}
+                  {/* Info Overlay - Always visible */}
+                  <div className="absolute inset-0 p-3 sm:p-4 flex flex-col justify-between text-white">
+                    <div className="flex justify-between items-start">
+                      <span className="font-bold text-base sm:text-lg tracking-wide drop-shadow-lg">KAYICOM</span>
+                      <span className="font-bold text-base sm:text-lg italic drop-shadow-lg">
+                        {(selectedCard.card_brand || selectedCard.card_type || 'VISA').toUpperCase()}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="font-mono text-sm sm:text-base tracking-[0.1em] drop-shadow-lg">
+                        {showSensitiveData && sensitiveCardData?.card_number 
+                          ? sensitiveCardData.card_number.replace(/(.{4})/g, '$1 ').trim()
+                          : `•••• •••• •••• ${selectedCard.card_last4 || '****'}`
+                        }
+                      </p>
+                    </div>
+                    <div className="flex justify-between items-end text-[10px] sm:text-xs">
+                      <div className="max-w-[40%]">
+                        <p className="text-white/70 uppercase drop-shadow">{getText('Pòtè', 'Titulaire', 'Holder')}</p>
+                        <p className="font-medium truncate drop-shadow-lg">{selectedCard.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
                       </div>
-                      <div>
-                        <p className="font-mono text-sm sm:text-base tracking-[0.1em]">
-                          {showSensitiveData && sensitiveCardData?.card_number 
-                            ? sensitiveCardData.card_number.replace(/(.{4})/g, '$1 ').trim()
-                            : `•••• •••• •••• ${selectedCard.card_last4 || '****'}`
+                      <div className="text-center">
+                        <p className="text-white/70 uppercase drop-shadow">EXP</p>
+                        <p className="font-mono drop-shadow-lg">
+                          {showSensitiveData && sensitiveCardData?.card_expiry 
+                            ? sensitiveCardData.card_expiry 
+                            : (selectedCard.card_expiry || '••/••')
                           }
                         </p>
                       </div>
-                      <div className="flex justify-between items-end text-[10px] sm:text-xs">
-                        <div className="max-w-[40%]">
-                          <p className="text-white/70 uppercase">{getText('Pòtè', 'Titulaire', 'Holder')}</p>
-                          <p className="font-medium truncate">{selectedCard.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-white/70 uppercase">EXP</p>
-                          <p className="font-mono">
-                            {showSensitiveData && sensitiveCardData?.card_expiry 
-                              ? sensitiveCardData.card_expiry 
-                              : (selectedCard.card_expiry || '••/••')
-                            }
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-white/70 uppercase">CVV</p>
-                          <p className="font-mono font-bold">
-                            {showSensitiveData && sensitiveCardData?.cvv 
-                              ? sensitiveCardData.cvv 
-                              : '•••'
-                            }
-                          </p>
-                        </div>
+                      <div className="text-right">
+                        <p className="text-white/70 uppercase drop-shadow">CVV</p>
+                        <p className="font-mono font-bold drop-shadow-lg">
+                          {showSensitiveData && sensitiveCardData?.cvv 
+                            ? sensitiveCardData.cvv 
+                            : '•••'
+                          }
+                        </p>
                       </div>
                     </div>
                   </div>
-                )}
+                </div>
 
                 {/* Balance & Copy Buttons */}
                 <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
