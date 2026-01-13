@@ -822,67 +822,139 @@ export default function VirtualCard() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="divide-y divide-stone-100 dark:divide-stone-700">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {cardOrders.map((order) => (
-                      <div key={order.order_id} className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
-                            order.status === 'approved' ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-stone-100 dark:bg-stone-800'
-                          }`}>
-                            {order.card_type && order.status === 'approved' ? (
-                              <img 
-                                src={order.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
-                                alt={order.card_type}
-                                className="h-8 w-auto"
-                              />
-                            ) : (
-                              <CreditCard className={order.status === 'approved' ? 'text-emerald-600' : 'text-stone-600 dark:text-stone-400'} size={24} />
-                            )}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium text-stone-900 dark:text-white">{order.card_email}</p>
-                              {order.card_brand && order.status === 'approved' && (
-                                <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-2 py-0.5 rounded-full font-medium">
-                                  {order.card_brand}
-                                </span>
-                              )}
+                      <div key={order.order_id} className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                        {/* Card Visual - Rectangle with hidden info */}
+                        {order.status === 'approved' ? (
+                          <div className="relative bg-gradient-to-br from-[#0d6efd] via-[#0099cc] to-[#00c389] p-5 text-white" style={{ aspectRatio: '1.6/1' }}>
+                            {/* Decorative elements */}
+                            <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full"></div>
+                            <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-white/10 rounded-full"></div>
+                            
+                            <div className="relative z-10 h-full flex flex-col justify-between">
+                              {/* Header */}
+                              <div className="flex justify-between items-start">
+                                <span className="text-white font-bold text-lg tracking-wide">KAYICOM</span>
+                                <img 
+                                  src={order.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
+                                  alt={order.card_type}
+                                  className="h-8 w-auto"
+                                />
+                              </div>
+                              
+                              {/* Card Number - Hidden */}
+                              <div className="my-4">
+                                <p className="font-mono text-lg tracking-widest">
+                                  •••• •••• •••• {order.card_last4 || '****'}
+                                </p>
+                              </div>
+                              
+                              {/* Footer */}
+                              <div className="flex justify-between items-end">
+                                <div>
+                                  <p className="text-white/60 text-xs uppercase">{getText('Pòtè Kat', 'Titulaire', 'Card Holder')}</p>
+                                  <p className="font-medium text-sm">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-white/60 text-xs uppercase">{getText('Ekspire', 'Expire', 'Expires')}</p>
+                                  <p className="font-mono text-sm">••/••</p>
+                                </div>
+                              </div>
                             </div>
-                            {order.status === 'approved' && order.card_last4 && (
-                              <p className="text-sm font-mono text-emerald-600 dark:text-emerald-400">
-                                •••• •••• •••• {order.card_last4}
-                              </p>
-                            )}
-                            <p className="text-sm text-stone-500">
-                              {new Date(order.created_at).toLocaleDateString()}
-                            </p>
                           </div>
+                        ) : (
+                          <div className="bg-stone-100 dark:bg-stone-800 p-5 flex items-center justify-center" style={{ aspectRatio: '1.6/1' }}>
+                            <div className="text-center">
+                              <CreditCard className="mx-auto mb-2 text-stone-400" size={40} />
+                              <p className="text-stone-500 text-sm">{getText('An atant apwobasyon', 'En attente d\'approbation', 'Pending approval')}</p>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Status Badge */}
+                        <div className="px-4 py-2 bg-stone-50 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 flex items-center justify-between">
+                          {getStatusBadge(order.status)}
+                          <span className="text-xs text-stone-500">{new Date(order.created_at).toLocaleDateString()}</span>
                         </div>
-                        <div className="flex items-center gap-3">
-                          {order.status === 'approved' && (
+                        
+                        {/* Action Buttons */}
+                        {order.status === 'approved' && (
+                          <div className="p-3 grid grid-cols-3 gap-2">
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => openCardDetails(order)}
-                              className="text-emerald-600 border-emerald-300 hover:bg-emerald-50"
+                              className="text-xs flex flex-col items-center gap-1 h-auto py-2"
                             >
-                              <Eye size={16} className="mr-1" />
-                              {getText('Wè Detay', 'Voir Détails', 'View Details')}
+                              <Eye size={16} />
+                              <span>{getText('Detay', 'Détails', 'Details')}</span>
                             </Button>
-                          )}
-                          {order.status === 'approved' && order.provider === 'strowallet' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedCard(order);
+                                setShowTopUpModal(true);
+                                setTopUpCardId(order.order_id);
+                              }}
+                              className="text-xs flex flex-col items-center gap-1 h-auto py-2 text-emerald-600 border-emerald-300"
+                            >
+                              <Plus size={16} />
+                              <span>{getText('Depo', 'Dépôt', 'Deposit')}</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedCard(order);
+                                setShowWithdrawModal(true);
+                                setWithdrawCardId(order.order_id);
+                              }}
+                              className="text-xs flex flex-col items-center gap-1 h-auto py-2 text-amber-600 border-amber-300"
+                            >
+                              <ArrowDown size={16} />
+                              <span>{getText('Retrè', 'Retrait', 'Withdraw')}</span>
+                            </Button>
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => openTransactions(order)}
-                              className="text-purple-700 border-purple-300 hover:bg-purple-50"
+                              className="text-xs flex flex-col items-center gap-1 h-auto py-2 text-purple-600 border-purple-300"
                             >
-                              <History size={16} className="mr-1" />
-                              {getText('Tranzaksyon', 'Transactions', 'Transactions')}
+                              <History size={16} />
+                              <span>{getText('Istorik', 'Historique', 'History')}</span>
                             </Button>
-                          )}
-                          {getStatusBadge(order.status)}
-                        </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedCard(order);
+                                updateControls({ lock: order.card_status !== 'locked' });
+                              }}
+                              className={`text-xs flex flex-col items-center gap-1 h-auto py-2 ${
+                                order.card_status === 'locked' 
+                                  ? 'text-amber-600 border-amber-300' 
+                                  : 'text-red-600 border-red-300'
+                              }`}
+                            >
+                              <Shield size={16} />
+                              <span>{order.card_status === 'locked' ? getText('Debloke', 'Débloquer', 'Unlock') : getText('Freeze', 'Geler', 'Freeze')}</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedCard(order);
+                                setShowChangePinModal(true);
+                              }}
+                              className="text-xs flex flex-col items-center gap-1 h-auto py-2 text-stone-600 border-stone-300"
+                            >
+                              <Shield size={16} />
+                              <span>PIN</span>
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

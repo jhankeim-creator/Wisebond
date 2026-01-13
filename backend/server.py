@@ -1127,7 +1127,8 @@ class TeamMemberCreate(BaseModel):
     role: Optional[str] = "admin"
 
 class TeamMemberUpdate(BaseModel):
-    is_active: bool
+    is_active: Optional[bool] = None
+    admin_role: Optional[str] = None
 
 class BulkEmailRequest(BaseModel):
     subject: str
@@ -7679,16 +7680,28 @@ async def admin_create_team_member(payload: TeamMemberCreate, admin: dict = Depe
 
 @api_router.patch("/admin/team/{user_id}")
 async def admin_update_team_member(user_id: str, payload: TeamMemberUpdate, admin: dict = Depends(get_admin_user)):
-    """Activate/deactivate a team member."""
+    """Update a team member (activate/deactivate or change role)."""
     target = await db.users.find_one({"user_id": user_id, "is_admin": True}, {"_id": 0})
     if not target:
         raise HTTPException(status_code=404, detail="Team member not found")
 
+    update_doc = {}
+    if payload.is_active is not None:
+        update_doc["is_active"] = payload.is_active
+    if payload.admin_role is not None:
+        valid_roles = ["admin", "support", "finance", "manager", "superadmin"]
+        if payload.admin_role.lower() not in valid_roles:
+            raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(valid_roles)}")
+        update_doc["admin_role"] = payload.admin_role.lower()
+
+    if not update_doc:
+        return {"message": "No changes"}
+
     await db.users.update_one(
         {"user_id": user_id},
-        {"$set": {"is_active": payload.is_active}},
+        {"$set": update_doc},
     )
-    await log_action(admin["user_id"], "team_update", {"user_id": user_id, "is_active": payload.is_active})
+    await log_action(admin["user_id"], "team_update", {"user_id": user_id, "changes": update_doc})
     return {"message": "Team member updated"}
 
 

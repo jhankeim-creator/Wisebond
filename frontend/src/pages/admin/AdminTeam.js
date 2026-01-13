@@ -85,6 +85,16 @@ export default function AdminTeam() {
     }
   };
 
+  const changeRole = async (member, newRole) => {
+    try {
+      await axios.patch(`${API}/admin/team/${member.user_id}`, { admin_role: newRole });
+      toast.success(getText('Wòl chanje!', 'Rôle changé!', 'Role changed!'));
+      fetchTeam();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    }
+  };
+
   return (
     <AdminLayout title={getText('Ekip / Admin', 'Équipe / Admin', 'Team / Admin')}>
       <div className="space-y-6" data-testid="admin-team">
@@ -115,17 +125,32 @@ export default function AdminTeam() {
                   {team.map((m) => (
                     <div key={m.user_id} className="border rounded-xl p-4 bg-white dark:bg-stone-800">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="font-semibold text-stone-900 dark:text-white truncate">{m.full_name}</p>
                           <p className="text-sm text-stone-600 dark:text-stone-300 break-all">{m.email}</p>
-                          <p className="text-xs text-stone-500 mt-1">
-                            <span className="font-medium">{getText('Wòl', 'Rôle', 'Role')}:</span>{' '}
-                            <span className="capitalize">{m.admin_role || 'admin'}</span>
-                          </p>
-                          <p className="text-xs text-stone-500 mt-1">
-                            <span className="font-medium">{getText('Statis', 'Statut', 'Status')}:</span>{' '}
-                            {m.is_active ? getText('Aktif', 'Actif', 'Active') : getText('Bloke', 'Bloqué', 'Blocked')}
-                          </p>
+                          <div className="mt-2">
+                            <Label className="text-xs">{getText('Wòl', 'Rôle', 'Role')}</Label>
+                            <Select 
+                              value={m.admin_role || 'admin'} 
+                              onValueChange={(v) => changeRole(m, v)}
+                            >
+                              <SelectTrigger className="w-full h-8 text-xs mt-1">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {roleOptions.map((r) => (
+                                  <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                              m.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                              {m.is_active ? getText('Aktif', 'Actif', 'Active') : getText('Bloke', 'Bloqué', 'Blocked')}
+                            </span>
+                          </div>
                         </div>
                         <Button
                           size="sm"
@@ -157,8 +182,28 @@ export default function AdminTeam() {
                         <tr key={m.user_id}>
                           <td className="font-medium">{m.full_name}</td>
                           <td>{m.email}</td>
-                          <td className="capitalize">{m.admin_role || 'admin'}</td>
-                          <td>{m.is_active ? getText('Aktif', 'Actif', 'Active') : getText('Bloke', 'Bloqué', 'Blocked')}</td>
+                          <td>
+                            <Select 
+                              value={m.admin_role || 'admin'} 
+                              onValueChange={(v) => changeRole(m, v)}
+                            >
+                              <SelectTrigger className="w-32 h-8 text-xs">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {roleOptions.map((r) => (
+                                  <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td>
+                            <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${
+                              m.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                              {m.is_active ? getText('Aktif', 'Actif', 'Active') : getText('Bloke', 'Bloqué', 'Blocked')}
+                            </span>
+                          </td>
                           <td>
                             <Button
                               size="sm"
