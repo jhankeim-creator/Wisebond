@@ -1268,130 +1268,122 @@ def _normalize_admin_role(user: dict) -> str:
     return role or "admin"
 
 
-def _rbac_is_allowed(*, role: str, path: str) -> bool:
-    """
-    Server-side RBAC for /api/admin/* endpoints.
-    Keep frontend route/menu permissions aligned with this.
-    """
+# Default RBAC permissions (can be overridden in database)
+DEFAULT_RBAC_PERMISSIONS: Dict[str, List[str]] = {
+    # Support: KYC + users + virtual cards operations (non-financial config)
+    "support": [
+        "/api/admin/dashboard",
+        "/api/admin/users",
+        "/api/admin/kyc",
+        "/api/admin/kyc-image-storage-status",
+        "/api/admin/virtual-cards",
+        "/api/admin/virtual-card-orders",
+        "/api/admin/card-topups",
+        "/api/admin/topup-orders",
+    ],
+    # Finance: ONLY deposits and withdrawals (restricted)
+    "finance": [
+        "/api/admin/dashboard",
+        "/api/admin/deposits",
+        "/api/admin/withdrawals",
+    ],
+    # Manager: broad ops (no system-level settings/team)
+    "manager": [
+        "/api/admin/dashboard",
+        "/api/admin/users",
+        "/api/admin/kyc",
+        "/api/admin/deposits",
+        "/api/admin/withdrawals",
+        "/api/admin/virtual-cards",
+        "/api/admin/virtual-card-orders",
+        "/api/admin/card-topups",
+        "/api/admin/topup-orders",
+        "/api/admin/logs",
+    ],
+    # Admin: broad ops (still blocked from system-level team/settings)
+    "admin": [
+        "/api/admin/dashboard",
+        "/api/admin/users",
+        "/api/admin/kyc",
+        "/api/admin/kyc-image-storage-status",
+        "/api/admin/deposits",
+        "/api/admin/withdrawals",
+        "/api/admin/exchange-rates",
+        "/api/admin/rates",
+        "/api/admin/fees",
+        "/api/admin/card-fees",
+        "/api/admin/withdrawal-limits",
+        "/api/admin/payment-gateway",
+        "/api/admin/settings",
+        "/api/admin/virtual-cards",
+        "/api/admin/virtual-card-orders",
+        "/api/admin/card-topups",
+        "/api/admin/topup-orders",
+        "/api/admin/bulk-email",
+        "/api/admin/logs",
+        "/api/admin/webhook-events",
+        "/api/admin/agent-deposits",
+        "/api/admin/agent-settings",
+        "/api/admin/agent-commission-withdrawals",
+        "/api/admin/strowallet",
+        "/api/admin/agent-requests",
+        "/api/admin/agents",
+        "/api/admin/recharge-agent",
+        "/api/admin/client-reports",
+        "/api/admin/whatsapp-notifications",
+        "/api/admin/test-whatsapp",
+        "/api/admin/test-telegram",
+        "/api/admin/telegram/setup-webhook",
+        "/api/admin/team",
+        "/api/admin/rbac",
+    ],
+}
+
+# Cache for RBAC permissions from database
+_rbac_cache: Dict[str, Any] = {"permissions": None, "last_fetch": 0}
+
+async def _get_rbac_permissions() -> Dict[str, List[str]]:
+    """Get RBAC permissions from database or use defaults."""
+    import time
+    
+    # Cache for 60 seconds
+    if _rbac_cache["permissions"] and (time.time() - _rbac_cache["last_fetch"]) < 60:
+        return _rbac_cache["permissions"]
+    
+    try:
+        settings = await db.settings.find_one({"setting_id": "main"}, {"_id": 0, "rbac_permissions": 1})
+        if settings and settings.get("rbac_permissions"):
+            _rbac_cache["permissions"] = settings["rbac_permissions"]
+            _rbac_cache["last_fetch"] = time.time()
+            return settings["rbac_permissions"]
+    except Exception as e:
+        logger.warning(f"Failed to fetch RBAC permissions from DB: {e}")
+    
+    return DEFAULT_RBAC_PERMISSIONS
+
+def _rbac_is_allowed_sync(*, role: str, path: str, permissions: Dict[str, List[str]]) -> bool:
+    """Synchronous check if role is allowed to access path."""
     if not role:
         return False
     if role == "superadmin":
         return True
 
-    # Allowed route prefixes per role.
-    allow: Dict[str, List[str]] = {
-        # Support: KYC + users + virtual cards operations (non-financial config)
-        "support": [
-            "/api/admin/dashboard",
-            "/api/admin/users",
-            "/api/admin/kyc",
-            "/api/admin/kyc-image-storage-status",
-            "/api/admin/virtual-cards",
-            "/api/admin/virtual-card-orders",
-            "/api/admin/card-topups",
-            "/api/admin/topup-orders",
-        ],
-        # Finance: deposits/withdrawals + rates/fees + payment gateway + virtual card ops
-        "finance": [
-            "/api/admin/dashboard",
-            "/api/admin/deposits",
-            "/api/admin/withdrawals",
-            "/api/admin/exchange-rates",
-            "/api/admin/rates",
-            "/api/admin/fees",
-            "/api/admin/card-fees",
-            "/api/admin/withdrawal-limits",
-            "/api/admin/payment-gateway",
-            "/api/admin/virtual-cards",
-            "/api/admin/virtual-card-orders",
-            "/api/admin/card-topups",
-            "/api/admin/topup-orders",
-            "/api/admin/agent-deposits",
-            "/api/admin/agent-settings",
-            "/api/admin/agent-commission-withdrawals",
-            "/api/admin/agent-requests",
-            "/api/admin/agents",
-            "/api/admin/recharge-agent",
-            "/api/admin/client-reports",
-        ],
-        # Manager: broad ops (no system-level settings/team)
-        "manager": [
-            "/api/admin/dashboard",
-            "/api/admin/users",
-            "/api/admin/kyc",
-            "/api/admin/kyc-image-storage-status",
-            "/api/admin/deposits",
-            "/api/admin/withdrawals",
-            "/api/admin/virtual-cards",
-            "/api/admin/virtual-card-orders",
-            "/api/admin/card-topups",
-            "/api/admin/topup-orders",
-            "/api/admin/bulk-email",
-            "/api/admin/logs",
-            "/api/admin/webhook-events",
-            "/api/admin/payment-gateway",
-            "/api/admin/agent-deposits",
-            "/api/admin/agent-settings",
-            "/api/admin/agent-commission-withdrawals",
-            "/api/admin/agent-requests",
-            "/api/admin/agents",
-            "/api/admin/recharge-agent",
-            "/api/admin/client-reports",
-            "/api/admin/whatsapp-notifications",
-            "/api/admin/test-whatsapp",
-            "/api/admin/test-telegram",
-            "/api/admin/telegram/setup-webhook",
-        ],
-        # Admin: broad ops (still blocked from system-level team/settings)
-        "admin": [
-            "/api/admin/dashboard",
-            "/api/admin/users",
-            "/api/admin/kyc",
-            "/api/admin/kyc-image-storage-status",
-            "/api/admin/deposits",
-            "/api/admin/withdrawals",
-            "/api/admin/exchange-rates",
-            "/api/admin/rates",
-            "/api/admin/fees",
-            "/api/admin/card-fees",
-            "/api/admin/withdrawal-limits",
-            "/api/admin/payment-gateway",
-            "/api/admin/settings",
-            "/api/admin/virtual-cards",
-            "/api/admin/virtual-card-orders",
-            "/api/admin/card-topups",
-            "/api/admin/topup-orders",
-            "/api/admin/bulk-email",
-            "/api/admin/logs",
-            "/api/admin/webhook-events",
-            "/api/admin/agent-deposits",
-            "/api/admin/agent-settings",
-            "/api/admin/agent-commission-withdrawals",
-            "/api/admin/strowallet",
-            "/api/admin/agent-requests",
-            "/api/admin/agents",
-            "/api/admin/recharge-agent",
-            "/api/admin/client-reports",
-            "/api/admin/whatsapp-notifications",
-            "/api/admin/test-whatsapp",
-            "/api/admin/test-telegram",
-            "/api/admin/telegram/setup-webhook",
-        ],
-    }
-
     # Explicitly blocked paths for non-superadmin roles.
     blocked_prefixes = [
-        "/api/admin/team",
-        # Maintenance endpoints: superadmin only
         "/api/admin/purge-old-records",
     ]
     for bp in blocked_prefixes:
         if path.startswith(bp):
             return False
 
-    prefixes = allow.get(role, [])
+    prefixes = permissions.get(role, [])
     # Only allow exact match or sub-paths (prefix + "/..."), never raw startswith(prefix)
     return any(path == p or path.startswith(p + "/") for p in prefixes)
+
+async def _rbac_is_allowed_async(*, role: str, path: str) -> bool:
+    """Async check if role is allowed to access path (fetches from DB)."""
+    permissions = await _get_rbac_permissions()
+    return _rbac_is_allowed_sync(role=role, path=path, permissions=permissions)
 
 
 async def get_admin_user(request: Request, current_user: dict = Depends(get_current_user)):
@@ -1403,7 +1395,7 @@ async def get_admin_user(request: Request, current_user: dict = Depends(get_curr
 
     # Only enforce RBAC on /api/admin/*.
     if path.startswith("/api/admin"):
-        if not _rbac_is_allowed(role=role, path=path):
+        if not await _rbac_is_allowed_async(role=role, path=path):
             raise HTTPException(status_code=403, detail="Insufficient role permissions")
 
     return current_user
@@ -7703,6 +7695,119 @@ async def admin_update_team_member(user_id: str, payload: TeamMemberUpdate, admi
     )
     await log_action(admin["user_id"], "team_update", {"user_id": user_id, "changes": update_doc})
     return {"message": "Team member updated"}
+
+
+# ==================== RBAC MANAGEMENT ====================
+
+# All available admin routes/permissions
+AVAILABLE_ADMIN_PERMISSIONS = [
+    {"path": "/api/admin/dashboard", "label": "Dashboard", "category": "general"},
+    {"path": "/api/admin/users", "label": "Itilizatè yo", "category": "users"},
+    {"path": "/api/admin/kyc", "label": "KYC", "category": "users"},
+    {"path": "/api/admin/deposits", "label": "Depo", "category": "finance"},
+    {"path": "/api/admin/withdrawals", "label": "Retrè", "category": "finance"},
+    {"path": "/api/admin/exchange-rates", "label": "To echanj", "category": "finance"},
+    {"path": "/api/admin/rates", "label": "Rates", "category": "finance"},
+    {"path": "/api/admin/fees", "label": "Frè", "category": "finance"},
+    {"path": "/api/admin/card-fees", "label": "Frè Kat", "category": "cards"},
+    {"path": "/api/admin/virtual-cards", "label": "Kat Vityèl", "category": "cards"},
+    {"path": "/api/admin/virtual-card-orders", "label": "Komand Kat", "category": "cards"},
+    {"path": "/api/admin/card-topups", "label": "Top-up Kat", "category": "cards"},
+    {"path": "/api/admin/topup-orders", "label": "Komand Top-up", "category": "cards"},
+    {"path": "/api/admin/payment-gateway", "label": "Gateway Peman", "category": "settings"},
+    {"path": "/api/admin/settings", "label": "Paramèt", "category": "settings"},
+    {"path": "/api/admin/bulk-email", "label": "Imèl an mas", "category": "communication"},
+    {"path": "/api/admin/logs", "label": "Lòg", "category": "system"},
+    {"path": "/api/admin/webhook-events", "label": "Webhook Events", "category": "system"},
+    {"path": "/api/admin/agent-deposits", "label": "Depo Ajan", "category": "agents"},
+    {"path": "/api/admin/agent-settings", "label": "Paramèt Ajan", "category": "agents"},
+    {"path": "/api/admin/agent-commission-withdrawals", "label": "Retrè Komisyon Ajan", "category": "agents"},
+    {"path": "/api/admin/agents", "label": "Ajan yo", "category": "agents"},
+    {"path": "/api/admin/team", "label": "Ekip Admin", "category": "system"},
+    {"path": "/api/admin/rbac", "label": "Jesyon Wòl", "category": "system"},
+]
+
+class RBACUpdate(BaseModel):
+    role: str
+    permissions: List[str]
+
+
+@api_router.get("/admin/rbac")
+async def get_rbac_config(admin: dict = Depends(get_admin_user)):
+    """Get current RBAC configuration."""
+    # Only superadmin or admin can view/modify RBAC
+    role = _normalize_admin_role(admin)
+    if role not in ["superadmin", "admin"]:
+        raise HTTPException(status_code=403, detail="Only admin or superadmin can manage RBAC")
+    
+    permissions = await _get_rbac_permissions()
+    
+    return {
+        "roles": ["support", "finance", "manager", "admin"],
+        "permissions": permissions,
+        "available_permissions": AVAILABLE_ADMIN_PERMISSIONS,
+        "default_permissions": DEFAULT_RBAC_PERMISSIONS,
+    }
+
+
+@api_router.patch("/admin/rbac")
+async def update_rbac_config(payload: RBACUpdate, admin: dict = Depends(get_admin_user)):
+    """Update RBAC permissions for a role."""
+    # Only superadmin or admin can modify RBAC
+    role = _normalize_admin_role(admin)
+    if role not in ["superadmin", "admin"]:
+        raise HTTPException(status_code=403, detail="Only admin or superadmin can manage RBAC")
+    
+    target_role = payload.role.lower()
+    if target_role not in ["support", "finance", "manager"]:
+        raise HTTPException(status_code=400, detail="Can only modify permissions for: support, finance, manager")
+    
+    # Validate permission paths
+    valid_paths = [p["path"] for p in AVAILABLE_ADMIN_PERMISSIONS]
+    for perm in payload.permissions:
+        if perm not in valid_paths:
+            raise HTTPException(status_code=400, detail=f"Invalid permission path: {perm}")
+    
+    # Get current permissions or defaults
+    current = await _get_rbac_permissions()
+    current[target_role] = payload.permissions
+    
+    # Save to database
+    await db.settings.update_one(
+        {"setting_id": "main"},
+        {"$set": {"rbac_permissions": current}},
+        upsert=True
+    )
+    
+    # Clear cache
+    _rbac_cache["permissions"] = None
+    _rbac_cache["last_fetch"] = 0
+    
+    await log_action(admin["user_id"], "rbac_update", {"role": target_role, "permissions": payload.permissions})
+    
+    return {"message": f"Permissions for {target_role} updated", "permissions": current}
+
+
+@api_router.post("/admin/rbac/reset")
+async def reset_rbac_to_defaults(admin: dict = Depends(get_admin_user)):
+    """Reset RBAC permissions to defaults."""
+    role = _normalize_admin_role(admin)
+    if role not in ["superadmin", "admin"]:
+        raise HTTPException(status_code=403, detail="Only admin or superadmin can manage RBAC")
+    
+    await db.settings.update_one(
+        {"setting_id": "main"},
+        {"$unset": {"rbac_permissions": ""}},
+        upsert=True
+    )
+    
+    # Clear cache
+    _rbac_cache["permissions"] = None
+    _rbac_cache["last_fetch"] = 0
+    
+    await log_action(admin["user_id"], "rbac_reset", {})
+    
+    return {"message": "RBAC permissions reset to defaults", "permissions": DEFAULT_RBAC_PERMISSIONS}
 
 
 # Public endpoint for payment gateway methods (no auth required)
