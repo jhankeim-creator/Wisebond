@@ -287,11 +287,20 @@
   overflow: hidden;
 }
 
+.dark .sidebar {
+  background: #1c1917;
+  border-right-color: #44403c;
+}
+
 .main-content {
   margin-left: 280px;
   min-height: 100vh;
   background: #FAFAF9;
   width: calc(100% - 280px);
+}
+
+.dark .main-content {
+  background: #0c0a09;
 }
 
 @media (max-width: 1024px) {
@@ -490,6 +499,75 @@ a, button, input, select, textarea {
   box-shadow: 0 10px 40px -10px rgba(245, 158, 11, 0.4);
 }
 
+/* Total Balance Hero Card */
+.total-balance-card {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  transition: all 0.3s ease;
+}
+
+.total-balance-card:hover {
+  box-shadow: 0 25px 50px -12px rgba(234, 88, 12, 0.25);
+  transform: translateY(-2px);
+}
+
+/* Mobile Bottom Navigation */
+.mobile-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid #E7E5E4;
+  padding: 0.5rem 0.5rem calc(0.5rem + env(safe-area-inset-bottom, 0));
+}
+
+.dark .mobile-bottom-nav {
+  background: rgba(28, 25, 23, 0.95);
+  border-top-color: #44403c;
+}
+
+.mobile-bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border-radius: 0.75rem;
+  color: #78716c;
+  transition: all 0.2s ease;
+  min-width: 0;
+}
+
+.mobile-bottom-nav-item:hover {
+  color: #EA580C;
+  background: rgba(234, 88, 12, 0.1);
+}
+
+.mobile-bottom-nav-item.active {
+  color: #EA580C;
+  background: rgba(234, 88, 12, 0.1);
+}
+
+.mobile-bottom-nav-item span {
+  font-size: 0.65rem;
+  font-weight: 500;
+  margin-top: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* Add padding to main content when mobile nav is visible */
+@media (max-width: 1024px) {
+  .has-mobile-nav .main-content {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0));
+  }
+}
+
 /* PWA Install banner styles */
 .pwa-install-banner {
   position: fixed;
@@ -565,4 +643,86 @@ button:active:not(:disabled) {
 @keyframes pulse-dot {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.5); opacity: 0.5; }
+}
+
+/* Enhanced Micro-animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 15px rgba(234, 88, 12, 0.2); }
+  50% { box-shadow: 0 0 30px rgba(234, 88, 12, 0.4); }
+}
+
+@keyframes subtle-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.animate-float { animation: float 3s ease-in-out infinite; }
+.animate-glow-pulse { animation: glow-pulse 2s ease-in-out infinite; }
+.animate-subtle-bounce { animation: subtle-bounce 2s ease-in-out infinite; }
+
+/* Enhanced Glassmorphism */
+.glass-card {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+.dark .glass-card {
+  background: rgba(28, 25, 23, 0.7);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Hover lift effect */
+.hover-lift {
+  transition: all 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+/* Interactive button press */
+.btn-press {
+  transition: transform 0.1s ease;
+}
+
+.btn-press:active {
+  transform: scale(0.96);
+}
+
+/* Stagger animation for lists */
+.stagger-item {
+  opacity: 0;
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0.05s; }
+.stagger-item:nth-child(2) { animation-delay: 0.1s; }
+.stagger-item:nth-child(3) { animation-delay: 0.15s; }
+.stagger-item:nth-child(4) { animation-delay: 0.2s; }
+.stagger-item:nth-child(5) { animation-delay: 0.25s; }
+.stagger-item:nth-child(6) { animation-delay: 0.3s; }
+
+/* Card entrance animation */
+@keyframes cardEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.card-entrance {
+  animation: cardEntrance 0.5s ease-out forwards;
 }
