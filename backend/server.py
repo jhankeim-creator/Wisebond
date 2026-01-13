@@ -3887,9 +3887,8 @@ async def update_virtual_card_controls(
     if not order:
         raise HTTPException(status_code=404, detail="Card not found or not approved")
 
-    # Only automated (Strowallet) cards can be managed here.
-    if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
-        raise HTTPException(status_code=400, detail="This card cannot be managed automatically")
+    # Check if this is a Strowallet card for provider-side updates
+    is_strowallet_card = order.get("provider") == "strowallet" and order.get("provider_card_id")
 
     failed_count = int(order.get("failed_payment_count", 0) or 0)
     is_hard_blocked = failed_count >= 3
@@ -3915,30 +3914,31 @@ async def update_virtual_card_controls(
     if not update_doc:
         return {"message": "No changes", "card": order}
 
-    # Try updating provider controls if configured.
-    cfg = _strowallet_config(settings)
-    try:
-        if _strowallet_enabled(settings):
-            if ("spending_limit_usd" in update_doc or "spending_limit_period" in update_doc) and cfg.get("set_limit_path"):
-                await _strowallet_post(settings, cfg["set_limit_path"], {
-                    "card_id": order.get("provider_card_id"),
-                    "limit": float(update_doc.get("spending_limit_usd", order.get("spending_limit_usd", 500.0))),
-                    "period": str(update_doc.get("spending_limit_period", order.get("spending_limit_period", "monthly"))),
-                    "reference": f"limit-{order_id}",
-                })
-            if payload.lock is True and cfg.get("freeze_path"):
-                await _strowallet_post(settings, cfg["freeze_path"], {
-                    "card_id": order.get("provider_card_id"),
-                    "reference": f"freeze-{order_id}",
-                })
-            if payload.lock is False and cfg.get("unfreeze_path"):
-                await _strowallet_post(settings, cfg["unfreeze_path"], {
-                    "card_id": order.get("provider_card_id"),
-                    "reference": f"unfreeze-{order_id}",
-                })
-    except Exception as e:
-        # Keep local state consistent; provider controls can be retried by admin if needed.
-        logger.warning(f"Strowallet controls update failed for order {order_id}: {e}")
+    # Try updating provider controls if configured (only for Strowallet cards).
+    if is_strowallet_card:
+        cfg = _strowallet_config(settings)
+        try:
+            if _strowallet_enabled(settings):
+                if ("spending_limit_usd" in update_doc or "spending_limit_period" in update_doc) and cfg.get("set_limit_path"):
+                    await _strowallet_post(settings, cfg["set_limit_path"], {
+                        "card_id": order.get("provider_card_id"),
+                        "limit": float(update_doc.get("spending_limit_usd", order.get("spending_limit_usd", 500.0))),
+                        "period": str(update_doc.get("spending_limit_period", order.get("spending_limit_period", "monthly"))),
+                        "reference": f"limit-{order_id}",
+                    })
+                if payload.lock is True and cfg.get("freeze_path"):
+                    await _strowallet_post(settings, cfg["freeze_path"], {
+                        "card_id": order.get("provider_card_id"),
+                        "reference": f"freeze-{order_id}",
+                    })
+                if payload.lock is False and cfg.get("unfreeze_path"):
+                    await _strowallet_post(settings, cfg["unfreeze_path"], {
+                        "card_id": order.get("provider_card_id"),
+                        "reference": f"unfreeze-{order_id}",
+                    })
+        except Exception as e:
+            # Keep local state consistent; provider controls can be retried by admin if needed.
+            logger.warning(f"Strowallet controls update failed for order {order_id}: {e}")
 
     await db.virtual_card_orders.update_one({"order_id": order_id}, {"$set": update_doc})
     updated = await db.virtual_card_orders.find_one({"order_id": order_id}, {"_id": 0})
@@ -4065,11 +4065,21 @@ async def virtual_card_transactions(
     if not order:
         raise HTTPException(status_code=404, detail="Card not found or not approved")
     if order.get("provider") != "strowallet" or not order.get("provider_card_id"):
-        raise HTTPException(status_code=400, detail="This card is not eligible for provider transactions")
+        return {
+            "provider": "manual",
+            "order_id": order_id,
+            "message": "Kat sa a pa gen istorik tranzaksyon otomatik disponib.",
+            "transactions": []
+        }
 
     cfg = _strowallet_config(settings)
     if not cfg.get("card_tx_path"):
-        raise HTTPException(status_code=400, detail="Card transactions endpoint not configured")
+        return {
+            "provider": "strowallet",
+            "order_id": order_id,
+            "message": "Endpoint tranzaksyon pa konfigire.",
+            "transactions": []
+        }
 
     payload: Dict[str, Any] = {
         "card_id": order.get("provider_card_id"),

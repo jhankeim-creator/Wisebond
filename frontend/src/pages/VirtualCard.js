@@ -1294,40 +1294,30 @@ export default function VirtualCard() {
                   </div>
                 </div>
 
-                {/* Card Visual - KAYICOM CARD Style */}
-                <div className={`relative rounded-2xl p-4 sm:p-6 text-white overflow-hidden shadow-xl ${
-                  selectedCard.card_type === 'mastercard' 
-                    ? 'bg-gradient-to-br from-[#0d6efd] via-[#0099cc] to-[#00c389]' 
-                    : 'bg-gradient-to-br from-[#0d6efd] via-[#0099cc] to-[#00c389]'
-                }`}>
-                  {(selectedCard.card_image || defaultCardBg) ? (
-                    <img 
-                      src={selectedCard.card_image || defaultCardBg} 
-                      alt="Card" 
-                      className="absolute inset-0 w-full h-full object-cover opacity-90"
-                    />
-                  ) : null}
+                {/* Card Visual - KAYICOM Style */}
+                <div className="relative rounded-2xl p-5 sm:p-6 text-white overflow-hidden shadow-2xl bg-gradient-to-br from-[#0d6efd] via-[#0099cc] to-[#00c389]">
+                  {/* Decorative circles */}
+                  <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full"></div>
+                  <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white/10 rounded-full"></div>
                   
                   <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-4">
+                    {/* Header - KAYICOM and Card Type */}
+                    <div className="flex justify-between items-start mb-6">
                       <div>
-                        <span className="text-white/80 text-sm font-medium tracking-wide">VIRTUAL CARD</span>
-                        {selectedCard.card_brand && (
-                          <p className="text-white font-bold text-lg mt-1">{selectedCard.card_brand}</p>
-                        )}
+                        <span className="text-white font-bold text-xl tracking-wide">KAYICOM</span>
                       </div>
                       <img 
                         src={selectedCard.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
                         alt={selectedCard.card_type}
-                        className="h-10 w-auto"
+                        className="h-8 w-auto"
                       />
                     </div>
                     
                     {/* Card Balance */}
-                    <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 mb-4 inline-block">
-                      <p className="text-white/70 text-xs uppercase">{getText('Balans', 'Solde', 'Balance')}</p>
-                      <p className="text-white font-bold text-xl">
-                        ${(sensitiveCardData?.balance ?? selectedCard.balance ?? 0).toFixed(2)} USD
+                    <div className="mb-5">
+                      <p className="text-white/70 text-xs uppercase tracking-wider">{getText('Balans Disponib', 'Solde Disponible', 'Available Balance')}</p>
+                      <p className="text-white font-bold text-2xl mt-1">
+                        ${(sensitiveCardData?.balance ?? selectedCard.balance ?? 0).toFixed(2)}
                       </p>
                     </div>
                     
