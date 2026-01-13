@@ -1263,7 +1263,7 @@ export default function VirtualCard() {
                       ) : (
                         <p className="text-xs text-white/70 mt-2">
                         {getText(
-                          ''PIN verifye pou wè nimewo kat konplè ak CVV.',
+                          'PIN verifye pou wè nimewo kat konplè ak CVV.',
                           'PIN vérifié pour voir le numéro complet et CVV.',
                           'PIN verified to see full card number and CVV.'
                         )}
