@@ -562,11 +562,12 @@ def _rbac_is_allowed(*, role: str, path: str) -> bool:
             "/api/admin/test-telegram",
             "/api/admin/telegram/setup-webhook",
             "/api/admin/strowallet",
+            "/api/admin/team",
+            "/api/admin/rbac-permissions",
         ],
     }
 
     blocked_prefixes = [
-        "/api/admin/team",
         "/api/admin/purge-old-records",
     ]
     for bp in blocked_prefixes:
@@ -2510,6 +2511,25 @@ class CardTopUpProcessPayload(BaseModel):
     delivery_info: Optional[str] = None
 
 
+class TeamMemberCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    phone: str
+    role: str = "admin"
+
+
+class TeamMemberUpdate(BaseModel):
+    is_active: Optional[bool] = None
+    admin_role: Optional[str] = None
+
+
+class RBACPermissionsUpdate(BaseModel):
+    role: str
+    deposit_methods: List[str] = []
+    withdrawal_methods: List[str] = []
+
+
 @api_router.patch("/admin/card-topups/{deposit_id}")
 async def admin_process_card_topup(
     deposit_id: str,
@@ -2627,6 +2647,113 @@ async def admin_process_topup_order(
     await log_action(admin["user_id"], "topup_order_process", {"order_id": order_id, "action": action})
     
     return {"message": f"Top-up order {action}d successfully"}
+
+# ==================== ADMIN TEAM ROUTES ====================
+
+@api_router.get("/admin/team")
+async def admin_get_team(admin: dict = Depends(get_admin_user)):
+    """List admin/team users."""
+    db = get_db()
+    team = await db.users.find(
+        {"is_admin": True},
+        {"_id": 0, "user_id": 1, "client_id": 1, "full_name": 1, "email": 1, "phone": 1, "is_active": 1, "created_at": 1, "admin_role": 1},
+    ).sort("created_at", -1).to_list(200)
+    return {"team": team}
+
+
+@api_router.post("/admin/team")
+async def admin_create_team_member(payload: TeamMemberCreate, admin: dict = Depends(get_admin_user)):
+    """Create an admin/team member user."""
+    db = get_db()
+    existing = await db.users.find_one({"email": payload.email.lower()}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user_id = str(uuid.uuid4())
+    client_id = generate_client_id()
+
+    user_doc = {
+        "user_id": user_id,
+        "client_id": client_id,
+        "email": payload.email.lower(),
+        "password_hash": hash_password(payload.password),
+        "full_name": payload.full_name,
+        "phone": payload.phone,
+        "language": "fr",
+        "kyc_status": "not_submitted",
+        "wallet_htg": 0.0,
+        "wallet_usd": 0.0,
+        "affiliate_code": generate_affiliate_code(),
+        "affiliate_earnings": 0.0,
+        "referred_by": None,
+        "is_active": True,
+        "is_admin": True,
+        "admin_role": payload.role.lower(),
+        "two_factor_enabled": False,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    await db.users.insert_one(user_doc)
+    await log_action(admin["user_id"], "create_team_member", {"new_user_id": user_id, "email": payload.email})
+    return {"message": "Team member created", "user_id": user_id, "client_id": client_id}
+
+
+@api_router.patch("/admin/team/{user_id}")
+async def admin_update_team_member(user_id: str, payload: TeamMemberUpdate, admin: dict = Depends(get_admin_user)):
+    """Update a team member (activate/deactivate or change role)."""
+    db = get_db()
+    target = await db.users.find_one({"user_id": user_id, "is_admin": True}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Team member not found")
+
+    update_doc = {}
+    if payload.is_active is not None:
+        update_doc["is_active"] = payload.is_active
+    if payload.admin_role is not None:
+        valid_roles = ["admin", "support", "finance", "manager", "superadmin"]
+        if payload.admin_role.lower() not in valid_roles:
+            raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(valid_roles)}")
+        update_doc["admin_role"] = payload.admin_role.lower()
+
+    if update_doc:
+        await db.users.update_one({"user_id": user_id}, {"$set": update_doc})
+        await log_action(admin["user_id"], "update_team_member", {"target_user_id": user_id, "updates": update_doc})
+
+    return {"message": "Team member updated"}
+
+
+# ==================== ADMIN RBAC PERMISSIONS ROUTES ====================
+
+@api_router.get("/admin/rbac-permissions")
+async def admin_get_rbac_permissions(admin: dict = Depends(get_admin_user)):
+    """Get role-based permissions for deposit/withdrawal methods."""
+    db = get_db()
+    permissions = await db.rbac_permissions.find({}, {"_id": 0}).to_list(100)
+    return {"permissions": permissions}
+
+
+@api_router.put("/admin/rbac-permissions")
+async def admin_update_rbac_permissions(payload: RBACPermissionsUpdate, admin: dict = Depends(get_admin_user)):
+    """Update role-based permissions for deposit/withdrawal methods."""
+    db = get_db()
+    
+    await db.rbac_permissions.update_one(
+        {"role": payload.role.lower()},
+        {"$set": {
+            "role": payload.role.lower(),
+            "deposit_methods": payload.deposit_methods,
+            "withdrawal_methods": payload.withdrawal_methods,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": admin["user_id"]
+        }},
+        upsert=True
+    )
+    
+    await log_action(admin["user_id"], "update_rbac_permissions", {"role": payload.role, "deposit_methods": payload.deposit_methods, "withdrawal_methods": payload.withdrawal_methods})
+    return {"message": "Permissions updated successfully"}
+
+
+# ==================== ADMIN LOGS ROUTES ====================
 
 @api_router.get("/admin/logs")
 async def admin_get_logs(
