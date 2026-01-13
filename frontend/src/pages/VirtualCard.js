@@ -783,84 +783,69 @@ export default function VirtualCard() {
               </Card>
             )}
 
-            {/* Card Orders History */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CreditCard size={20} className="text-[#EA580C]" />
-                  {getText('Kat Mwen Yo', 'Mes Cartes', 'My Cards')} ({approvedCards.length} {getText('aktif', 'actives', 'active')})
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <div className="space-y-3">
-                    {[1, 2, 3].map(i => (
-                      <div key={i} className="skeleton h-16 rounded-lg" />
-                    ))}
-                  </div>
-                ) : cardOrders.length === 0 ? (
-                  <div className="text-center py-8 text-stone-500">
-                    <CreditCard className="mx-auto mb-3 text-stone-400" size={48} />
-                    <p>{getText('Ou poko gen komand kat', 'Vous n\'avez pas encore de commande de carte', 'You have no card orders yet')}</p>
-                    <Button onClick={() => setShowOrderModal(true)} className="btn-gold mt-4">
-                      <ShoppingCart className="mr-2" size={18} />
-                      {getText('Komande premye kat ou', 'Commander votre première carte', 'Order your first card')}
-                    </Button>
-                  </div>
-                ) : (
+            {/* Virtual Cards Display */}
+            {loading ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {[1, 2].map(i => (
+                  <div key={i} className="skeleton h-64 rounded-2xl" />
+                ))}
+              </div>
+            ) : cardOrders.length === 0 ? (
+              <div className="text-center py-12 text-stone-500">
+                <CreditCard className="mx-auto mb-3 text-stone-400" size={48} />
+                <p>{getText('Ou poko gen komand kat', 'Vous n\'avez pas encore de commande de carte', 'You have no card orders yet')}</p>
+                <Button onClick={() => setShowOrderModal(true)} className="btn-gold mt-4">
+                  <ShoppingCart className="mr-2" size={18} />
+                  {getText('Komande premye kat ou', 'Commander votre première carte', 'Order your first card')}
+                </Button>
+              </div>
+            ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {cardOrders.map((order) => (
                       <div key={order.order_id} className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                         {/* Card Visual */}
                         {order.status === 'approved' ? (
-                          <div className="relative overflow-hidden" style={{ aspectRatio: '1.586/1' }}>
-                            {/* Background - Use card_image if available, otherwise gradient */}
+                          <div className="relative bg-stone-900 rounded-t-xl overflow-hidden">
+                            {/* Card Image - Full display without cutting */}
                             {(order.card_image || defaultCardBg) ? (
                               <img 
                                 src={order.card_image || defaultCardBg} 
                                 alt="Card" 
-                                className="absolute inset-0 w-full h-full object-cover"
+                                className="w-full h-auto"
                               />
                             ) : (
-                              <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460]"></div>
+                              /* Fallback gradient card if no image */
+                              <div className="p-5 text-white" style={{ aspectRatio: '1.586/1' }}>
+                                <div className="h-full flex flex-col justify-between">
+                                  <div className="flex justify-between items-start">
+                                    <div className="w-10 h-7 bg-gradient-to-br from-yellow-300 to-yellow-500 rounded-md"></div>
+                                    <img 
+                                      src={order.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
+                                      alt={order.card_type}
+                                      className="h-8 w-auto"
+                                    />
+                                  </div>
+                                  <div>
+                                    <p className="font-mono text-xl tracking-[0.2em]">
+                                      •••• •••• •••• {order.card_last4 || '****'}
+                                    </p>
+                                  </div>
+                                  <div className="flex justify-between items-end">
+                                    <div>
+                                      <p className="text-white/60 text-[10px] uppercase">{getText('Pòtè Kat', 'Titulaire', 'Holder')}</p>
+                                      <p className="font-medium text-sm">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-white/60 text-[10px] uppercase">{getText('Ekspire', 'Expire', 'Expires')}</p>
+                                      <p className="font-mono text-sm">••/••</p>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             )}
-                            
-                            {/* Card Content Overlay */}
-                            <div className="absolute inset-0 p-5 flex flex-col justify-between text-white">
-                              {/* Header */}
-                              <div className="flex justify-between items-start">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-10 h-7 bg-gradient-to-br from-yellow-300 to-yellow-500 rounded-md"></div>
-                                </div>
-                                <img 
-                                  src={order.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
-                                  alt={order.card_type}
-                                  className="h-8 w-auto"
-                                />
-                              </div>
-                              
-                              {/* Card Number */}
-                              <div>
-                                <p className="font-mono text-xl tracking-[0.2em] text-white drop-shadow-lg">
-                                  •••• •••• •••• {order.card_last4 || '****'}
-                                </p>
-                              </div>
-                              
-                              {/* Footer */}
-                              <div className="flex justify-between items-end">
-                                <div>
-                                  <p className="text-white/60 text-[10px] uppercase tracking-wider">{getText('Pòtè Kat', 'Titulaire', 'Card Holder')}</p>
-                                  <p className="font-medium text-sm tracking-wide drop-shadow">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-white/60 text-[10px] uppercase tracking-wider">{getText('Ekspire', 'Expire', 'Expires')}</p>
-                                  <p className="font-mono text-sm drop-shadow">••/••</p>
-                                </div>
-                              </div>
-                            </div>
                           </div>
                         ) : (
-                          <div className="bg-stone-200 dark:bg-stone-800 flex items-center justify-center" style={{ aspectRatio: '1.586/1' }}>
+                          <div className="bg-stone-200 dark:bg-stone-800 flex items-center justify-center rounded-t-xl" style={{ aspectRatio: '1.586/1' }}>
                             <div className="text-center">
                               <CreditCard className="mx-auto mb-2 text-stone-400" size={40} />
                               <p className="text-stone-500 text-sm">{getText('An atant apwobasyon', 'En attente d\'approbation', 'Pending approval')}</p>
@@ -951,8 +936,6 @@ export default function VirtualCard() {
                     ))}
                   </div>
                 )}
-              </CardContent>
-            </Card>
 
             {/* Deposit/Top-up History for Cards */}
             <Card>
