@@ -476,6 +476,7 @@ export default function VirtualCard() {
 
   const openTransactions = async (order) => {
     if (!order?.order_id) return;
+    setSelectedCard(order); // Set selected card for live refresh
     setTxLoading(true);
     setTxData(null);
     setShowTxModal(true);
