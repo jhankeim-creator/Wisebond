@@ -762,27 +762,6 @@ export default function VirtualCard() {
               </Card>
             ) : null}
 
-            {/* USD Balance for Top-up */}
-            {approvedCards.length > 0 && (
-              <Card className="bg-gradient-to-r from-amber-500 to-amber-600 text-white">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-amber-100 text-sm">{getText('Balans USD disponib pou top-up', 'Solde USD disponible pour recharge', 'USD balance available for top-up')}</p>
-                      <p className="text-2xl font-bold">${(user?.wallet_usd || 0).toFixed(2)}</p>
-                    </div>
-                    <Button 
-                      onClick={openTopUpModal}
-                      className="bg-white text-amber-600 hover:bg-amber-50"
-                    >
-                      {getText('Ajoute sou kat', 'Recharger carte', 'Top up card')}
-                      <ArrowRight className="ml-2" size={16} />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
             {/* Virtual Cards Display */}
             {loading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -805,25 +784,20 @@ export default function VirtualCard() {
                       <div key={order.order_id} className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                         {/* Card Visual */}
                         {order.status === 'approved' ? (
-                          <div className="relative bg-stone-900 rounded-t-xl overflow-hidden">
-                            {/* Card Image - Full display without cutting */}
+                          <div className="relative overflow-hidden">
+                            {/* Card Image - Full display with rounded corners */}
                             {(order.card_image || defaultCardBg) ? (
                               <img 
                                 src={order.card_image || defaultCardBg} 
                                 alt="Card" 
-                                className="w-full h-auto"
+                                className="w-full h-auto rounded-xl"
                               />
                             ) : (
                               /* Fallback gradient card if no image */
-                              <div className="p-5 text-white" style={{ aspectRatio: '1.586/1' }}>
+                              <div className="bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] rounded-xl p-5 text-white" style={{ aspectRatio: '1.586/1' }}>
                                 <div className="h-full flex flex-col justify-between">
                                   <div className="flex justify-between items-start">
-                                    <div className="w-10 h-7 bg-gradient-to-br from-yellow-300 to-yellow-500 rounded-md"></div>
-                                    <img 
-                                      src={order.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
-                                      alt={order.card_type}
-                                      className="h-8 w-auto"
-                                    />
+                                    <span className="text-white font-bold text-lg tracking-wide">KAYICOM</span>
                                   </div>
                                   <div>
                                     <p className="font-mono text-xl tracking-[0.2em]">
@@ -845,7 +819,7 @@ export default function VirtualCard() {
                             )}
                           </div>
                         ) : (
-                          <div className="bg-stone-200 dark:bg-stone-800 flex items-center justify-center rounded-t-xl" style={{ aspectRatio: '1.586/1' }}>
+                          <div className="bg-stone-200 dark:bg-stone-800 flex items-center justify-center rounded-xl" style={{ aspectRatio: '1.586/1' }}>
                             <div className="text-center">
                               <CreditCard className="mx-auto mb-2 text-stone-400" size={40} />
                               <p className="text-stone-500 text-sm">{getText('An atant apwobasyon', 'En attente d\'approbation', 'Pending approval')}</p>
@@ -1351,102 +1325,128 @@ export default function VirtualCard() {
                   </div>
                 </div>
 
-                {/* Card Visual - KAYICOM Style */}
-                <div className="relative rounded-2xl p-5 sm:p-6 text-white overflow-hidden shadow-2xl bg-gradient-to-br from-[#0d6efd] via-[#0099cc] to-[#00c389]">
-                  {/* Decorative circles */}
-                  <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full"></div>
-                  <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white/10 rounded-full"></div>
-                  
-                  <div className="relative z-10">
-                    {/* Header - KAYICOM and Card Type */}
-                    <div className="flex justify-between items-start mb-6">
-                      <div>
-                        <span className="text-white font-bold text-xl tracking-wide">KAYICOM</span>
+                {/* Card Visual */}
+                <div className="relative overflow-hidden rounded-xl">
+                  {/* Card Image - Same as in list */}
+                  {(selectedCard.card_image || defaultCardBg) ? (
+                    <img 
+                      src={selectedCard.card_image || defaultCardBg} 
+                      alt="Card" 
+                      className="w-full h-auto rounded-xl"
+                    />
+                  ) : (
+                    /* Fallback gradient card if no image */
+                    <div className="bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] rounded-xl p-5 text-white" style={{ aspectRatio: '1.586/1' }}>
+                      <div className="h-full flex flex-col justify-between">
+                        <div className="flex justify-between items-start">
+                          <span className="text-white font-bold text-xl tracking-wide">KAYICOM</span>
+                        </div>
+                        <div>
+                          <p className="font-mono text-xl tracking-[0.2em]">
+                            {showSensitiveData && sensitiveCardData?.card_number 
+                              ? sensitiveCardData.card_number.replace(/(.{4})/g, '$1 ').trim()
+                              : formatCardNumber(selectedCard.card_last4)
+                            }
+                          </p>
+                        </div>
+                        <div className="flex justify-between items-end">
+                          <div>
+                            <p className="text-white/60 text-[10px] uppercase">{getText('Pòtè Kat', 'Titulaire', 'Holder')}</p>
+                            <p className="font-medium text-sm">{selectedCard.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-white/60 text-[10px] uppercase">{getText('Ekspire', 'Expire', 'Expires')}</p>
+                            <p className="font-mono text-sm">
+                              {showSensitiveData && sensitiveCardData?.card_expiry 
+                                ? sensitiveCardData.card_expiry 
+                                : (selectedCard.card_expiry || '••/••')
+                              }
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                      <img 
-                        src={selectedCard.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
-                        alt={selectedCard.card_type}
-                        className="h-8 w-auto"
-                      />
                     </div>
-                    
-                    {/* Card Balance */}
-                    <div className="mb-5">
-                      <p className="text-white/70 text-xs uppercase tracking-wider">{getText('Balans Disponib', 'Solde Disponible', 'Available Balance')}</p>
-                      <p className="text-white font-bold text-2xl mt-1">
-                        ${(sensitiveCardData?.balance ?? selectedCard.balance ?? 0).toFixed(2)}
-                      </p>
+                  )}
+                </div>
+
+                {/* Card Info Section */}
+                <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4 space-y-3">
+                  {/* Balance */}
+                  <div className="flex justify-between items-center">
+                    <span className="text-stone-500 text-sm">{getText('Balans', 'Solde', 'Balance')}</span>
+                    <span className="font-bold text-lg">${(sensitiveCardData?.balance ?? selectedCard.balance ?? 0).toFixed(2)}</span>
+                  </div>
+                  
+                  {/* Card Number */}
+                  <div className="flex justify-between items-center">
+                    <span className="text-stone-500 text-sm">{getText('Nimewo Kat', 'Numéro', 'Card Number')}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono">
+                        {showSensitiveData && sensitiveCardData?.card_number 
+                          ? sensitiveCardData.card_number.replace(/(.{4})/g, '$1 ').trim()
+                          : formatCardNumber(selectedCard.card_last4)
+                        }
+                      </span>
+                      {showSensitiveData && sensitiveCardData?.card_number && (
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(sensitiveCardData.card_number);
+                            toast.success(getText('Nimewo kat kopye!', 'Numéro copié!', 'Card number copied!'));
+                          }}
+                          className="p-1 hover:bg-stone-200 rounded"
+                        >
+                          <Copy size={14} />
+                        </button>
+                      )}
                     </div>
-                    
-                    <div className="mb-6">
-                      <div className="flex items-start gap-2">
-                        <span className="font-mono text-lg sm:text-xl tracking-wider break-all">
-                          {showSensitiveData && sensitiveCardData?.card_number 
-                            ? sensitiveCardData.card_number.replace(/(.{4})/g, '$1 ').trim()
-                            : formatCardNumber(selectedCard.card_last4)
-                          }
-                        </span>
-                        {showSensitiveData && sensitiveCardData?.card_number && (
+                  </div>
+                  
+                  {/* CVV */}
+                  {showSensitiveData && sensitiveCardData ? (
+                    <div className="flex justify-between items-center">
+                      <span className="text-stone-500 text-sm">CVV</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold">{sensitiveCardData.cvv || '***'}</span>
+                        {sensitiveCardData.cvv && (
                           <button 
                             onClick={() => {
-                              navigator.clipboard.writeText(sensitiveCardData.card_number);
-                              toast.success(getText('Nimewo kat kopye!', 'Numéro copié!', 'Card number copied!'));
+                              navigator.clipboard.writeText(sensitiveCardData.cvv);
+                              toast.success(getText('CVV kopye!', 'CVV copié!', 'CVV copied!'));
                             }}
-                            className="p-1 hover:bg-white/20 rounded"
+                            className="p-1 hover:bg-stone-200 rounded"
                           >
-                            <Copy size={16} />
+                            <Copy size={14} />
                           </button>
                         )}
                       </div>
-                      
-                      {showSensitiveData && sensitiveCardData ? (
-                        <div className="flex gap-6 mt-3">
-                          <div>
-                            <p className="text-white/60 text-xs uppercase">CVV</p>
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-lg">{sensitiveCardData.cvv || '***'}</span>
-                              {sensitiveCardData.cvv && (
-                                <button 
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(sensitiveCardData.cvv);
-                                    toast.success(getText('CVV kopye!', 'CVV copié!', 'CVV copied!'));
-                                  }}
-                                  className="p-1 hover:bg-white/20 rounded"
-                                >
-                                  <Copy size={14} />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="text-xs text-white/70 mt-2">
-                        {getText(
-                          'PIN verifye pou wè nimewo kat konplè ak CVV.',
-                          'PIN vérifié pour voir le numéro complet et CVV.',
-                          'PIN verified to see full card number and CVV.'
-                        )}
-                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-stone-500 text-center py-2">
+                      {getText(
+                        'PIN verifye pou wè nimewo kat konplè ak CVV.',
+                        'PIN vérifié pour voir le numéro complet et CVV.',
+                        'PIN verified to see full card number and CVV.'
                       )}
-                    </div>
-                    
-                    <div className="flex justify-between items-end">
-                      <div>
-                        <p className="text-white/60 text-xs uppercase mb-1">{getText('Pòtè Kat', 'Titulaire', 'Card Holder')}</p>
-                        <p className="font-medium tracking-wide">
-                          {selectedCard.card_holder_name || (user?.full_name ? String(user.full_name).toUpperCase() : 'N/A')}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-white/60 text-xs uppercase mb-1">{getText('Ekspire', 'Expire', 'Expires')}</p>
-                        <p className="font-mono font-medium">
-                          {showSensitiveData && sensitiveCardData?.card_expiry 
-                            ? sensitiveCardData.card_expiry 
-                            : (selectedCard.card_expiry || 'MM/YY')
-                          }
-                        </p>
-                      </div>
-                    </div>
+                    </p>
+                  )}
+                  
+                  {/* Expiry */}
+                  <div className="flex justify-between items-center">
+                    <span className="text-stone-500 text-sm">{getText('Ekspire', 'Expire', 'Expires')}</span>
+                    <span className="font-mono">
+                      {showSensitiveData && sensitiveCardData?.card_expiry 
+                        ? sensitiveCardData.card_expiry 
+                        : (selectedCard.card_expiry || '••/••')
+                      }
+                    </span>
+                  </div>
+                  
+                  {/* Holder */}
+                  <div className="flex justify-between items-center">
+                    <span className="text-stone-500 text-sm">{getText('Pòtè Kat', 'Titulaire', 'Holder')}</span>
+                    <span className="font-medium">
+                      {selectedCard.card_holder_name || (user?.full_name ? String(user.full_name).toUpperCase() : 'N/A')}
+                    </span>
                   </div>
                 </div>
 
