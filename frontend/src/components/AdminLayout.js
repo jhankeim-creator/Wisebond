@@ -65,7 +65,7 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/fees', icon: DollarSign, label: getText('Frè', 'Frais', 'Fees'), roles: ['finance','admin','superadmin'] },
     { path: '/admin/payment-gateway', icon: Wallet, label: getText('Payment Gateway', 'Payment Gateway', 'Payment Gateway'), roles: ['finance','manager','admin','superadmin'] },
     { path: '/admin/bulk-email', icon: Mail, label: getText('Imèl', 'Emails', 'Emails'), roles: ['manager','admin','superadmin'] },
-    { path: '/admin/team', icon: Shield, label: getText('Ekip', 'Équipe', 'Team'), roles: ['superadmin'] },
+    { path: '/admin/team', icon: Shield, label: getText('Ekip', 'Équipe', 'Team'), roles: ['admin', 'superadmin'] },
     { path: '/admin/logs', icon: MessageSquare, label: getText('Mesaj', 'Journaux', 'Logs'), roles: ['manager','admin','superadmin'] },
     { path: '/admin/webhook-events', icon: Webhook, label: getText('Webhook', 'Webhook', 'Webhook'), roles: ['manager','admin','superadmin'] },
     { path: '/admin/settings', icon: Settings, label: getText('Paramèt', 'Paramètres', 'Settings'), roles: ['admin', 'superadmin'] },

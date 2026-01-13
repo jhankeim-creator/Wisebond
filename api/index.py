@@ -416,6 +416,17 @@ class TopUpOrder(BaseModel):
     price: float
     phone_number: str
 
+class TeamMemberCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    phone: str
+    role: str = "admin"
+
+class TeamMemberUpdate(BaseModel):
+    is_active: Optional[bool] = None
+    admin_role: Optional[str] = None
+
 # ==================== HELPERS ====================
 
 def generate_client_id():
@@ -562,11 +573,11 @@ def _rbac_is_allowed(*, role: str, path: str) -> bool:
             "/api/admin/test-telegram",
             "/api/admin/telegram/setup-webhook",
             "/api/admin/strowallet",
+            "/api/admin/team",
         ],
     }
 
     blocked_prefixes = [
-        "/api/admin/team",
         "/api/admin/purge-old-records",
     ]
     for bp in blocked_prefixes:
@@ -2644,6 +2655,88 @@ async def admin_get_logs(
     
     logs = await db.logs.find(query, {"_id": 0}).sort("timestamp", -1).limit(limit).to_list(limit)
     return {"logs": logs}
+
+# ==================== ADMIN TEAM ROUTES ====================
+
+@api_router.get("/admin/team")
+async def admin_get_team(admin: dict = Depends(get_admin_user)):
+    """List admin/team users."""
+    db = get_db()
+    team = await db.users.find(
+        {"is_admin": True},
+        {"_id": 0, "user_id": 1, "client_id": 1, "full_name": 1, "email": 1, "phone": 1, "is_active": 1, "created_at": 1, "admin_role": 1},
+    ).sort("created_at", -1).to_list(200)
+    return {"team": team}
+
+
+@api_router.post("/admin/team")
+async def admin_create_team_member(payload: TeamMemberCreate, admin: dict = Depends(get_admin_user)):
+    """Create an admin/team member user."""
+    db = get_db()
+    existing = await db.users.find_one({"email": payload.email.lower()}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user_id = str(uuid.uuid4())
+    client_id = generate_client_id()
+
+    user_doc = {
+        "user_id": user_id,
+        "client_id": client_id,
+        "email": payload.email.lower(),
+        "password_hash": hash_password(payload.password),
+        "full_name": payload.full_name,
+        "phone": payload.phone,
+        "language": "fr",
+        "kyc_status": "approved",
+        "wallet_htg": 0.0,
+        "wallet_usd": 0.0,
+        "affiliate_code": generate_affiliate_code(),
+        "affiliate_earnings": 0.0,
+        "referred_by": None,
+        "is_active": True,
+        "is_admin": True,
+        "admin_role": (payload.role or "admin"),
+        "two_factor_enabled": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    await db.users.insert_one(user_doc)
+    await log_action(admin["user_id"], "team_create", {"user_id": user_id, "email": user_doc["email"], "role": user_doc["admin_role"]})
+
+    # Don't return password hash
+    user_doc.pop("password_hash", None)
+    if "_id" in user_doc:
+        del user_doc["_id"]
+    return {"member": user_doc}
+
+
+@api_router.patch("/admin/team/{user_id}")
+async def admin_update_team_member(user_id: str, payload: TeamMemberUpdate, admin: dict = Depends(get_admin_user)):
+    """Update a team member (activate/deactivate or change role)."""
+    db = get_db()
+    target = await db.users.find_one({"user_id": user_id, "is_admin": True}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Team member not found")
+
+    update_doc = {}
+    if payload.is_active is not None:
+        update_doc["is_active"] = payload.is_active
+    if payload.admin_role is not None:
+        valid_roles = ["admin", "support", "finance", "manager", "superadmin"]
+        if payload.admin_role.lower() not in valid_roles:
+            raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(valid_roles)}")
+        update_doc["admin_role"] = payload.admin_role.lower()
+
+    if not update_doc:
+        return {"message": "No changes"}
+
+    await db.users.update_one(
+        {"user_id": user_id},
+        {"$set": update_doc},
+    )
+    await log_action(admin["user_id"], "team_update", {"user_id": user_id, "changes": update_doc})
+    return {"message": "Team member updated"}
 
 # ==================== MAIN ROUTES ====================
 
