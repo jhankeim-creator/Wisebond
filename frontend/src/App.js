@@ -51,6 +51,7 @@ import AdminAgentDeposits from "@/pages/admin/AdminAgentDeposits";
 import AdminAgentCommissionWithdrawals from "@/pages/admin/AdminAgentCommissionWithdrawals";
 import AdminPaymentGateway from "@/pages/admin/AdminPaymentGateway";
 import AdminWebhookEvents from "@/pages/admin/AdminWebhookEvents";
+import AdminRBAC from "@/pages/admin/AdminRBAC";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { isRoleAllowed } from "@/lib/adminRbac";
 
@@ -147,6 +148,7 @@ function AppRoutes() {
       <Route path="/admin/agent-deposits" element={<ProtectedRoute adminOnly requiredRoles={['manager','finance','admin','superadmin']}><AdminAgentDeposits /></ProtectedRoute>} />
       <Route path="/admin/agent-commission-withdrawals" element={<ProtectedRoute adminOnly requiredRoles={['manager','finance','admin','superadmin']}><AdminAgentCommissionWithdrawals /></ProtectedRoute>} />
       <Route path="/admin/payment-gateway" element={<ProtectedRoute adminOnly requiredRoles={['finance','manager','admin','superadmin']}><AdminPaymentGateway /></ProtectedRoute>} />
+      <Route path="/admin/rbac" element={<ProtectedRoute adminOnly requiredRoles={['admin','superadmin']}><AdminRBAC /></ProtectedRoute>} />
       
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />

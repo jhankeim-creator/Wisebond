@@ -427,6 +427,9 @@ class TeamMemberUpdate(BaseModel):
     is_active: Optional[bool] = None
     admin_role: Optional[str] = None
 
+class RBACPermissionsUpdate(BaseModel):
+    permissions: Dict[str, Dict[str, List[str]]]
+
 # ==================== HELPERS ====================
 
 def generate_client_id():
@@ -574,6 +577,7 @@ def _rbac_is_allowed(*, role: str, path: str) -> bool:
             "/api/admin/telegram/setup-webhook",
             "/api/admin/strowallet",
             "/api/admin/team",
+            "/api/admin/rbac-permissions",
         ],
     }
 
@@ -1870,6 +1874,17 @@ async def admin_get_deposits(
         query["status"] = status
     
     deposits = await db.deposits.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    
+    # Filter by RBAC permissions (if not superadmin)
+    role = _normalize_admin_role(admin)
+    if role != "superadmin":
+        rbac_doc = await db.rbac_permissions.find_one({"config_id": "main"}, {"_id": 0})
+        if rbac_doc and rbac_doc.get("permissions"):
+            role_perms = rbac_doc["permissions"].get(role, {})
+            allowed_methods = set(role_perms.get("deposit_methods", []))
+            if allowed_methods:
+                deposits = [d for d in deposits if d.get("payment_method_id") in allowed_methods or d.get("method") in allowed_methods]
+    
     return {"deposits": deposits}
 
 @api_router.patch("/admin/deposits/{deposit_id}")
@@ -1931,6 +1946,17 @@ async def admin_get_withdrawals(
         query["status"] = status
     
     withdrawals = await db.withdrawals.find(query, {"_id": 0}).sort("created_at", -1).limit(limit).to_list(limit)
+    
+    # Filter by RBAC permissions (if not superadmin)
+    role = _normalize_admin_role(admin)
+    if role != "superadmin":
+        rbac_doc = await db.rbac_permissions.find_one({"config_id": "main"}, {"_id": 0})
+        if rbac_doc and rbac_doc.get("permissions"):
+            role_perms = rbac_doc["permissions"].get(role, {})
+            allowed_methods = set(role_perms.get("withdrawal_methods", []))
+            if allowed_methods:
+                withdrawals = [w for w in withdrawals if w.get("payment_method_id") in allowed_methods or w.get("method") in allowed_methods]
+    
     return {"withdrawals": withdrawals}
 
 @api_router.patch("/admin/withdrawals/{withdrawal_id}")
@@ -2737,6 +2763,89 @@ async def admin_update_team_member(user_id: str, payload: TeamMemberUpdate, admi
     )
     await log_action(admin["user_id"], "team_update", {"user_id": user_id, "changes": update_doc})
     return {"message": "Team member updated"}
+
+# ==================== RBAC PERMISSIONS ROUTES ====================
+
+@api_router.get("/admin/rbac-permissions")
+async def admin_get_rbac_permissions(admin: dict = Depends(get_admin_user)):
+    """Get role-based permissions for deposit/withdrawal methods."""
+    db = get_db()
+    doc = await db.rbac_permissions.find_one({"config_id": "main"}, {"_id": 0})
+    if not doc:
+        # Return default empty permissions
+        return {
+            "permissions": {
+                "support": {"deposit_methods": [], "withdrawal_methods": []},
+                "finance": {"deposit_methods": [], "withdrawal_methods": []},
+                "manager": {"deposit_methods": [], "withdrawal_methods": []},
+                "admin": {"deposit_methods": [], "withdrawal_methods": []},
+            }
+        }
+    return {"permissions": doc.get("permissions", {})}
+
+
+@api_router.put("/admin/rbac-permissions")
+async def admin_update_rbac_permissions(payload: RBACPermissionsUpdate, admin: dict = Depends(get_admin_user)):
+    """Update role-based permissions for deposit/withdrawal methods."""
+    db = get_db()
+    await db.rbac_permissions.update_one(
+        {"config_id": "main"},
+        {
+            "$set": {
+                "permissions": payload.permissions,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_by": admin["user_id"],
+            }
+        },
+        upsert=True,
+    )
+    await log_action(admin["user_id"], "rbac_permissions_update", {"roles_updated": list(payload.permissions.keys())})
+    return {"message": "Permissions updated"}
+
+
+@api_router.get("/admin/payment-gateway/methods")
+async def admin_get_payment_gateway_methods(
+    payment_type: Optional[str] = None,
+    currency: Optional[str] = None,
+    admin: dict = Depends(get_admin_user),
+):
+    """Get all payment gateway methods for admin (with RBAC filtering)."""
+    db = get_db()
+    query = {}
+    if payment_type:
+        query["payment_type"] = payment_type
+    if currency:
+        query["currency"] = currency.upper()
+    
+    methods = await db.payment_gateway_methods.find(query, {"_id": 0}).sort("sort_order", 1).to_list(100)
+    
+    # If not superadmin, filter by RBAC permissions
+    role = _normalize_admin_role(admin)
+    if role != "superadmin":
+        rbac_doc = await db.rbac_permissions.find_one({"config_id": "main"}, {"_id": 0})
+        if rbac_doc and rbac_doc.get("permissions"):
+            role_perms = rbac_doc["permissions"].get(role, {})
+            allowed_deposit = set(role_perms.get("deposit_methods", []))
+            allowed_withdrawal = set(role_perms.get("withdrawal_methods", []))
+            
+            # Filter methods based on RBAC permissions
+            filtered = []
+            for m in methods:
+                method_id = m.get("payment_method_id")
+                method_type = m.get("payment_type")
+                
+                if method_type == "deposit" and method_id in allowed_deposit:
+                    filtered.append(m)
+                elif method_type == "withdrawal" and method_id in allowed_withdrawal:
+                    filtered.append(m)
+                elif not payment_type:
+                    # If no type filter, include if allowed for either
+                    if method_id in allowed_deposit or method_id in allowed_withdrawal:
+                        filtered.append(m)
+            
+            methods = filtered
+    
+    return {"methods": methods}
 
 # ==================== MAIN ROUTES ====================
 

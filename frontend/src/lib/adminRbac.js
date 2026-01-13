@@ -30,6 +30,7 @@ export const ADMIN_ROUTE_ROLES = {
   '/admin/team': ['admin', 'superadmin'],
   '/admin/settings': ['admin', 'superadmin'],
   '/admin/rbac': ['admin', 'superadmin'],
+  '/admin/rbac-permissions': ['admin', 'superadmin'],
 };
 
 export const canAccessAdminRoute = (adminRole, path) => {
