@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/context/ThemeContext";
 import { LiveChat } from "@/components/LiveChat";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import AnnouncementBar from "@/components/AnnouncementBar";
+import { MobileBottomNav } from "@/components/MobileBottomNav";
 // InstallPrompt moved to Landing page footer
 
 // Pages
@@ -161,7 +162,10 @@ function App() {
           <BrowserRouter>
             <ScrollToTop />
             <AnnouncementBar />
-            <AppRoutes />
+            <div className="has-mobile-nav">
+              <AppRoutes />
+            </div>
+            <MobileBottomNav />
             <LiveChat />
             <Toaster position="top-right" richColors />
           </BrowserRouter>
