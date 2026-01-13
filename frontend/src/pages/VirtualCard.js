@@ -851,9 +851,12 @@ export default function VirtualCard() {
                             <div className="absolute inset-0 p-3 flex flex-col justify-between text-white">
                               <div className="flex justify-between items-start">
                                 <span className="font-bold text-sm sm:text-base tracking-wide drop-shadow-lg">KAYICOM</span>
-                                <span className="font-bold text-sm sm:text-base italic drop-shadow-lg">
-                                  {(order.card_brand || order.card_type || 'VISA').toUpperCase()}
-                                </span>
+                                {/* Card Brand Logo */}
+                                {(order.card_brand || order.card_type || '').toLowerCase().includes('master') ? (
+                                  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/200px-Mastercard-logo.svg.png" alt="Mastercard" className="h-6 sm:h-8 drop-shadow-lg" />
+                                ) : (
+                                  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Visa_Inc._logo.svg/200px-Visa_Inc._logo.svg.png" alt="Visa" className="h-5 sm:h-6 drop-shadow-lg" />
+                                )}
                               </div>
                               <div>
                                 <p className="font-mono text-xs sm:text-sm tracking-[0.1em] drop-shadow-lg">
@@ -1395,9 +1398,12 @@ export default function VirtualCard() {
                   <div className="absolute inset-0 p-3 sm:p-4 flex flex-col justify-between text-white">
                     <div className="flex justify-between items-start">
                       <span className="font-bold text-base sm:text-lg tracking-wide drop-shadow-lg">KAYICOM</span>
-                      <span className="font-bold text-base sm:text-lg italic drop-shadow-lg">
-                        {(selectedCard.card_brand || selectedCard.card_type || 'VISA').toUpperCase()}
-                      </span>
+                      {/* Card Brand Logo */}
+                      {(selectedCard.card_brand || selectedCard.card_type || '').toLowerCase().includes('master') ? (
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/200px-Mastercard-logo.svg.png" alt="Mastercard" className="h-7 sm:h-9 drop-shadow-lg" />
+                      ) : (
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Visa_Inc._logo.svg/200px-Visa_Inc._logo.svg.png" alt="Visa" className="h-6 sm:h-7 drop-shadow-lg" />
+                      )}
                     </div>
                     <div>
                       <p className="font-mono text-sm sm:text-base tracking-[0.1em] drop-shadow-lg">
