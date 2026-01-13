@@ -155,32 +155,33 @@ function InstallAppSection({ getText }) {
   ];
 
   return (
-    <section className="py-20 px-6 bg-stone-900 text-white relative overflow-hidden">
+    <section className="py-12 sm:py-20 px-4 sm:px-6 bg-stone-900 text-white relative overflow-hidden">
       <div className="absolute inset-0">
         <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_20%_30%,rgba(234,88,12,0.15),transparent_40%)]" />
         <div className="absolute bottom-0 right-0 w-full h-full bg-[radial-gradient(circle_at_80%_70%,rgba(245,158,11,0.1),transparent_40%)]" />
       </div>
       
       <div className="max-w-7xl mx-auto relative">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
           {/* Content */}
-          <div>
+          <div className="text-center lg:text-left">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
               viewport={{ once: true }}
             >
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#EA580C]/20 to-amber-500/20 rounded-full text-amber-400 text-sm font-semibold mb-6 border border-amber-500/30">
-                <Smartphone size={16} />
+              <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-[#EA580C]/20 to-amber-500/20 rounded-full text-amber-400 text-xs sm:text-sm font-semibold mb-4 sm:mb-6 border border-amber-500/30">
+                <Smartphone size={14} className="sm:hidden" />
+                <Smartphone size={16} className="hidden sm:block" />
                 <span>{getText('App Android', 'Application Android', 'Android App')}</span>
               </div>
               
-              <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4">
                 {getText('Enstale KAYICOM sou telefòn ou', 'Installez KAYICOM sur votre téléphone', 'Install KAYICOM on your phone')}
               </h2>
               
-              <p className="text-lg text-stone-400 mb-8">
+              <p className="text-sm sm:text-lg text-stone-400 mb-6 sm:mb-8 max-w-lg mx-auto lg:mx-0">
                 {getText(
                   'Telechaje app leje a dirèkteman sou telefòn Android ou. Pa bezwen ale nan Play Store!',
                   'Téléchargez l\'app légère directement sur votre téléphone Android. Pas besoin d\'aller sur Play Store!',
@@ -189,7 +190,7 @@ function InstallAppSection({ getText }) {
               </p>
               
               {/* Features */}
-              <div className="space-y-4 mb-8">
+              <div className="space-y-3 sm:space-y-4 mb-6 sm:mb-8 text-left max-w-md mx-auto lg:mx-0">
                 {appFeatures.map((feature, index) => {
                   const Icon = feature.icon;
                   return (
@@ -199,14 +200,14 @@ function InstallAppSection({ getText }) {
                       whileInView={{ opacity: 1, x: 0 }}
                       transition={{ duration: 0.4, delay: index * 0.1 }}
                       viewport={{ once: true }}
-                      className="flex items-start gap-4"
+                      className="flex items-start gap-3 sm:gap-4"
                     >
-                      <div className="w-10 h-10 bg-gradient-to-br from-[#EA580C] to-amber-500 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <Icon size={20} className="text-white" />
+                      <div className="w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-[#EA580C] to-amber-500 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
+                        <Icon size={18} className="text-white" />
                       </div>
                       <div>
-                        <h3 className="font-semibold text-white">{feature.title}</h3>
-                        <p className="text-stone-400 text-sm">{feature.desc}</p>
+                        <h3 className="font-semibold text-white text-sm sm:text-base">{feature.title}</h3>
+                        <p className="text-stone-400 text-xs sm:text-sm">{feature.desc}</p>
                       </div>
                     </motion.div>
                   );
@@ -215,9 +216,9 @@ function InstallAppSection({ getText }) {
               
               {/* Install Button */}
               {isInstalled ? (
-                <div className="flex items-center gap-3 text-emerald-400 bg-emerald-500/10 px-6 py-4 rounded-2xl border border-emerald-500/30">
-                  <CheckCircle size={24} />
-                  <span className="font-semibold text-lg">
+                <div className="flex items-center justify-center lg:justify-start gap-3 text-emerald-400 bg-emerald-500/10 px-4 sm:px-6 py-3 sm:py-4 rounded-xl sm:rounded-2xl border border-emerald-500/30">
+                  <CheckCircle size={20} />
+                  <span className="font-semibold text-base sm:text-lg">
                     {getText('App enstale!', 'App installée!', 'App installed!')}
                   </span>
                 </div>
@@ -225,15 +226,15 @@ function InstallAppSection({ getText }) {
                 <Button
                   onClick={handleInstall}
                   disabled={!deferredPrompt && !isAndroid}
-                  className="bg-gradient-to-r from-[#EA580C] to-amber-500 hover:from-[#C2410C] hover:to-amber-600 text-white font-bold text-lg px-8 py-6 h-auto rounded-2xl shadow-lg shadow-orange-500/20 disabled:opacity-50"
+                  className="bg-gradient-to-r from-[#EA580C] to-amber-500 hover:from-[#C2410C] hover:to-amber-600 text-white font-bold text-sm sm:text-lg px-6 sm:px-8 py-4 sm:py-6 h-auto rounded-xl sm:rounded-2xl shadow-lg shadow-orange-500/20 disabled:opacity-50"
                 >
-                  <Download size={24} className="mr-3" />
+                  <Download size={20} className="mr-2 sm:mr-3" />
                   {getText('Enstale App KAYICOM', 'Installer App KAYICOM', 'Install KAYICOM App')}
                 </Button>
               )}
               
               {!deferredPrompt && !isInstalled && (
-                <p className="text-stone-500 text-sm mt-4">
+                <p className="text-stone-500 text-xs sm:text-sm mt-3 sm:mt-4">
                   {getText(
                     '💡 Louvri sit sa nan Chrome sou Android pou w ka enstale app la.',
                     '💡 Ouvrez ce site dans Chrome sur Android pour installer l\'app.',
@@ -244,13 +245,13 @@ function InstallAppSection({ getText }) {
             </motion.div>
           </div>
           
-          {/* Phone Mockup */}
+          {/* Phone Mockup - Hidden on mobile */}
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             whileInView={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.6 }}
             viewport={{ once: true }}
-            className="flex justify-center"
+            className="hidden lg:flex justify-center"
           >
             <div className="relative">
               {/* Phone frame */}
@@ -365,26 +366,33 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-[#FAFAF9]">
       {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-stone-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-lg border-b border-stone-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
           <div className="flex items-center justify-between">
-            <Logo />
+            <Logo size="small" />
             
-            <div className="flex items-center gap-4">
-              <LanguageSwitcher />
+            <div className="flex items-center gap-2 sm:gap-4">
+              <div className="hidden sm:block">
+                <LanguageSwitcher />
+              </div>
               {isAuthenticated ? (
-                <Button onClick={() => navigate('/dashboard')} className="btn-primary">
+                <Button onClick={() => navigate('/dashboard')} className="btn-primary text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-3">
                   Dashboard
                 </Button>
               ) : (
                 <>
-                  <Link to="/login">
+                  <Link to="/login" className="hidden sm:block">
                     <Button variant="ghost" className="font-medium text-stone-600 hover:text-[#EA580C] hover:bg-stone-100">
                       {t('login')}
                     </Button>
                   </Link>
+                  <Link to="/login" className="sm:hidden">
+                    <Button variant="ghost" size="sm" className="font-medium text-stone-600 px-3">
+                      {t('login')}
+                    </Button>
+                  </Link>
                   <Link to="/register">
-                    <Button className="btn-primary">
+                    <Button className="btn-primary text-sm sm:text-base px-4 sm:px-6 py-2 sm:py-3">
                       {t('register')}
                     </Button>
                   </Link>
@@ -460,9 +468,9 @@ export default function Landing() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="relative"
+              className="relative hidden lg:block"
             >
-              {/* Professional Black Woman Image */}
+              {/* Professional Black Woman Image - Desktop only */}
               <div className="relative rounded-3xl overflow-hidden shadow-2xl">
                 <img 
                   src="https://images.unsplash.com/photo-1589156280159-27698a70f29e?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"
@@ -495,18 +503,48 @@ export default function Landing() {
                 </div>
               </div>
             </motion.div>
+            
+            {/* Mobile Hero Card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+              className="lg:hidden mt-8"
+            >
+              <div className="bg-gradient-to-br from-stone-900 to-stone-800 rounded-2xl p-5 shadow-xl border border-stone-700">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 bg-gradient-to-br from-[#EA580C] to-amber-500 rounded-xl flex items-center justify-center">
+                    <DollarSign className="text-white" size={24} />
+                  </div>
+                  <div>
+                    <p className="text-stone-400 text-sm">{getText('Balans Total', 'Solde Total', 'Total Balance')}</p>
+                    <p className="text-2xl font-bold text-white">$3,245.00</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-stone-800 rounded-xl p-3 text-center border border-stone-700">
+                    <p className="text-emerald-400 font-semibold">+12.5%</p>
+                    <p className="text-xs text-stone-500">{getText('Mwa sa', 'Ce mois', 'This month')}</p>
+                  </div>
+                  <div className="bg-stone-800 rounded-xl p-3 text-center border border-stone-700">
+                    <p className="text-[#EA580C] font-semibold">G 431K</p>
+                    <p className="text-xs text-stone-500">HTG</p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
           </div>
         </div>
       </section>
 
       {/* Features Section */}
-      <section className="py-20 px-6 bg-white">
+      <section className="py-12 sm:py-20 px-4 sm:px-6 bg-white">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 mb-4">
+          <div className="text-center mb-8 sm:mb-16">
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-stone-900 mb-3 sm:mb-4">
               {getText('Karakteristik', 'Fonctionnalités', 'Features')}
             </h2>
-            <p className="text-lg text-stone-600 max-w-2xl mx-auto">
+            <p className="text-base sm:text-lg text-stone-600 max-w-2xl mx-auto px-2">
               {getText(
                 'Tout sa ou bezwen pou jere finans ou fasil.',
                 'Tout ce dont vous avez besoin pour gérer vos finances en toute simplicité.',
@@ -515,7 +553,7 @@ export default function Landing() {
             </p>
           </div>
           
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 lg:gap-8">
             {features.map((feature, index) => {
               const Icon = feature.icon;
               return (
@@ -525,13 +563,14 @@ export default function Landing() {
                   whileInView={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: index * 0.1 }}
                   viewport={{ once: true }}
-                  className="card-feature group"
+                  className="bg-stone-50 rounded-xl sm:rounded-2xl p-4 sm:p-6 lg:p-8 border border-stone-200 hover:border-[#EA580C]/50 transition-all group"
                 >
-                  <div className={`w-14 h-14 ${feature.color} rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
-                    <Icon size={28} />
+                  <div className={`w-10 h-10 sm:w-14 sm:h-14 ${feature.color} rounded-lg sm:rounded-xl flex items-center justify-center mb-3 sm:mb-4 group-hover:scale-110 transition-transform`}>
+                    <Icon size={20} className="sm:hidden" />
+                    <Icon size={28} className="hidden sm:block" />
                   </div>
-                  <h3 className="text-xl font-bold text-stone-900 mb-2">{feature.title}</h3>
-                  <p className="text-stone-600">{feature.description}</p>
+                  <h3 className="text-sm sm:text-lg lg:text-xl font-bold text-stone-900 mb-1 sm:mb-2 leading-tight">{feature.title}</h3>
+                  <p className="text-xs sm:text-sm lg:text-base text-stone-600 leading-relaxed">{feature.description}</p>
                 </motion.div>
               );
             })}
@@ -540,21 +579,51 @@ export default function Landing() {
       </section>
 
       {/* Virtual Card Section */}
-      <section className="py-20 px-6 bg-stone-900 text-white relative overflow-hidden">
+      <section className="py-12 sm:py-20 px-4 sm:px-6 bg-stone-900 text-white relative overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,rgba(234,88,12,0.15),transparent_50%)]" />
         
         <div className="max-w-7xl mx-auto relative">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-900 rounded-full text-amber-400 text-sm font-semibold mb-6 border border-amber-700">
-                <CreditCard size={16} />
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+            {/* Card Preview - Mobile first */}
+            <div className="flex justify-center lg:order-2">
+              <div className="virtual-card w-full max-w-[280px] sm:max-w-sm transform hover:scale-105 transition-transform duration-300">
+                <div className="relative z-10 h-full flex flex-col justify-between">
+                  <div className="flex justify-between items-start">
+                    <Logo size="small" />
+                    <div className="w-10 sm:w-12 h-6 sm:h-8 bg-gradient-to-r from-amber-400 to-amber-600 rounded opacity-80" />
+                  </div>
+                  
+                  <div className="mt-auto">
+                    <p className="font-mono text-base sm:text-xl tracking-widest mb-3 sm:mb-4">
+                      •••• •••• •••• 4532
+                    </p>
+                    <div className="flex justify-between items-end">
+                      <div>
+                        <p className="text-stone-400 text-[10px] sm:text-xs uppercase">{getText('Titilè', 'Titulaire', 'Holder')}</p>
+                        <p className="font-medium text-sm sm:text-base">JEAN PIERRE</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-stone-400 text-[10px] sm:text-xs uppercase">{getText('Ekspire', 'Expire', 'Expiry')}</p>
+                        <p className="font-medium text-sm sm:text-base">12/28</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="lg:order-1 text-center lg:text-left">
+              <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-amber-900 rounded-full text-amber-400 text-xs sm:text-sm font-semibold mb-4 sm:mb-6 border border-amber-700">
+                <CreditCard size={14} className="sm:hidden" />
+                <CreditCard size={16} className="hidden sm:block" />
                 <span>{getText('Nouvo', 'Nouveau', 'New')}</span>
               </div>
               
-              <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-3 sm:mb-4">
                 {getText('Kat Vityèl KAYICOM', 'Carte Virtuelle KAYICOM', 'KAYICOM Virtual Card')}
               </h2>
-              <p className="text-lg text-stone-400 mb-8">
+              <p className="text-sm sm:text-lg text-stone-400 mb-6 sm:mb-8 max-w-lg mx-auto lg:mx-0">
                 {getText(
                   'Komande kat vityèl ou epi peye toupatou nan mond lan. Konpatib ak tout sit ak sèvis sou entènèt.',
                   'Commandez votre carte virtuelle et payez partout dans le monde. Compatible avec tous les sites et services en ligne.',
@@ -562,66 +631,39 @@ export default function Landing() {
                 )}
               </p>
               
-              <ul className="space-y-4 mb-8">
+              <ul className="space-y-3 sm:space-y-4 mb-6 sm:mb-8 text-left max-w-md mx-auto lg:mx-0">
                 {[
                   getText('Peman sou entènèt sekirize', 'Paiements en ligne sécurisés', 'Secure online payments'),
                   getText('Konpatib ak Netflix, Amazon, elatriye', 'Compatible Netflix, Amazon, etc.', 'Works with Netflix, Amazon, etc.'),
                   getText('Rechajab depi nan wallet ou', 'Rechargeable depuis votre wallet', 'Rechargeable from your wallet')
                 ].map((item) => (
                   <li key={item} className="flex items-center gap-3">
-                    <CheckCircle className="text-emerald-400" size={20} />
-                    <span>{item}</span>
+                    <CheckCircle className="text-emerald-400 flex-shrink-0" size={18} />
+                    <span className="text-sm sm:text-base">{item}</span>
                   </li>
                 ))}
               </ul>
               
-              <Link to="/register">
-                <Button className="btn-gold">
+              <Link to="/register" className="inline-block">
+                <Button className="btn-gold text-sm sm:text-base px-6 sm:px-8">
                   {getText('Komande kat mwen', 'Commander ma carte', 'Order my card')}
-                  <ChevronRight className="ml-2" size={20} />
+                  <ChevronRight className="ml-2" size={18} />
                 </Button>
               </Link>
-            </div>
-            
-            <div className="flex justify-center">
-              <div className="virtual-card w-full max-w-sm transform hover:scale-105 transition-transform duration-300">
-                <div className="relative z-10 h-full flex flex-col justify-between">
-                  <div className="flex justify-between items-start">
-                    <Logo size="small" />
-                    <div className="w-12 h-8 bg-gradient-to-r from-amber-400 to-amber-600 rounded opacity-80" />
-                  </div>
-                  
-                  <div className="mt-auto">
-                    <p className="font-mono text-xl tracking-widest mb-4">
-                      •••• •••• •••• 4532
-                    </p>
-                    <div className="flex justify-between items-end">
-                      <div>
-                        <p className="text-stone-400 text-xs uppercase">{getText('Titilè', 'Titulaire', 'Holder')}</p>
-                        <p className="font-medium">JEAN PIERRE</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-stone-400 text-xs uppercase">{getText('Ekspire', 'Expire', 'Expiry')}</p>
-                        <p className="font-medium">12/28</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
       </section>
 
       {/* Deposit Methods */}
-      <section className="py-20 px-6 bg-white">
+      <section className="py-12 sm:py-20 px-4 sm:px-6 bg-white">
         <div className="max-w-7xl mx-auto">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
+          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
             <div>
-              <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 mb-4">
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-stone-900 mb-3 sm:mb-4 text-center lg:text-left">
                 {getText('Plizyè metòd depo', 'Multiples méthodes de dépôt', 'Multiple deposit methods')}
               </h2>
-              <p className="text-lg text-stone-600 mb-8">
+              <p className="text-sm sm:text-lg text-stone-600 mb-6 sm:mb-8 text-center lg:text-left">
                 {getText(
                   'Depoze fasil an HTG oswa USD ak metòd peman ki pi popilè yo.',
                   'Déposez facilement en HTG ou USD avec les méthodes de paiement les plus populaires.',
@@ -629,21 +671,21 @@ export default function Landing() {
                 )}
               </p>
               
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 {depositMethods.map((method) => {
                   const Icon = method.icon;
                   return (
                     <div 
                       key={method.name}
-                      className="flex items-center justify-between p-4 bg-stone-50 rounded-xl border border-stone-200 hover:border-[#EA580C]/50 transition-colors"
+                      className="flex items-center justify-between p-3 sm:p-4 bg-stone-50 rounded-xl border border-stone-200 hover:border-[#EA580C]/50 transition-colors"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center shadow-sm">
-                          <Icon size={20} className="text-stone-600" />
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                          <Icon size={18} className="text-stone-600" />
                         </div>
-                        <span className="font-medium text-stone-900">{method.name}</span>
+                        <span className="font-medium text-stone-900 text-sm sm:text-base">{method.name}</span>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                      <span className={`px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-semibold ${
                         method.currency === 'HTG' ? 'bg-orange-100 text-[#EA580C]' : 'bg-amber-100 text-amber-700'
                       }`}>
                         {method.currency}
@@ -654,7 +696,7 @@ export default function Landing() {
               </div>
             </div>
             
-            <div className="relative">
+            <div className="relative hidden lg:block">
               <img 
                 src="https://images.unsplash.com/photo-1548025991-cb332f419f05?crop=entropy&cs=srgb&fm=jpg&q=85&w=600"
                 alt="Mobile banking"
@@ -666,17 +708,18 @@ export default function Landing() {
       </section>
 
       {/* Affiliate Section */}
-      <section className="py-20 px-6 bg-gradient-to-br from-amber-50 to-orange-50">
+      <section className="py-12 sm:py-20 px-4 sm:px-6 bg-gradient-to-br from-amber-50 to-orange-50">
         <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-100 rounded-full text-amber-700 text-sm font-semibold mb-6">
-            <Users size={16} />
+          <div className="inline-flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-amber-100 rounded-full text-amber-700 text-xs sm:text-sm font-semibold mb-4 sm:mb-6">
+            <Users size={14} className="sm:hidden" />
+            <Users size={16} className="hidden sm:block" />
             <span>{getText('Pwogram Afilyasyon', 'Programme d\'Affiliation', 'Affiliate Program')}</span>
           </div>
           
-          <h2 className="text-3xl sm:text-4xl font-bold text-stone-900 mb-4">
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-stone-900 mb-3 sm:mb-4">
             {getText('Touche G 2,000', 'Gagnez 2,000 HTG', 'Earn 2,000 HTG')}
           </h2>
-          <p className="text-lg text-stone-600 mb-8 max-w-2xl mx-auto">
+          <p className="text-sm sm:text-lg text-stone-600 mb-6 sm:mb-8 max-w-2xl mx-auto px-2">
             {getText(
               'Pou chak 5 moun ou refere ki komande yon kat vityèl, ou resevwa G 2,000!',
               'Pour chaque 5 personnes que vous référez qui commandent une carte virtuelle, vous recevez 2,000 HTG!',
@@ -684,26 +727,26 @@ export default function Landing() {
             )}
           </p>
           
-          <div className="grid md:grid-cols-3 gap-6 mb-10">
+          <div className="grid grid-cols-3 gap-2 sm:gap-6 mb-8 sm:mb-10">
             {[
               { step: '1', title: getText('Pataje', 'Partagez', 'Share'), desc: getText('Lyen inik ou', 'Votre lien unique', 'Your unique link') },
               { step: '2', title: getText('Yo komande', 'Ils commandent', 'They order'), desc: getText('Yon kat vityèl', 'Une carte virtuelle', 'A virtual card') },
               { step: '3', title: getText('Ou touche', 'Vous gagnez', 'You earn'), desc: 'G 2,000 / 5 kat' }
             ].map((item) => (
-              <div key={item.step} className="bg-white rounded-2xl p-6 shadow-sm border border-stone-200">
-                <div className="w-10 h-10 bg-gradient-to-br from-[#EA580C] to-[#F59E0B] rounded-full flex items-center justify-center text-white font-bold mx-auto mb-4">
+              <div key={item.step} className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-6 shadow-sm border border-stone-200">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-[#EA580C] to-[#F59E0B] rounded-full flex items-center justify-center text-white font-bold mx-auto mb-2 sm:mb-4 text-sm sm:text-base">
                   {item.step}
                 </div>
-                <h3 className="font-bold text-stone-900 mb-1">{item.title}</h3>
-                <p className="text-stone-500 text-sm">{item.desc}</p>
+                <h3 className="font-bold text-stone-900 mb-0.5 sm:mb-1 text-xs sm:text-base">{item.title}</h3>
+                <p className="text-stone-500 text-[10px] sm:text-sm leading-tight">{item.desc}</p>
               </div>
             ))}
           </div>
           
           <Link to="/register">
-            <Button className="btn-gold text-lg px-10 py-4 h-auto">
+            <Button className="btn-gold text-sm sm:text-lg px-6 sm:px-10 py-3 sm:py-4 h-auto">
               {getText('Kòmanse touche', 'Commencer à gagner', 'Start earning')}
-              <ChevronRight className="ml-2" size={20} />
+              <ChevronRight className="ml-2" size={18} />
             </Button>
           </Link>
         </div>
@@ -713,12 +756,12 @@ export default function Landing() {
       <InstallAppSection getText={getText} />
 
       {/* CTA Section */}
-      <section className="py-20 px-6 bg-gradient-to-r from-[#EA580C] to-[#C2410C]">
+      <section className="py-12 sm:py-20 px-4 sm:px-6 bg-gradient-to-r from-[#EA580C] to-[#C2410C]">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">
             {getText('Pare pou kòmanse?', 'Prêt à commencer?', 'Ready to start?')}
           </h2>
-          <p className="text-xl text-orange-100 mb-8">
+          <p className="text-base sm:text-xl text-orange-100 mb-6 sm:mb-8 px-2">
             {getText(
               'Kreye kont ou nan kèk minit epi kòmanse jere finans ou.',
               'Créez votre compte en quelques minutes et commencez à gérer vos finances.',
@@ -726,9 +769,9 @@ export default function Landing() {
             )}
           </p>
           <Link to="/register">
-            <Button className="bg-white text-[#EA580C] hover:bg-orange-50 text-lg px-10 py-4 h-auto font-bold rounded-full shadow-lg">
+            <Button className="bg-white text-[#EA580C] hover:bg-orange-50 text-sm sm:text-lg px-6 sm:px-10 py-3 sm:py-4 h-auto font-bold rounded-full shadow-lg">
               {getText('Kreye kont gratis', 'Créer un compte gratuit', 'Create free account')}
-              <ChevronRight className="ml-2" size={20} />
+              <ChevronRight className="ml-2" size={18} />
             </Button>
           </Link>
         </div>
@@ -738,23 +781,24 @@ export default function Landing() {
       <InstallAppButton getText={getText} />
 
       {/* Footer */}
-      <footer className="py-12 px-6 bg-stone-900">
+      <footer className="py-8 sm:py-12 px-4 sm:px-6 bg-stone-900">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-            <Logo />
+          <div className="flex flex-col items-center gap-4 sm:gap-6">
+            <Logo size="small" />
             
-            <p className="text-stone-400 text-sm">
-              © 2024 KAYICOM Wallet. {getText('Tout dwa rezève.', 'Tous droits réservés.', 'All rights reserved.')}
-            </p>
-            
-            <div className="flex items-center gap-6">
-              <Link to="/terms" className="text-stone-400 hover:text-white transition-colors">
+            <div className="flex items-center gap-4 sm:gap-6">
+              <Link to="/terms" className="text-stone-400 hover:text-white transition-colors text-sm">
                 {getText('Kondisyon', 'Conditions', 'Terms')}
               </Link>
-              <Link to="/privacy" className="text-stone-400 hover:text-white transition-colors">
+              <span className="text-stone-700">|</span>
+              <Link to="/privacy" className="text-stone-400 hover:text-white transition-colors text-sm">
                 {getText('Konfidansyalite', 'Confidentialité', 'Privacy')}
               </Link>
             </div>
+            
+            <p className="text-stone-500 text-xs sm:text-sm text-center">
+              © 2024 KAYICOM Wallet. {getText('Tout dwa rezève.', 'Tous droits réservés.', 'All rights reserved.')}
+            </p>
           </div>
         </div>
       </footer>
