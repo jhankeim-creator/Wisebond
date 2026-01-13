@@ -3406,6 +3406,102 @@ async def change_card_pin(request: ChangeCardPinRequest, current_user: dict = De
     return {"success": True, "message": "PIN chanje avèk siksè"}
 
 
+class ResetPinRequest(BaseModel):
+    new_pin: str
+
+
+@api_router.post("/virtual-cards/request-pin-reset")
+async def request_pin_reset(current_user: dict = Depends(get_current_user)):
+    """Request PIN reset - sends verification code to user's email"""
+    import random
+    import string
+    
+    # Generate 6-digit reset code
+    reset_code = ''.join(random.choices(string.digits, k=6))
+    
+    # Store reset code with expiry (15 minutes)
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {"$set": {
+            "pin_reset_code": reset_code,
+            "pin_reset_expires": datetime.utcnow() + timedelta(minutes=15)
+        }}
+    )
+    
+    # Send email with reset code
+    user = await db.users.find_one({"user_id": current_user["user_id"]}, {"email": 1})
+    if user and user.get("email"):
+        try:
+            await send_email(
+                to_email=user["email"],
+                subject="Kòd Reyinisyalizasyon PIN - Wisebond",
+                html_content=f"""
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2 style="color: #EA580C;">Reyinisyalize PIN Ou</h2>
+                    <p>Ou te mande pou reyinisyalize PIN kat vityèl ou.</p>
+                    <p>Men kòd verifikasyon ou:</p>
+                    <div style="background: #f5f5f5; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; margin: 20px 0;">
+                        {reset_code}
+                    </div>
+                    <p>Kòd sa a valid pou 15 minit.</p>
+                    <p>Si ou pa mande reyinisyalizasyon sa a, inyore imèl sa a.</p>
+                    <p style="color: #666; font-size: 12px; margin-top: 30px;">© 2026 Wisebond - KAYICOM</p>
+                </div>
+                """
+            )
+        except Exception as e:
+            print(f"Failed to send PIN reset email: {e}")
+    
+    await log_action(current_user["user_id"], "pin_reset_requested", {})
+    return {"success": True, "message": "Kòd verifikasyon voye nan imèl ou"}
+
+
+@api_router.post("/virtual-cards/reset-pin")
+async def reset_pin_with_code(request: ResetPinRequest, code: str = Query(...), current_user: dict = Depends(get_current_user)):
+    """Reset PIN using verification code from email"""
+    import hashlib
+    
+    new_pin = request.new_pin.strip()
+    
+    # Validate new PIN format
+    if not new_pin.isdigit() or len(new_pin) < 4 or len(new_pin) > 6:
+        raise HTTPException(status_code=400, detail="PIN dwe gen 4-6 chif")
+    
+    # Get user with reset code
+    user = await db.users.find_one(
+        {"user_id": current_user["user_id"]},
+        {"_id": 0, "pin_reset_code": 1, "pin_reset_expires": 1}
+    )
+    
+    if not user or not user.get("pin_reset_code"):
+        raise HTTPException(status_code=400, detail="Pa gen demann reyinisyalizasyon aktif. Mande yon nouvo kòd.")
+    
+    # Check if code is expired
+    if user.get("pin_reset_expires") and user["pin_reset_expires"] < datetime.utcnow():
+        await db.users.update_one(
+            {"user_id": current_user["user_id"]},
+            {"$unset": {"pin_reset_code": "", "pin_reset_expires": ""}}
+        )
+        raise HTTPException(status_code=400, detail="Kòd la ekspire. Mande yon nouvo kòd.")
+    
+    # Verify code
+    if code.strip() != user["pin_reset_code"]:
+        raise HTTPException(status_code=400, detail="Kòd verifikasyon pa kòrèk")
+    
+    # Set new PIN
+    new_pin_hash = hashlib.sha256(new_pin.encode()).hexdigest()
+    await db.users.update_one(
+        {"user_id": current_user["user_id"]},
+        {
+            "$set": {"card_pin_hash": new_pin_hash},
+            "$unset": {"pin_reset_code": "", "pin_reset_expires": ""}
+        }
+    )
+    
+    await log_action(current_user["user_id"], "card_pin_reset", {})
+    return {"success": True, "message": "PIN reyinisyalize avèk siksè!"}
+
+
 @api_router.post("/virtual-cards/verify-pin")
 async def verify_card_pin_and_get_details(request: VerifyCardPinRequest, current_user: dict = Depends(get_current_user)):
     """Verify PIN and return full card details including card number and CVV"""

@@ -78,6 +78,9 @@ export default function VirtualCard() {
   const [showPinModal, setShowPinModal] = useState(false);
   const [showSetPinModal, setShowSetPinModal] = useState(false);
   const [showChangePinModal, setShowChangePinModal] = useState(false);
+  const [showResetPinModal, setShowResetPinModal] = useState(false);
+  const [resetCodeSent, setResetCodeSent] = useState(false);
+  const [resetCode, setResetCode] = useState('');
   const [pinInput, setPinInput] = useState('');
   const [newPinInput, setNewPinInput] = useState('');
   const [confirmPinInput, setConfirmPinInput] = useState('');
@@ -214,6 +217,52 @@ export default function VirtualCard() {
       setOldPinInput('');
       setNewPinInput('');
       setConfirmPinInput('');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error');
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  // Request PIN reset code via email
+  const handleRequestPinReset = async () => {
+    setPinLoading(true);
+    try {
+      await axios.post(`${API}/virtual-cards/request-pin-reset`);
+      toast.success(getText('Kòd voye nan imèl ou!', 'Code envoyé à votre email!', 'Code sent to your email!'));
+      setResetCodeSent(true);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error');
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  // Reset PIN with verification code
+  const handleResetPin = async () => {
+    if (!resetCode || resetCode.length < 6) {
+      toast.error(getText('Antre kòd 6 chif la', 'Entrez le code à 6 chiffres', 'Enter the 6-digit code'));
+      return;
+    }
+    if (!newPinInput || newPinInput.length < 4) {
+      toast.error(getText('PIN dwe gen omwen 4 chif', 'Le PIN doit avoir au moins 4 chiffres', 'PIN must be at least 4 digits'));
+      return;
+    }
+    if (newPinInput !== confirmPinInput) {
+      toast.error(getText('PIN yo pa menm', 'Les PIN ne correspondent pas', 'PINs do not match'));
+      return;
+    }
+
+    setPinLoading(true);
+    try {
+      await axios.post(`${API}/virtual-cards/reset-pin?code=${resetCode}`, { new_pin: newPinInput });
+      toast.success(getText('PIN reyinisyalize avèk siksè!', 'PIN réinitialisé avec succès!', 'PIN reset successfully!'));
+      setShowResetPinModal(false);
+      setResetCodeSent(false);
+      setResetCode('');
+      setNewPinInput('');
+      setConfirmPinInput('');
+      setHasPin(true);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Error');
     } finally {
@@ -1567,10 +1616,10 @@ export default function VirtualCard() {
                 </Button>
               </div>
               <button 
-                onClick={() => { setShowPinModal(false); setShowChangePinModal(true); }}
+                onClick={() => { setShowPinModal(false); setShowResetPinModal(true); setResetCodeSent(false); setResetCode(''); }}
                 className="text-sm text-[#EA580C] hover:underline w-full text-center"
               >
-                {getText('Bliye PIN? Chanje li', 'PIN oublié? Changez-le', 'Forgot PIN? Change it')}
+                {getText('Bliye PIN? Reyinisyalize li', 'PIN oublié? Réinitialisez-le', 'Forgot PIN? Reset it')}
               </button>
             </div>
           </DialogContent>
@@ -1686,6 +1735,96 @@ export default function VirtualCard() {
                   {getText('Anile', 'Annuler', 'Cancel')}
                 </Button>
               </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Reset PIN Modal (via email verification) */}
+        <Dialog open={showResetPinModal} onOpenChange={(open) => { setShowResetPinModal(open); if (!open) { setResetCodeSent(false); setResetCode(''); setNewPinInput(''); setConfirmPinInput(''); } }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Shield className="text-[#EA580C]" size={24} />
+                {getText('Reyinisyalize PIN', 'Réinitialiser PIN', 'Reset PIN')}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {!resetCodeSent ? (
+                <>
+                  <p className="text-stone-600 text-sm">
+                    {getText(
+                      'Nou pral voye yon kòd verifikasyon nan imèl ou pou reyinisyalize PIN ou.',
+                      'Nous allons envoyer un code de vérification à votre email pour réinitialiser votre PIN.',
+                      'We will send a verification code to your email to reset your PIN.'
+                    )}
+                  </p>
+                  <Button
+                    onClick={handleRequestPinReset}
+                    disabled={pinLoading}
+                    className="w-full bg-[#EA580C] hover:bg-[#C54B0A]"
+                  >
+                    {pinLoading ? getText('Ap voye...', 'Envoi...', 'Sending...') : getText('Voye Kòd', 'Envoyer Code', 'Send Code')}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-emerald-600 text-sm font-medium">
+                    ✓ {getText('Kòd voye nan imèl ou!', 'Code envoyé à votre email!', 'Code sent to your email!')}
+                  </p>
+                  <div>
+                    <Label>{getText('Kòd Verifikasyon (6 chif)', 'Code de Vérification (6 chiffres)', 'Verification Code (6 digits)')}</Label>
+                    <Input
+                      type="text"
+                      placeholder="000000"
+                      maxLength={6}
+                      value={resetCode}
+                      onChange={(e) => setResetCode(e.target.value.replace(/\D/g, ''))}
+                      className="text-center text-2xl tracking-widest mt-2"
+                    />
+                  </div>
+                  <div>
+                    <Label>{getText('Nouvo PIN (4-6 chif)', 'Nouveau PIN (4-6 chiffres)', 'New PIN (4-6 digits)')}</Label>
+                    <Input
+                      type="password"
+                      placeholder="****"
+                      maxLength={6}
+                      value={newPinInput}
+                      onChange={(e) => setNewPinInput(e.target.value.replace(/\D/g, ''))}
+                      className="text-center text-2xl tracking-widest mt-2"
+                    />
+                  </div>
+                  <div>
+                    <Label>{getText('Konfime Nouvo PIN', 'Confirmer Nouveau PIN', 'Confirm New PIN')}</Label>
+                    <Input
+                      type="password"
+                      placeholder="****"
+                      maxLength={6}
+                      value={confirmPinInput}
+                      onChange={(e) => setConfirmPinInput(e.target.value.replace(/\D/g, ''))}
+                      className="text-center text-2xl tracking-widest mt-2"
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={handleResetPin}
+                      disabled={pinLoading || resetCode.length < 6 || newPinInput.length < 4}
+                      className="flex-1 bg-[#EA580C] hover:bg-[#C54B0A]"
+                    >
+                      {pinLoading ? getText('Ap reyinisyalize...', 'Réinitialisation...', 'Resetting...') : getText('Reyinisyalize PIN', 'Réinitialiser PIN', 'Reset PIN')}
+                    </Button>
+                    <Button variant="outline" onClick={() => { setShowResetPinModal(false); setResetCodeSent(false); setResetCode(''); setNewPinInput(''); setConfirmPinInput(''); }}>
+                      {getText('Anile', 'Annuler', 'Cancel')}
+                    </Button>
+                  </div>
+                  <button 
+                    onClick={handleRequestPinReset}
+                    disabled={pinLoading}
+                    className="text-sm text-[#EA580C] hover:underline w-full text-center"
+                  >
+                    {getText('Revoye Kòd', 'Renvoyer Code', 'Resend Code')}
+                  </button>
+                </>
+              )}
             </div>
           </DialogContent>
         </Dialog>
