@@ -66,6 +66,7 @@ export default function Dashboard() {
     } else {
       return getText('Bonswa', 'Bonsoir', 'Good evening');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language]);
 
   // Calculate total balance in USD
