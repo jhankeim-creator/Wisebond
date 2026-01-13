@@ -494,67 +494,77 @@ export default function VirtualCard() {
     // Best-effort extractor for varying provider schemas.
     if (!data) return [];
     
-    // Try multiple paths to find transactions
-    const paths = [
-      data?.response?.data,
-      data?.response?.transactions,
-      data?.response?.message?.transactions,
-      data?.response?.result?.transactions,
-      data?.response?.result,
-      data?.data,
-      data?.transactions,
-      data?.message?.transactions,
-      data?.result?.transactions,
-      data?.result,
-      data?.response,
-    ];
-    
-    for (const path of paths) {
-      if (Array.isArray(path) && path.length > 0) {
-        return path;
-      }
-    }
-    
-    return [];
-  };
-
-  // Format transaction data as readable text
-  const formatTxDataAsText = (data) => {
-    if (!data) return getText('Pa gen done', 'Pas de données', 'No data');
-    if (data.error) return `${getText('Erè', 'Erreur', 'Error')}: ${data.error}`;
-    
-    const resp = data?.response || data;
-    
-    // Check for common message fields
-    if (resp?.message && typeof resp.message === 'string') {
-      return resp.message;
-    }
-    
-    if (resp?.status && resp?.message) {
-      return `${resp.status}: ${typeof resp.message === 'string' ? resp.message : JSON.stringify(resp.message)}`;
-    }
-    
-    // Format as readable key-value pairs
-    const formatObject = (obj, indent = 0) => {
-      if (!obj || typeof obj !== 'object') return String(obj);
-      
-      const lines = [];
-      for (const [key, value] of Object.entries(obj)) {
-        const label = key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
-        if (value === null || value === undefined) continue;
-        if (typeof value === 'object' && !Array.isArray(value)) {
-          lines.push(`${'  '.repeat(indent)}${label}:`);
-          lines.push(formatObject(value, indent + 1));
-        } else if (Array.isArray(value)) {
-          lines.push(`${'  '.repeat(indent)}${label}: ${value.length} ${getText('eleman', 'éléments', 'items')}`);
-        } else {
-          lines.push(`${'  '.repeat(indent)}${label}: ${value}`);
+    // Helper to check and parse JSON strings
+    const tryParseJSON = (val) => {
+      if (typeof val === 'string') {
+        try {
+          return JSON.parse(val);
+        } catch {
+          return null;
         }
       }
-      return lines.join('\n');
+      return val;
     };
     
-    return formatObject(resp);
+    // Try multiple paths to find transactions
+    const checkPaths = (obj) => {
+      if (!obj) return [];
+      const paths = [
+        obj?.data,
+        obj?.transactions,
+        obj?.message?.transactions,
+        obj?.message?.data,
+        obj?.result?.transactions,
+        obj?.result?.data,
+        obj?.result,
+        obj?.records,
+        obj?.items,
+        obj?.list,
+      ];
+      
+      for (let path of paths) {
+        path = tryParseJSON(path);
+        if (Array.isArray(path) && path.length > 0) {
+          return path;
+        }
+      }
+      return [];
+    };
+    
+    // Check in response first, then in root
+    let rows = checkPaths(data?.response);
+    if (rows.length === 0) {
+      rows = checkPaths(data);
+    }
+    
+    // If message is a string that looks like JSON, try to parse it
+    if (rows.length === 0 && data?.response?.message) {
+      const parsed = tryParseJSON(data.response.message);
+      if (parsed) {
+        rows = checkPaths(parsed);
+      }
+    }
+    
+    return rows;
+  };
+
+  // Check if there are transactions to display
+  const hasTxData = (data) => {
+    if (!data) return false;
+    if (data.error) return false;
+    if (data.message && typeof data.message === 'string' && data.message.includes('pa gen')) return false;
+    return extractTxRows(data).length > 0;
+  };
+
+  // Get a user-friendly message when no transactions
+  const getTxMessage = (data) => {
+    if (!data) return getText('Pa gen done', 'Pas de données', 'No data');
+    if (data.error) return data.error;
+    if (data.message) return data.message;
+    if (data?.response?.message && typeof data.response.message === 'string') {
+      return data.response.message;
+    }
+    return getText('Pa gen tranzaksyon disponib pou kat sa a.', 'Aucune transaction disponible pour cette carte.', 'No transactions available for this card.');
   };
 
   const updateControls = async (updates) => {
@@ -1579,7 +1589,7 @@ export default function VirtualCard() {
                     'Note: shows Strowallet response (may return 403 if IP is not whitelisted).'
                   )}
                 </p>
-                {extractTxRows(txData).length ? (
+                {hasTxData(txData) ? (
                   <div className="overflow-x-auto border rounded-lg">
                     <table className="min-w-full text-xs">
                       <thead className="bg-stone-50 dark:bg-stone-900">
@@ -1587,19 +1597,36 @@ export default function VirtualCard() {
                           <th className="text-left p-2">{getText('Dat', 'Date', 'Date')}</th>
                           <th className="text-left p-2">{getText('Deskripsyon', 'Description', 'Description')}</th>
                           <th className="text-right p-2">{getText('Montan', 'Montant', 'Amount')}</th>
+                          <th className="text-right p-2">{getText('Estati', 'Statut', 'Status')}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {extractTxRows(txData).slice(0, 50).map((r, idx) => (
-                          <tr key={idx} className="border-t">
-                            <td className="p-2 whitespace-nowrap">
-                              {String(r.created_at || r.createdAt || r.date || r.time || '—')}
+                          <tr key={idx} className="border-t hover:bg-stone-50 dark:hover:bg-stone-800">
+                            <td className="p-2 whitespace-nowrap text-stone-600 dark:text-stone-400">
+                              {String(r.created_at || r.createdAt || r.date || r.time || r.transaction_date || '—')}
                             </td>
-                            <td className="p-2">
-                              {String(r.description || r.narration || r.merchant || r.type || '—')}
+                            <td className="p-2 text-stone-800 dark:text-stone-200">
+                              {String(r.description || r.narration || r.merchant || r.merchant_name || r.type || r.transaction_type || r.reference || '—')}
                             </td>
-                            <td className="p-2 text-right whitespace-nowrap">
-                              {String(r.amount ?? r.value ?? r.total ?? '—')} {String(r.currency || '')}
+                            <td className={`p-2 text-right whitespace-nowrap font-medium ${
+                              (r.type === 'credit' || r.transaction_type === 'credit' || parseFloat(r.amount) > 0) 
+                                ? 'text-emerald-600' 
+                                : 'text-red-600'
+                            }`}>
+                              {r.type === 'credit' || r.transaction_type === 'credit' ? '+' : '-'}
+                              ${Math.abs(parseFloat(r.amount || r.value || r.total || 0)).toFixed(2)} {String(r.currency || 'USD')}
+                            </td>
+                            <td className="p-2 text-right">
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                                (r.status === 'success' || r.status === 'completed' || r.status === 'approved') 
+                                  ? 'bg-emerald-100 text-emerald-700' 
+                                  : r.status === 'pending' 
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-stone-100 text-stone-600'
+                              }`}>
+                                {String(r.status || 'completed')}
+                              </span>
                             </td>
                           </tr>
                         ))}
@@ -1607,9 +1634,10 @@ export default function VirtualCard() {
                     </table>
                   </div>
                 ) : (
-                  <div className="bg-stone-50 dark:bg-stone-900 border rounded-lg p-4">
-                    <p className="text-sm text-stone-600 dark:text-stone-400 whitespace-pre-wrap">
-                      {formatTxDataAsText(txData)}
+                  <div className="bg-stone-50 dark:bg-stone-900 border rounded-lg p-6 text-center">
+                    <History className="mx-auto mb-3 text-stone-400" size={40} />
+                    <p className="text-stone-600 dark:text-stone-400">
+                      {getTxMessage(txData)}
                     </p>
                   </div>
                 )}
