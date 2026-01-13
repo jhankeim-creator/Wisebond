@@ -528,70 +528,69 @@ export default function VirtualCard() {
     // Check if value is a non-empty array
     const isValidArray = (val) => Array.isArray(val) && val.length > 0;
     
-    // Try multiple paths to find transactions
-    const checkPaths = (obj) => {
-      if (!obj) return [];
-      
-      // Direct array check
-      if (isValidArray(obj)) return obj;
-      
-      const paths = [
-        obj?.data,
-        obj?.transactions,
-        obj?.message?.data,
-        obj?.message?.transactions,
-        obj?.result?.data,
-        obj?.result?.transactions,
-        obj?.result,
-        obj?.records,
-        obj?.items,
-        obj?.list,
-        obj?.history,
-      ];
-      
-      for (let path of paths) {
-        path = tryParseJSON(path);
-        if (isValidArray(path)) {
-          return path;
-        }
-      }
-      return [];
-    };
-    
     // Debug log to see actual structure
-    console.log('Transaction data received:', JSON.stringify(data, null, 2));
+    console.log('=== TRANSACTION DATA RECEIVED ===');
+    console.log(JSON.stringify(data, null, 2));
     
-    // Check multiple levels: response.data, response, root
     let rows = [];
     
-    // Level 1: data.response.data (most common for Strowallet)
+    // Strowallet format: { provider, order_id, response: { status, message, data: [...] } }
+    // Check data.response.data first
     if (data?.response?.data) {
-      const parsed = tryParseJSON(data.response.data);
-      if (isValidArray(parsed)) rows = parsed;
-    }
-    
-    // Level 2: data.response
-    if (rows.length === 0 && data?.response) {
-      rows = checkPaths(data.response);
-    }
-    
-    // Level 3: root level
-    if (rows.length === 0) {
-      rows = checkPaths(data);
-    }
-    
-    // Level 4: Try parsing message as JSON
-    if (rows.length === 0) {
-      const msg = data?.response?.message || data?.message;
-      if (msg && typeof msg === 'string') {
-        const parsed = tryParseJSON(msg);
-        if (parsed) {
-          rows = checkPaths(parsed);
-        }
+      const respData = tryParseJSON(data.response.data);
+      if (isValidArray(respData)) {
+        console.log('Found transactions in response.data');
+        rows = respData;
       }
     }
     
-    console.log('Extracted transactions:', rows.length, rows);
+    // Check data.response.transactions
+    if (rows.length === 0 && data?.response?.transactions) {
+      const respTx = tryParseJSON(data.response.transactions);
+      if (isValidArray(respTx)) {
+        console.log('Found transactions in response.transactions');
+        rows = respTx;
+      }
+    }
+    
+    // Check data.response.message.data (some APIs nest further)
+    if (rows.length === 0 && data?.response?.message) {
+      const msg = tryParseJSON(data.response.message);
+      if (msg?.data && isValidArray(msg.data)) {
+        console.log('Found transactions in response.message.data');
+        rows = msg.data;
+      }
+    }
+    
+    // Check data.transactions directly
+    if (rows.length === 0 && data?.transactions) {
+      const txData = tryParseJSON(data.transactions);
+      if (isValidArray(txData)) {
+        console.log('Found transactions in data.transactions');
+        rows = txData;
+      }
+    }
+    
+    // Check data.data
+    if (rows.length === 0 && data?.data) {
+      const directData = tryParseJSON(data.data);
+      if (isValidArray(directData)) {
+        console.log('Found transactions in data.data');
+        rows = directData;
+      }
+    }
+    
+    // If data itself is an array
+    if (rows.length === 0 && isValidArray(data)) {
+      console.log('Data itself is an array');
+      rows = data;
+    }
+    
+    console.log('=== EXTRACTED ' + rows.length + ' TRANSACTIONS ===');
+    if (rows.length > 0) {
+      console.log('First transaction:', rows[0]);
+    }
+    
     return rows;
   };
 
@@ -851,12 +850,11 @@ export default function VirtualCard() {
                             <div className="absolute inset-0 p-3 flex flex-col justify-between text-white">
                               <div className="flex justify-between items-start">
                                 <span className="font-bold text-sm sm:text-base tracking-wide drop-shadow-lg">KAYICOM</span>
-                                {/* Card Brand Logo */}
-                                {(order.card_brand || order.card_type || '').toLowerCase().includes('master') ? (
-                                  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/200px-Mastercard-logo.svg.png" alt="Mastercard" className="h-6 sm:h-8 drop-shadow-lg" />
-                                ) : (
-                                  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Visa_Inc._logo.svg/200px-Visa_Inc._logo.svg.png" alt="Visa" className="h-5 sm:h-6 drop-shadow-lg" />
-                                )}
+                                {/* VISA Logo */}
+                                <svg viewBox="0 0 750 471" className="h-6 sm:h-8 drop-shadow-lg" fill="white">
+                                  <path d="M278.198 334.228L311.692 138.122H368.154L334.656 334.228H278.198ZM524.307 142.687C513.03 138.121 495.163 133.227 472.696 133.227C416.893 133.227 378.337 161.285 378.014 201.037C377.371 230.505 404.972 246.891 425.843 256.676C447.357 266.782 454.57 273.382 454.57 282.197C454.248 295.926 438.063 302.195 422.844 302.195C401.649 302.195 390.387 299.207 372.837 291.361L365.947 288.057L358.414 332.653C371.229 338.266 394.021 343.227 417.859 343.551C477.27 343.551 515.129 315.817 515.77 273.382C515.446 250.739 501.341 233.387 469.776 219.336C450.622 210.2 439.031 203.928 439.031 194.443C439.354 185.935 448.648 177.104 469.133 177.104C485.96 176.461 498.129 180.704 507.426 185.288L512.073 187.545L519.606 144.594L524.307 142.687ZM661.605 138.122H619.265C605.478 138.122 595.219 141.754 589.292 155.805L504.531 334.228H563.941L575.853 303.171L648.147 303.171C650.073 311.987 655.694 334.228 655.694 334.228H708.231L661.605 138.122ZM593.58 261.593C597.896 250.417 616.068 200.067 616.068 200.067C615.745 200.713 620.389 188.192 622.957 180.368L626.629 198.18C626.629 198.18 637.899 251.388 640.462 261.593H593.58ZM232.871 138.122L177.391 267.531L171.462 238.395C161.171 204.252 129.929 167.232 94.864 148.915L144.544 334.228H204.282L292.933 138.122H232.871Z" />
+                                  <path d="M131.921 138.122H43.156L42.513 142.04C114.162 159.53 161.815 201.036 177.391 238.395L161.494 155.806C158.607 142.076 148.353 138.446 131.921 138.122Z" fill="#F9A533"/>
+                                </svg>
                               </div>
                               <div>
                                 <p className="font-mono text-xs sm:text-sm tracking-[0.1em] drop-shadow-lg">
@@ -1398,12 +1396,11 @@ export default function VirtualCard() {
                   <div className="absolute inset-0 p-3 sm:p-4 flex flex-col justify-between text-white">
                     <div className="flex justify-between items-start">
                       <span className="font-bold text-base sm:text-lg tracking-wide drop-shadow-lg">KAYICOM</span>
-                      {/* Card Brand Logo */}
-                      {(selectedCard.card_brand || selectedCard.card_type || '').toLowerCase().includes('master') ? (
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/2a/Mastercard-logo.svg/200px-Mastercard-logo.svg.png" alt="Mastercard" className="h-7 sm:h-9 drop-shadow-lg" />
-                      ) : (
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5e/Visa_Inc._logo.svg/200px-Visa_Inc._logo.svg.png" alt="Visa" className="h-6 sm:h-7 drop-shadow-lg" />
-                      )}
+                      {/* VISA Logo */}
+                      <svg viewBox="0 0 750 471" className="h-7 sm:h-9 drop-shadow-lg" fill="white">
+                        <path d="M278.198 334.228L311.692 138.122H368.154L334.656 334.228H278.198ZM524.307 142.687C513.03 138.121 495.163 133.227 472.696 133.227C416.893 133.227 378.337 161.285 378.014 201.037C377.371 230.505 404.972 246.891 425.843 256.676C447.357 266.782 454.57 273.382 454.57 282.197C454.248 295.926 438.063 302.195 422.844 302.195C401.649 302.195 390.387 299.207 372.837 291.361L365.947 288.057L358.414 332.653C371.229 338.266 394.021 343.227 417.859 343.551C477.27 343.551 515.129 315.817 515.77 273.382C515.446 250.739 501.341 233.387 469.776 219.336C450.622 210.2 439.031 203.928 439.031 194.443C439.354 185.935 448.648 177.104 469.133 177.104C485.96 176.461 498.129 180.704 507.426 185.288L512.073 187.545L519.606 144.594L524.307 142.687ZM661.605 138.122H619.265C605.478 138.122 595.219 141.754 589.292 155.805L504.531 334.228H563.941L575.853 303.171L648.147 303.171C650.073 311.987 655.694 334.228 655.694 334.228H708.231L661.605 138.122ZM593.58 261.593C597.896 250.417 616.068 200.067 616.068 200.067C615.745 200.713 620.389 188.192 622.957 180.368L626.629 198.18C626.629 198.18 637.899 251.388 640.462 261.593H593.58ZM232.871 138.122L177.391 267.531L171.462 238.395C161.171 204.252 129.929 167.232 94.864 148.915L144.544 334.228H204.282L292.933 138.122H232.871Z" />
+                        <path d="M131.921 138.122H43.156L42.513 142.04C114.162 159.53 161.815 201.036 177.391 238.395L161.494 155.806C158.607 142.076 148.353 138.446 131.921 138.122Z" fill="#F9A533"/>
+                      </svg>
                     </div>
                     <div>
                       <p className="font-mono text-sm sm:text-base tracking-[0.1em] drop-shadow-lg">
