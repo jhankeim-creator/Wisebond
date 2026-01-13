@@ -442,6 +442,30 @@ input[type="number"] { -moz-appearance: textfield; }
   background: #A8A29E;
 }
 
+/* Admin Sidebar scrollbar */
+aside nav::-webkit-scrollbar {
+  width: 6px;
+}
+
+aside nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+aside nav::-webkit-scrollbar-thumb {
+  background: #57534e;
+  border-radius: 3px;
+}
+
+aside nav::-webkit-scrollbar-thumb:hover {
+  background: #78716c;
+}
+
+/* Firefox scrollbar support */
+aside nav {
+  scrollbar-width: thin;
+  scrollbar-color: #57534e transparent;
+}
+
 /* PWA & Performance Optimizations */
 html {
   -webkit-text-size-adjust: 100%;
