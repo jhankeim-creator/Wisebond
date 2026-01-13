@@ -525,45 +525,73 @@ export default function VirtualCard() {
       return val;
     };
     
+    // Check if value is a non-empty array
+    const isValidArray = (val) => Array.isArray(val) && val.length > 0;
+    
     // Try multiple paths to find transactions
     const checkPaths = (obj) => {
       if (!obj) return [];
+      
+      // Direct array check
+      if (isValidArray(obj)) return obj;
+      
       const paths = [
         obj?.data,
         obj?.transactions,
-        obj?.message?.transactions,
         obj?.message?.data,
-        obj?.result?.transactions,
+        obj?.message?.transactions,
         obj?.result?.data,
+        obj?.result?.transactions,
         obj?.result,
         obj?.records,
         obj?.items,
         obj?.list,
+        obj?.history,
       ];
       
       for (let path of paths) {
         path = tryParseJSON(path);
-        if (Array.isArray(path) && path.length > 0) {
+        if (isValidArray(path)) {
           return path;
         }
       }
       return [];
     };
     
-    // Check in response first, then in root
-    let rows = checkPaths(data?.response);
+    // Debug log to see actual structure
+    console.log('Transaction data received:', JSON.stringify(data, null, 2));
+    
+    // Check multiple levels: response.data, response, root
+    let rows = [];
+    
+    // Level 1: data.response.data (most common for Strowallet)
+    if (data?.response?.data) {
+      const parsed = tryParseJSON(data.response.data);
+      if (isValidArray(parsed)) rows = parsed;
+    }
+    
+    // Level 2: data.response
+    if (rows.length === 0 && data?.response) {
+      rows = checkPaths(data.response);
+    }
+    
+    // Level 3: root level
     if (rows.length === 0) {
       rows = checkPaths(data);
     }
     
-    // If message is a string that looks like JSON, try to parse it
-    if (rows.length === 0 && data?.response?.message) {
-      const parsed = tryParseJSON(data.response.message);
-      if (parsed) {
-        rows = checkPaths(parsed);
+    // Level 4: Try parsing message as JSON
+    if (rows.length === 0) {
+      const msg = data?.response?.message || data?.message;
+      if (msg && typeof msg === 'string') {
+        const parsed = tryParseJSON(msg);
+        if (parsed) {
+          rows = checkPaths(parsed);
+        }
       }
     }
     
+    console.log('Extracted transactions:', rows.length, rows);
     return rows;
   };
 
@@ -571,14 +599,19 @@ export default function VirtualCard() {
   const hasTxData = (data) => {
     if (!data) return false;
     if (data.error) return false;
-    if (data.message && typeof data.message === 'string' && data.message.includes('pa gen')) return false;
-    return extractTxRows(data).length > 0;
+    const rows = extractTxRows(data);
+    return rows.length > 0;
   };
 
   // Get a user-friendly message when no transactions
   const getTxMessage = (data) => {
     if (!data) return getText('Pa gen done', 'Pas de données', 'No data');
     if (data.error) return data.error;
+    // Check for success message but empty data
+    const respMsg = data?.response?.message || data?.message;
+    if (respMsg && respMsg.toLowerCase().includes('success')) {
+      return getText('Pa gen tranzaksyon pou kat sa a.', 'Aucune transaction pour cette carte.', 'No transactions for this card.');
+    }
     if (data.message) return data.message;
     if (data?.response?.message && typeof data.response.message === 'string') {
       return data.response.message;
