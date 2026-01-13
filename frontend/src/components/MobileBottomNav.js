@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { useLanguage } from '@/context/LanguageContext';
 import { 
   LayoutDashboard, 
-  ArrowDownCircle, 
+  CreditCard, 
   Send, 
   History, 
   MoreHorizontal 
@@ -21,7 +21,7 @@ export const MobileBottomNav = () => {
 
   const navItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: getText('Akèy', 'Accueil', 'Home') },
-    { path: '/deposit', icon: ArrowDownCircle, label: getText('Depoze', 'Dépôt', 'Deposit') },
+    { path: '/virtual-card', icon: CreditCard, label: getText('Kat', 'Carte', 'Card') },
     { path: '/transfer', icon: Send, label: getText('Voye', 'Envoyer', 'Send') },
     { path: '/transactions', icon: History, label: getText('Istorik', 'Historique', 'History') },
     { path: '/settings', icon: MoreHorizontal, label: getText('Plis', 'Plus', 'More') },
@@ -39,7 +39,7 @@ export const MobileBottomNav = () => {
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path || 
-                          (item.path === '/settings' && ['/settings', '/kyc', '/affiliate', '/virtual-card', '/topup', '/agent-deposit', '/swap', '/withdraw'].includes(location.pathname));
+                          (item.path === '/settings' && ['/settings', '/kyc', '/affiliate', '/topup', '/agent-deposit', '/swap', '/withdraw', '/deposit'].includes(location.pathname));
           
           return (
             <Link
