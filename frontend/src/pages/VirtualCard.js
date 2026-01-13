@@ -796,33 +796,33 @@ export default function VirtualCard() {
                               <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460]" />
                             )}
                             {/* Card Info Overlay */}
-                            <div className="absolute inset-0 p-4 flex flex-col justify-between text-white">
-                              {/* Top Row: KAYICOM + Card Type */}
+                            <div className="absolute inset-0 p-3 flex flex-col justify-between text-white">
+                              {/* Top Row: KAYICOM + Card Type Logo */}
                               <div className="flex justify-between items-start">
-                                <span className="font-bold text-lg tracking-wide drop-shadow-lg">KAYICOM</span>
-                                <span className="text-xs font-semibold uppercase bg-white/20 px-2 py-1 rounded drop-shadow">
-                                  {order.card_brand || order.card_type || 'VISA'}
+                                <span className="font-bold text-sm sm:text-base tracking-wide drop-shadow-lg">KAYICOM</span>
+                                <span className="font-bold text-sm sm:text-base italic drop-shadow-lg">
+                                  {(order.card_brand || order.card_type || 'VISA').toUpperCase()}
                                 </span>
                               </div>
                               {/* Middle: Card Number */}
-                              <div className="text-center">
-                                <p className="font-mono text-lg md:text-xl tracking-[0.15em] drop-shadow-lg">
+                              <div>
+                                <p className="font-mono text-xs sm:text-sm tracking-[0.1em] drop-shadow-lg">
                                   •••• •••• •••• {order.card_last4 || '****'}
                                 </p>
                               </div>
                               {/* Bottom Row: Holder, Expiry, CVV */}
-                              <div className="flex justify-between items-end">
-                                <div>
-                                  <p className="text-white/70 text-[9px] uppercase drop-shadow">{getText('Pòtè', 'Titulaire', 'Holder')}</p>
-                                  <p className="font-medium text-xs drop-shadow-lg">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
+                              <div className="flex justify-between items-end text-[9px] sm:text-[10px]">
+                                <div className="max-w-[40%]">
+                                  <p className="text-white/70 uppercase drop-shadow">{getText('Pòtè', 'Titulaire', 'Holder')}</p>
+                                  <p className="font-medium truncate drop-shadow-lg">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
                                 </div>
                                 <div className="text-center">
-                                  <p className="text-white/70 text-[9px] uppercase drop-shadow">{getText('Ekspire', 'Expire', 'Exp')}</p>
-                                  <p className="font-mono text-xs drop-shadow-lg">{order.card_expiry || '••/••'}</p>
+                                  <p className="text-white/70 uppercase drop-shadow">EXP</p>
+                                  <p className="font-mono drop-shadow-lg">{order.card_expiry || '••/••'}</p>
                                 </div>
                                 <div className="text-right">
-                                  <p className="text-white/70 text-[9px] uppercase drop-shadow">CVV</p>
-                                  <p className="font-mono text-xs drop-shadow-lg">•••</p>
+                                  <p className="text-white/70 uppercase drop-shadow">CVV</p>
+                                  <p className="font-mono drop-shadow-lg">•••</p>
                                 </div>
                               </div>
                             </div>
@@ -1341,17 +1341,17 @@ export default function VirtualCard() {
                     <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460]" />
                   )}
                   {/* Card Info Overlay */}
-                  <div className="absolute inset-0 p-4 flex flex-col justify-between text-white">
-                    {/* Top Row: KAYICOM + Card Type */}
+                  <div className="absolute inset-0 p-3 sm:p-4 flex flex-col justify-between text-white">
+                    {/* Top Row: KAYICOM + Card Type Logo */}
                     <div className="flex justify-between items-start">
-                      <span className="font-bold text-xl tracking-wide drop-shadow-lg">KAYICOM</span>
-                      <span className="text-sm font-semibold uppercase bg-white/20 px-2 py-1 rounded drop-shadow">
-                        {selectedCard.card_brand || selectedCard.card_type || 'VISA'}
+                      <span className="font-bold text-base sm:text-lg tracking-wide drop-shadow-lg">KAYICOM</span>
+                      <span className="font-bold text-base sm:text-lg italic drop-shadow-lg">
+                        {(selectedCard.card_brand || selectedCard.card_type || 'VISA').toUpperCase()}
                       </span>
                     </div>
                     {/* Middle: Card Number */}
-                    <div className="text-center">
-                      <p className="font-mono text-xl md:text-2xl tracking-[0.15em] drop-shadow-lg">
+                    <div>
+                      <p className="font-mono text-sm sm:text-base tracking-[0.1em] drop-shadow-lg">
                         {showSensitiveData && sensitiveCardData?.card_number 
                           ? sensitiveCardData.card_number.replace(/(.{4})/g, '$1 ').trim()
                           : `•••• •••• •••• ${selectedCard.card_last4 || '****'}`
@@ -1359,14 +1359,14 @@ export default function VirtualCard() {
                       </p>
                     </div>
                     {/* Bottom Row: Holder, Expiry, CVV */}
-                    <div className="flex justify-between items-end">
-                      <div>
-                        <p className="text-white/70 text-[9px] uppercase drop-shadow">{getText('Pòtè', 'Titulaire', 'Holder')}</p>
-                        <p className="font-medium text-sm drop-shadow-lg">{selectedCard.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
+                    <div className="flex justify-between items-end text-[10px] sm:text-xs">
+                      <div className="max-w-[40%]">
+                        <p className="text-white/70 uppercase drop-shadow">{getText('Pòtè', 'Titulaire', 'Holder')}</p>
+                        <p className="font-medium truncate drop-shadow-lg">{selectedCard.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-white/70 text-[9px] uppercase drop-shadow">{getText('Ekspire', 'Expire', 'Exp')}</p>
-                        <p className="font-mono text-sm drop-shadow-lg">
+                        <p className="text-white/70 uppercase drop-shadow">EXP</p>
+                        <p className="font-mono drop-shadow-lg">
                           {showSensitiveData && sensitiveCardData?.card_expiry 
                             ? sensitiveCardData.card_expiry 
                             : (selectedCard.card_expiry || '••/••')
@@ -1374,8 +1374,8 @@ export default function VirtualCard() {
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-white/70 text-[9px] uppercase drop-shadow">CVV</p>
-                        <p className="font-mono text-sm font-bold drop-shadow-lg">
+                        <p className="text-white/70 uppercase drop-shadow">CVV</p>
+                        <p className="font-mono font-bold drop-shadow-lg">
                           {showSensitiveData && sensitiveCardData?.cvv 
                             ? sensitiveCardData.cvv 
                             : '•••'
@@ -1386,113 +1386,98 @@ export default function VirtualCard() {
                   </div>
                 </div>
 
-                {/* Card Info Section */}
-                <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4 space-y-3">
-                  {/* Balance */}
-                  <div className="flex justify-between items-center">
-                    <span className="text-stone-500 text-sm">{getText('Balans', 'Solde', 'Balance')}</span>
-                    <span className="font-bold text-lg">${(sensitiveCardData?.balance ?? selectedCard.balance ?? 0).toFixed(2)}</span>
+                {/* Balance & Copy Buttons */}
+                <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="text-stone-500">{getText('Balans', 'Solde', 'Balance')}</span>
+                    <span className="font-bold text-xl text-emerald-600">${(sensitiveCardData?.balance ?? selectedCard.balance ?? 0).toFixed(2)}</span>
                   </div>
                   
-                  {/* Card Number */}
-                  <div className="flex justify-between items-center">
-                    <span className="text-stone-500 text-sm">{getText('Nimewo Kat', 'Numéro', 'Card Number')}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono">
-                        {showSensitiveData && sensitiveCardData?.card_number 
-                          ? sensitiveCardData.card_number.replace(/(.{4})/g, '$1 ').trim()
-                          : formatCardNumber(selectedCard.card_last4)
-                        }
-                      </span>
-                      {showSensitiveData && sensitiveCardData?.card_number && (
-                        <button 
-                          onClick={() => {
-                            navigator.clipboard.writeText(sensitiveCardData.card_number);
-                            toast.success(getText('Nimewo kat kopye!', 'Numéro copié!', 'Card number copied!'));
-                          }}
-                          className="p-1 hover:bg-stone-200 rounded"
-                        >
-                          <Copy size={14} />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* CVV */}
                   {showSensitiveData && sensitiveCardData ? (
-                    <div className="flex justify-between items-center">
-                      <span className="text-stone-500 text-sm">CVV</span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold">{sensitiveCardData.cvv || '***'}</span>
-                        {sensitiveCardData.cvv && (
-                          <button 
-                            onClick={() => {
-                              navigator.clipboard.writeText(sensitiveCardData.cvv);
-                              toast.success(getText('CVV kopye!', 'CVV copié!', 'CVV copied!'));
-                            }}
-                            className="p-1 hover:bg-stone-200 rounded"
-                          >
-                            <Copy size={14} />
-                          </button>
-                        )}
-                      </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(sensitiveCardData.card_number || '');
+                          toast.success(getText('Nimewo kat kopye!', 'Numéro copié!', 'Card number copied!'));
+                        }}
+                      >
+                        <Copy size={14} className="mr-2" />
+                        {getText('Kopye Nimewo', 'Copier Numéro', 'Copy Number')}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(sensitiveCardData.cvv || '');
+                          toast.success(getText('CVV kopye!', 'CVV copié!', 'CVV copied!'));
+                        }}
+                      >
+                        <Copy size={14} className="mr-2" />
+                        {getText('Kopye CVV', 'Copier CVV', 'Copy CVV')}
+                      </Button>
                     </div>
                   ) : (
-                    <p className="text-xs text-stone-500 text-center py-2">
+                    <p className="text-xs text-stone-500 text-center">
                       {getText(
-                        'PIN verifye pou wè nimewo kat konplè ak CVV.',
-                        'PIN vérifié pour voir le numéro complet et CVV.',
-                        'PIN verified to see full card number and CVV.'
+                        'Antre PIN pou wè tout enfòmasyon kat la.',
+                        'Entrez le PIN pour voir toutes les infos.',
+                        'Enter PIN to see all card info.'
                       )}
                     </p>
                   )}
-                  
-                  {/* Expiry */}
-                  <div className="flex justify-between items-center">
-                    <span className="text-stone-500 text-sm">{getText('Ekspire', 'Expire', 'Expires')}</span>
-                    <span className="font-mono">
-                      {showSensitiveData && sensitiveCardData?.card_expiry 
-                        ? sensitiveCardData.card_expiry 
-                        : (selectedCard.card_expiry || '••/••')
-                      }
-                    </span>
-                  </div>
-                  
-                  {/* Holder */}
-                  <div className="flex justify-between items-center">
-                    <span className="text-stone-500 text-sm">{getText('Pòtè Kat', 'Titulaire', 'Holder')}</span>
-                    <span className="font-medium">
-                      {selectedCard.card_holder_name || (user?.full_name ? String(user.full_name).toUpperCase() : 'N/A')}
-                    </span>
-                  </div>
                 </div>
 
-                {(selectedCard.billing_address || selectedCard.billing_city || selectedCard.billing_country) && (
-                  <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
-                    <div className="flex items-start gap-3">
-                      <MapPin className="text-stone-500 mt-1" size={18} />
-                      <div>
-                        <p className="text-stone-500 text-sm mb-1">{getText('Adrès Faktirasyon', 'Adresse de Facturation', 'Billing Address')}</p>
-                        <p className="text-stone-900 dark:text-white font-medium">{selectedCard.billing_address}</p>
-                        <p className="text-stone-700 dark:text-stone-300">
-                          {[selectedCard.billing_city, selectedCard.billing_country, selectedCard.billing_zip].filter(Boolean).join(', ')}
+                {/* Billing Address - Always show */}
+                <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <MapPin className="text-stone-500 mt-1" size={18} />
+                    <div className="flex-1">
+                      <p className="text-stone-500 text-sm mb-1">{getText('Adrès Faktirasyon', 'Adresse de Facturation', 'Billing Address')}</p>
+                      {(selectedCard.billing_address || sensitiveCardData?.billing_address) ? (
+                        <>
+                          <p className="text-stone-900 dark:text-white font-medium">
+                            {sensitiveCardData?.billing_address || selectedCard.billing_address}
+                          </p>
+                          <p className="text-stone-700 dark:text-stone-300 text-sm">
+                            {[
+                              sensitiveCardData?.billing_city || selectedCard.billing_city,
+                              sensitiveCardData?.billing_state || selectedCard.billing_state,
+                              sensitiveCardData?.billing_zip || selectedCard.billing_zip,
+                              sensitiveCardData?.billing_country || selectedCard.billing_country
+                            ].filter(Boolean).join(', ')}
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-stone-400 dark:text-stone-500 italic text-sm">
+                          {getText('Pa gen adrès faktirasyon', 'Pas d\'adresse de facturation', 'No billing address')}
                         </p>
-                      </div>
+                      )}
                     </div>
+                  </div>
+                  {(selectedCard.billing_address || sensitiveCardData?.billing_address) && (
                     <Button
                       variant="outline"
                       size="sm"
-                      className="mt-3"
-                      onClick={() => copyToClipboard(
-                        `${selectedCard.billing_address || ''}, ${selectedCard.billing_city || ''}, ${selectedCard.billing_country || ''} ${selectedCard.billing_zip || ''}`.trim(),
-                        getText('Adrès', 'Adresse', 'Address')
-                      )}
+                      className="mt-3 w-full"
+                      onClick={() => {
+                        const addr = [
+                          sensitiveCardData?.billing_address || selectedCard.billing_address,
+                          sensitiveCardData?.billing_city || selectedCard.billing_city,
+                          sensitiveCardData?.billing_state || selectedCard.billing_state,
+                          sensitiveCardData?.billing_zip || selectedCard.billing_zip,
+                          sensitiveCardData?.billing_country || selectedCard.billing_country
+                        ].filter(Boolean).join(', ');
+                        navigator.clipboard.writeText(addr);
+                        toast.success(getText('Adrès kopye!', 'Adresse copiée!', 'Address copied!'));
+                      }}
                     >
                       <Copy size={14} className="mr-2" />
                       {getText('Kopye Adrès', 'Copier Adresse', 'Copy Address')}
                     </Button>
-                  </div>
-                )}
+                  )}
+                </div>
 
                 {selectedCard.admin_notes && (
                   <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
