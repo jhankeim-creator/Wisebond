@@ -781,45 +781,42 @@ export default function VirtualCard() {
             ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {cardOrders.map((order) => (
-                      <div key={order.order_id} className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                        {/* Card Visual */}
+                      <div key={order.order_id} className="space-y-3">
+                        {/* Card Image - Rectangular with same rounded corners all sides */}
                         {order.status === 'approved' ? (
-                          <div className="relative overflow-hidden">
-                            {/* Card Image - Full display with rounded corners */}
-                            {(order.card_image || defaultCardBg) ? (
-                              <img 
-                                src={order.card_image || defaultCardBg} 
-                                alt="Card" 
-                                className="w-full h-auto rounded-xl"
-                              />
-                            ) : (
-                              /* Fallback gradient card if no image */
-                              <div className="bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] rounded-xl p-5 text-white" style={{ aspectRatio: '1.586/1' }}>
-                                <div className="h-full flex flex-col justify-between">
-                                  <div className="flex justify-between items-start">
-                                    <span className="text-white font-bold text-lg tracking-wide">KAYICOM</span>
-                                  </div>
+                          (order.card_image || defaultCardBg) ? (
+                            <img 
+                              src={order.card_image || defaultCardBg} 
+                              alt="Card" 
+                              className="w-full h-auto rounded-2xl shadow-lg"
+                            />
+                          ) : (
+                            /* Fallback card if no image */
+                            <div className="bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] rounded-2xl p-5 text-white shadow-lg" style={{ aspectRatio: '1.586/1' }}>
+                              <div className="h-full flex flex-col justify-between">
+                                <div>
+                                  <span className="text-white font-bold text-lg tracking-wide">KAYICOM</span>
+                                </div>
+                                <div>
+                                  <p className="font-mono text-xl tracking-[0.2em]">
+                                    •••• •••• •••• {order.card_last4 || '****'}
+                                  </p>
+                                </div>
+                                <div className="flex justify-between items-end">
                                   <div>
-                                    <p className="font-mono text-xl tracking-[0.2em]">
-                                      •••• •••• •••• {order.card_last4 || '****'}
-                                    </p>
+                                    <p className="text-white/60 text-[10px] uppercase">{getText('Pòtè Kat', 'Titulaire', 'Holder')}</p>
+                                    <p className="font-medium text-sm">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
                                   </div>
-                                  <div className="flex justify-between items-end">
-                                    <div>
-                                      <p className="text-white/60 text-[10px] uppercase">{getText('Pòtè Kat', 'Titulaire', 'Holder')}</p>
-                                      <p className="font-medium text-sm">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-white/60 text-[10px] uppercase">{getText('Ekspire', 'Expire', 'Expires')}</p>
-                                      <p className="font-mono text-sm">••/••</p>
-                                    </div>
+                                  <div className="text-right">
+                                    <p className="text-white/60 text-[10px] uppercase">{getText('Ekspire', 'Expire', 'Expires')}</p>
+                                    <p className="font-mono text-sm">••/••</p>
                                   </div>
                                 </div>
                               </div>
-                            )}
-                          </div>
+                            </div>
+                          )
                         ) : (
-                          <div className="bg-stone-200 dark:bg-stone-800 flex items-center justify-center rounded-xl" style={{ aspectRatio: '1.586/1' }}>
+                          <div className="bg-stone-200 dark:bg-stone-800 flex items-center justify-center rounded-2xl shadow-lg" style={{ aspectRatio: '1.586/1' }}>
                             <div className="text-center">
                               <CreditCard className="mx-auto mb-2 text-stone-400" size={40} />
                               <p className="text-stone-500 text-sm">{getText('An atant apwobasyon', 'En attente d\'approbation', 'Pending approval')}</p>
@@ -827,85 +824,79 @@ export default function VirtualCard() {
                           </div>
                         )}
                         
-                        {/* Card Info & Actions */}
-                        <div className="p-4 space-y-4">
-                          {/* Status Row */}
-                          <div className="flex items-center justify-between">
-                            {getStatusBadge(order.status)}
-                            <span className="text-xs text-stone-500">{new Date(order.created_at).toLocaleDateString()}</span>
-                          </div>
-                          
-                          {/* Action Buttons */}
-                          {order.status === 'approved' && (
-                            <div className="grid grid-cols-2 gap-2">
-                              <Button
-                                onClick={() => openCardDetails(order)}
-                                className="bg-[#0d6efd] hover:bg-[#0b5ed7] text-white text-sm"
-                              >
-                                <Eye size={16} className="mr-2" />
-                                {getText('Wè Detay', 'Voir Détails', 'View Details')}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedCard(order);
-                                  updateControls({ lock: order.card_status !== 'locked' });
-                                }}
-                                className={`text-sm ${
-                                  order.card_status === 'locked' 
-                                    ? 'text-emerald-600 border-emerald-300 hover:bg-emerald-50' 
-                                    : 'text-red-600 border-red-300 hover:bg-red-50'
-                                }`}
-                              >
-                                <Shield size={16} className="mr-2" />
-                                {order.card_status === 'locked' ? getText('Debloke', 'Débloquer', 'Unlock') : getText('Freeze', 'Geler', 'Freeze')}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedCard(order);
-                                  setShowTopUpModal(true);
-                                  setTopUpCardId(order.order_id);
-                                }}
-                                className="text-sm text-emerald-600 border-emerald-300 hover:bg-emerald-50"
-                              >
-                                <Plus size={16} className="mr-2" />
-                                {getText('Depo', 'Dépôt', 'Deposit')}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedCard(order);
-                                  setShowWithdrawModal(true);
-                                  setWithdrawCardId(order.order_id);
-                                }}
-                                className="text-sm text-amber-600 border-amber-300 hover:bg-amber-50"
-                              >
-                                <ArrowDown size={16} className="mr-2" />
-                                {getText('Retrè', 'Retrait', 'Withdraw')}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => openTransactions(order)}
-                                className="text-sm text-purple-600 border-purple-300 hover:bg-purple-50"
-                              >
-                                <History size={16} className="mr-2" />
-                                {getText('Istorik', 'Historique', 'History')}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedCard(order);
-                                  setShowChangePinModal(true);
-                                }}
-                                className="text-sm text-stone-600 border-stone-300 hover:bg-stone-50"
-                              >
-                                <Shield size={16} className="mr-2" />
-                                {getText('Chanje PIN', 'Changer PIN', 'Change PIN')}
-                              </Button>
-                            </div>
-                          )}
+                        {/* Status and Actions */}
+                        <div className="flex items-center justify-between mb-2">
+                          {getStatusBadge(order.status)}
+                          <span className="text-xs text-stone-500">{new Date(order.created_at).toLocaleDateString()}</span>
                         </div>
+                        
+                        {order.status === 'approved' && (
+                          <div className="grid grid-cols-3 gap-2">
+                            <Button
+                              onClick={() => openCardDetails(order)}
+                              className="bg-[#0d6efd] hover:bg-[#0b5ed7] text-white text-xs py-2 px-2"
+                            >
+                              <Eye size={14} className="mr-1" />
+                              {getText('Detay', 'Détails', 'Details')}
+                            </Button>
+                            <Button
+                              onClick={() => {
+                                setSelectedCard(order);
+                                setShowTopUpModal(true);
+                                setTopUpCardId(order.order_id);
+                              }}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs py-2 px-2"
+                            >
+                              <Plus size={14} className="mr-1" />
+                              {getText('Depo', 'Dépôt', 'Deposit')}
+                            </Button>
+                            <Button
+                              onClick={() => {
+                                setSelectedCard(order);
+                                setShowWithdrawModal(true);
+                                setWithdrawCardId(order.order_id);
+                              }}
+                              className="bg-amber-600 hover:bg-amber-700 text-white text-xs py-2 px-2"
+                            >
+                              <ArrowDown size={14} className="mr-1" />
+                              {getText('Retrè', 'Retrait', 'Withdraw')}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => openTransactions(order)}
+                              className="text-xs py-2 px-2"
+                            >
+                              <History size={14} className="mr-1" />
+                              {getText('Istorik', 'Historique', 'History')}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedCard(order);
+                                updateControls({ lock: order.card_status !== 'locked' });
+                              }}
+                              className={`text-xs py-2 px-2 ${
+                                order.card_status === 'locked' 
+                                  ? 'text-emerald-600 border-emerald-300' 
+                                  : 'text-red-600 border-red-300'
+                              }`}
+                            >
+                              <Shield size={14} className="mr-1" />
+                              {order.card_status === 'locked' ? getText('Debloke', 'Débloquer', 'Unlock') : getText('Freeze', 'Geler', 'Freeze')}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedCard(order);
+                                setShowChangePinModal(true);
+                              }}
+                              className="text-xs py-2 px-2"
+                            >
+                              <Shield size={14} className="mr-1" />
+                              PIN
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1325,49 +1316,45 @@ export default function VirtualCard() {
                   </div>
                 </div>
 
-                {/* Card Visual */}
-                <div className="relative overflow-hidden rounded-xl">
-                  {/* Card Image - Same as in list */}
-                  {(selectedCard.card_image || defaultCardBg) ? (
-                    <img 
-                      src={selectedCard.card_image || defaultCardBg} 
-                      alt="Card" 
-                      className="w-full h-auto rounded-xl"
-                    />
-                  ) : (
-                    /* Fallback gradient card if no image */
-                    <div className="bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] rounded-xl p-5 text-white" style={{ aspectRatio: '1.586/1' }}>
-                      <div className="h-full flex flex-col justify-between">
-                        <div className="flex justify-between items-start">
-                          <span className="text-white font-bold text-xl tracking-wide">KAYICOM</span>
-                        </div>
+                {/* Card Visual - Same image as list */}
+                {(selectedCard.card_image || defaultCardBg) ? (
+                  <img 
+                    src={selectedCard.card_image || defaultCardBg} 
+                    alt="Card" 
+                    className="w-full h-auto rounded-2xl shadow-lg"
+                  />
+                ) : (
+                  <div className="bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460] rounded-2xl p-5 text-white shadow-lg" style={{ aspectRatio: '1.586/1' }}>
+                    <div className="h-full flex flex-col justify-between">
+                      <div>
+                        <span className="text-white font-bold text-lg tracking-wide">KAYICOM</span>
+                      </div>
+                      <div>
+                        <p className="font-mono text-xl tracking-[0.2em]">
+                          {showSensitiveData && sensitiveCardData?.card_number 
+                            ? sensitiveCardData.card_number.replace(/(.{4})/g, '$1 ').trim()
+                            : formatCardNumber(selectedCard.card_last4)
+                          }
+                        </p>
+                      </div>
+                      <div className="flex justify-between items-end">
                         <div>
-                          <p className="font-mono text-xl tracking-[0.2em]">
-                            {showSensitiveData && sensitiveCardData?.card_number 
-                              ? sensitiveCardData.card_number.replace(/(.{4})/g, '$1 ').trim()
-                              : formatCardNumber(selectedCard.card_last4)
+                          <p className="text-white/60 text-[10px] uppercase">{getText('Pòtè Kat', 'Titulaire', 'Holder')}</p>
+                          <p className="font-medium text-sm">{selectedCard.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-white/60 text-[10px] uppercase">{getText('Ekspire', 'Expire', 'Expires')}</p>
+                          <p className="font-mono text-sm">
+                            {showSensitiveData && sensitiveCardData?.card_expiry 
+                              ? sensitiveCardData.card_expiry 
+                              : (selectedCard.card_expiry || '••/••')
                             }
                           </p>
                         </div>
-                        <div className="flex justify-between items-end">
-                          <div>
-                            <p className="text-white/60 text-[10px] uppercase">{getText('Pòtè Kat', 'Titulaire', 'Holder')}</p>
-                            <p className="font-medium text-sm">{selectedCard.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-white/60 text-[10px] uppercase">{getText('Ekspire', 'Expire', 'Expires')}</p>
-                            <p className="font-mono text-sm">
-                              {showSensitiveData && sensitiveCardData?.card_expiry 
-                                ? sensitiveCardData.card_expiry 
-                                : (selectedCard.card_expiry || '••/••')
-                              }
-                            </p>
-                          </div>
-                        </div>
                       </div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* Card Info Section */}
                 <div className="bg-stone-50 dark:bg-stone-800 rounded-xl p-4 space-y-3">
