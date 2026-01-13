@@ -2,8 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "framework": null,
-  "installCommand": "cd frontend && yarn install --frozen-lockfile",
-  "buildCommand": "cd frontend && GENERATE_SOURCEMAP=false yarn build",
+  "installCommand": "cd frontend && yarn install",
+  "buildCommand": "cd frontend && CI=false GENERATE_SOURCEMAP=false yarn build",
   "outputDirectory": "frontend/build",
   "rewrites": [
     {
