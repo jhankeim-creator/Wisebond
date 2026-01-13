@@ -492,15 +492,69 @@ export default function VirtualCard() {
 
   const extractTxRows = (data) => {
     // Best-effort extractor for varying provider schemas.
+    if (!data) return [];
+    
+    // Try multiple paths to find transactions
+    const paths = [
+      data?.response?.data,
+      data?.response?.transactions,
+      data?.response?.message?.transactions,
+      data?.response?.result?.transactions,
+      data?.response?.result,
+      data?.data,
+      data?.transactions,
+      data?.message?.transactions,
+      data?.result?.transactions,
+      data?.result,
+      data?.response,
+    ];
+    
+    for (const path of paths) {
+      if (Array.isArray(path) && path.length > 0) {
+        return path;
+      }
+    }
+    
+    return [];
+  };
+
+  // Format transaction data as readable text
+  const formatTxDataAsText = (data) => {
+    if (!data) return getText('Pa gen done', 'Pas de données', 'No data');
+    if (data.error) return `${getText('Erè', 'Erreur', 'Error')}: ${data.error}`;
+    
     const resp = data?.response || data;
-    const rows =
-      resp?.data ||
-      resp?.transactions ||
-      resp?.message?.transactions ||
-      resp?.result?.transactions ||
-      resp?.result ||
-      [];
-    return Array.isArray(rows) ? rows : [];
+    
+    // Check for common message fields
+    if (resp?.message && typeof resp.message === 'string') {
+      return resp.message;
+    }
+    
+    if (resp?.status && resp?.message) {
+      return `${resp.status}: ${typeof resp.message === 'string' ? resp.message : JSON.stringify(resp.message)}`;
+    }
+    
+    // Format as readable key-value pairs
+    const formatObject = (obj, indent = 0) => {
+      if (!obj || typeof obj !== 'object') return String(obj);
+      
+      const lines = [];
+      for (const [key, value] of Object.entries(obj)) {
+        const label = key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
+        if (value === null || value === undefined) continue;
+        if (typeof value === 'object' && !Array.isArray(value)) {
+          lines.push(`${'  '.repeat(indent)}${label}:`);
+          lines.push(formatObject(value, indent + 1));
+        } else if (Array.isArray(value)) {
+          lines.push(`${'  '.repeat(indent)}${label}: ${value.length} ${getText('eleman', 'éléments', 'items')}`);
+        } else {
+          lines.push(`${'  '.repeat(indent)}${label}: ${value}`);
+        }
+      }
+      return lines.join('\n');
+    };
+    
+    return formatObject(resp);
   };
 
   const updateControls = async (updates) => {
@@ -1255,7 +1309,7 @@ export default function VirtualCard() {
                   ) : null}
                   
                   <div className="relative z-10">
-                    <div className="flex justify-between items-start mb-6">
+                    <div className="flex justify-between items-start mb-4">
                       <div>
                         <span className="text-white/80 text-sm font-medium tracking-wide">VIRTUAL CARD</span>
                         {selectedCard.card_brand && (
@@ -1267,6 +1321,14 @@ export default function VirtualCard() {
                         alt={selectedCard.card_type}
                         className="h-10 w-auto"
                       />
+                    </div>
+                    
+                    {/* Card Balance */}
+                    <div className="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2 mb-4 inline-block">
+                      <p className="text-white/70 text-xs uppercase">{getText('Balans', 'Solde', 'Balance')}</p>
+                      <p className="text-white font-bold text-xl">
+                        ${(sensitiveCardData?.balance ?? selectedCard.balance ?? 0).toFixed(2)} USD
+                      </p>
                     </div>
                     
                     <div className="mb-6">
@@ -1555,9 +1617,11 @@ export default function VirtualCard() {
                     </table>
                   </div>
                 ) : (
-                  <pre className="text-xs whitespace-pre-wrap bg-stone-50 dark:bg-stone-900 border rounded-lg p-3 overflow-x-auto">
-                    {txData ? JSON.stringify(txData, null, 2) : ''}
-                  </pre>
+                  <div className="bg-stone-50 dark:bg-stone-900 border rounded-lg p-4">
+                    <p className="text-sm text-stone-600 dark:text-stone-400 whitespace-pre-wrap">
+                      {formatTxDataAsText(txData)}
+                    </p>
+                  </div>
                 )}
                 <div className="flex gap-2">
                   <Button
