@@ -1191,11 +1191,11 @@ export default function VirtualCard() {
                   </div>
                 </div>
 
-                {/* Card Visual */}
-                <div className={`relative rounded-2xl p-4 sm:p-6 text-white overflow-hidden ${
+                {/* Card Visual - KAYICOM CARD Style */}
+                <div className={`relative rounded-2xl p-4 sm:p-6 text-white overflow-hidden shadow-xl ${
                   selectedCard.card_type === 'mastercard' 
-                    ? 'bg-gradient-to-br from-orange-500 via-red-500 to-pink-600' 
-                    : 'bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800'
+                    ? 'bg-gradient-to-br from-[#0d6efd] via-[#0099cc] to-[#00c389]' 
+                    : 'bg-gradient-to-br from-[#0d6efd] via-[#0099cc] to-[#00c389]'
                 }`}>
                   {(selectedCard.card_image || defaultCardBg) ? (
                     <img 
@@ -1208,8 +1208,9 @@ export default function VirtualCard() {
                   <div className="relative z-10">
                     <div className="flex justify-between items-start mb-6">
                       <div>
+                        <span className="text-white/80 text-sm font-medium tracking-wide">VIRTUAL CARD</span>
                         {selectedCard.card_brand && (
-                          <span className="text-white/90 font-bold text-lg">{selectedCard.card_brand}</span>
+                          <p className="text-white font-bold text-lg mt-1">{selectedCard.card_brand}</p>
                         )}
                       </div>
                       <img 
