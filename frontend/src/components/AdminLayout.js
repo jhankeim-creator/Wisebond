@@ -88,27 +88,28 @@ export const AdminLayout = ({ children, title }) => {
 
       {/* Sidebar */}
       <aside className={`
-        fixed left-0 top-0 h-screen w-64 bg-stone-900 text-white flex flex-col z-50 transition-transform duration-300
+        fixed left-0 w-64 bg-stone-900 text-white flex flex-col z-50 transition-transform duration-300
         lg:translate-x-0
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `} style={{ top: 'var(--announcement-bar-h, 0px)', height: 'calc(100vh - var(--announcement-bar-h, 0px))' }}>
+      `} style={{ top: 'var(--announcement-bar-h, 0px)', height: 'calc(100vh - var(--announcement-bar-h, 0px))', maxHeight: 'calc(100vh - var(--announcement-bar-h, 0px))' }}>
         {/* Mobile Close Button */}
         <button 
           onClick={() => setSidebarOpen(false)}
-          className="lg:hidden absolute top-4 right-4 p-2 hover:bg-white/10 rounded-lg"
+          className="lg:hidden absolute top-4 right-4 p-2 hover:bg-white/10 rounded-lg z-10"
         >
           <X size={20} />
         </button>
 
-        {/* Admin Header in Sidebar */}
-        <div className="p-4 border-b border-stone-700">
+        {/* Admin Header in Sidebar - Fixed */}
+        <div className="p-4 border-b border-stone-700 flex-shrink-0">
           <div className="bg-gradient-to-r from-[#EA580C] to-amber-500 rounded-lg p-3">
             <p className="text-white font-bold text-sm">Admin Panel</p>
             <p className="text-white/80 text-xs truncate">{user?.full_name}</p>
           </div>
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {/* Scrollable Navigation */}
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto min-h-0 scrollbar-thin scrollbar-thumb-stone-700 scrollbar-track-transparent">
           {menuItems.filter((item) => isRoleAllowed(adminRole, item.roles || [])).map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path, item.exact);
@@ -131,7 +132,8 @@ export const AdminLayout = ({ children, title }) => {
           })}
         </nav>
 
-        <div className="p-3 border-t border-stone-700 space-y-1">
+        {/* Footer - Fixed */}
+        <div className="p-3 border-t border-stone-700 space-y-1 flex-shrink-0">
           <Link
             to="/"
             onClick={() => setSidebarOpen(false)}
