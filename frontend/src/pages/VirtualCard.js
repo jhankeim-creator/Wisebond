@@ -734,24 +734,10 @@ export default function VirtualCard() {
                   {getText('Jere kat vityèl ou yo', 'Gérez vos cartes virtuelles', 'Manage your virtual cards')}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-3">
-                {approvedCards.length > 0 && (
-                  <Button onClick={openTopUpModal} className="bg-emerald-500 hover:bg-emerald-600 text-white">
-                    <Plus className="mr-2" size={18} />
-                    {getText('Ajoute kòb sou kat', 'Ajouter des fonds', 'Add funds to card')}
-                  </Button>
-                )}
-                {approvedCards.length > 0 && (
-                  <Button onClick={openWithdrawModal} variant="outline" className="border-amber-300 text-amber-700 hover:bg-amber-50">
-                    <ArrowDown className="mr-2" size={18} />
-                    {getText('Retire sou bous', 'Retirer vers wallet', 'Withdraw to wallet')}
-                  </Button>
-                )}
-                <Button onClick={() => setShowOrderModal(true)} className="btn-primary">
-                  <ShoppingCart className="mr-2" size={18} />
-                  {getText('Komande yon kat', 'Commander une carte', 'Order a card')}
-                </Button>
-              </div>
+              <Button onClick={() => setShowOrderModal(true)} className="btn-primary">
+                <Plus className="mr-2" size={18} />
+                {getText('Nouvo Kat', 'Nouvelle Carte', 'New Card')}
+              </Button>
             </div>
 
             {/* Pending order notice */}
@@ -825,17 +811,27 @@ export default function VirtualCard() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {cardOrders.map((order) => (
                       <div key={order.order_id} className="bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-700 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                        {/* Card Visual - Rectangle with hidden info */}
+                        {/* Card Visual */}
                         {order.status === 'approved' ? (
-                          <div className="relative bg-gradient-to-br from-[#0d6efd] via-[#0099cc] to-[#00c389] p-5 text-white" style={{ aspectRatio: '1.6/1' }}>
-                            {/* Decorative elements */}
-                            <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full"></div>
-                            <div className="absolute -bottom-6 -left-6 w-24 h-24 bg-white/10 rounded-full"></div>
+                          <div className="relative overflow-hidden" style={{ aspectRatio: '1.586/1' }}>
+                            {/* Background - Use card_image if available, otherwise gradient */}
+                            {(order.card_image || defaultCardBg) ? (
+                              <img 
+                                src={order.card_image || defaultCardBg} 
+                                alt="Card" 
+                                className="absolute inset-0 w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f3460]"></div>
+                            )}
                             
-                            <div className="relative z-10 h-full flex flex-col justify-between">
+                            {/* Card Content Overlay */}
+                            <div className="absolute inset-0 p-5 flex flex-col justify-between text-white">
                               {/* Header */}
                               <div className="flex justify-between items-start">
-                                <span className="text-white font-bold text-lg tracking-wide">KAYICOM</span>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-10 h-7 bg-gradient-to-br from-yellow-300 to-yellow-500 rounded-md"></div>
+                                </div>
                                 <img 
                                   src={order.card_type === 'mastercard' ? MASTERCARD_LOGO : VISA_LOGO} 
                                   alt={order.card_type}
@@ -843,9 +839,9 @@ export default function VirtualCard() {
                                 />
                               </div>
                               
-                              {/* Card Number - Hidden */}
-                              <div className="my-4">
-                                <p className="font-mono text-lg tracking-widest">
+                              {/* Card Number */}
+                              <div>
+                                <p className="font-mono text-xl tracking-[0.2em] text-white drop-shadow-lg">
                                   •••• •••• •••• {order.card_last4 || '****'}
                                 </p>
                               </div>
@@ -853,18 +849,18 @@ export default function VirtualCard() {
                               {/* Footer */}
                               <div className="flex justify-between items-end">
                                 <div>
-                                  <p className="text-white/60 text-xs uppercase">{getText('Pòtè Kat', 'Titulaire', 'Card Holder')}</p>
-                                  <p className="font-medium text-sm">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
+                                  <p className="text-white/60 text-[10px] uppercase tracking-wider">{getText('Pòtè Kat', 'Titulaire', 'Card Holder')}</p>
+                                  <p className="font-medium text-sm tracking-wide drop-shadow">{order.card_holder_name || user?.full_name?.toUpperCase() || '••••••••'}</p>
                                 </div>
                                 <div className="text-right">
-                                  <p className="text-white/60 text-xs uppercase">{getText('Ekspire', 'Expire', 'Expires')}</p>
-                                  <p className="font-mono text-sm">••/••</p>
+                                  <p className="text-white/60 text-[10px] uppercase tracking-wider">{getText('Ekspire', 'Expire', 'Expires')}</p>
+                                  <p className="font-mono text-sm drop-shadow">••/••</p>
                                 </div>
                               </div>
                             </div>
                           </div>
                         ) : (
-                          <div className="bg-stone-100 dark:bg-stone-800 p-5 flex items-center justify-center" style={{ aspectRatio: '1.6/1' }}>
+                          <div className="bg-stone-200 dark:bg-stone-800 flex items-center justify-center" style={{ aspectRatio: '1.586/1' }}>
                             <div className="text-center">
                               <CreditCard className="mx-auto mb-2 text-stone-400" size={40} />
                               <p className="text-stone-500 text-sm">{getText('An atant apwobasyon', 'En attente d\'approbation', 'Pending approval')}</p>
@@ -872,89 +868,85 @@ export default function VirtualCard() {
                           </div>
                         )}
                         
-                        {/* Status Badge */}
-                        <div className="px-4 py-2 bg-stone-50 dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700 flex items-center justify-between">
-                          {getStatusBadge(order.status)}
-                          <span className="text-xs text-stone-500">{new Date(order.created_at).toLocaleDateString()}</span>
-                        </div>
-                        
-                        {/* Action Buttons */}
-                        {order.status === 'approved' && (
-                          <div className="p-3 grid grid-cols-3 gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openCardDetails(order)}
-                              className="text-xs flex flex-col items-center gap-1 h-auto py-2"
-                            >
-                              <Eye size={16} />
-                              <span>{getText('Detay', 'Détails', 'Details')}</span>
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedCard(order);
-                                setShowTopUpModal(true);
-                                setTopUpCardId(order.order_id);
-                              }}
-                              className="text-xs flex flex-col items-center gap-1 h-auto py-2 text-emerald-600 border-emerald-300"
-                            >
-                              <Plus size={16} />
-                              <span>{getText('Depo', 'Dépôt', 'Deposit')}</span>
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedCard(order);
-                                setShowWithdrawModal(true);
-                                setWithdrawCardId(order.order_id);
-                              }}
-                              className="text-xs flex flex-col items-center gap-1 h-auto py-2 text-amber-600 border-amber-300"
-                            >
-                              <ArrowDown size={16} />
-                              <span>{getText('Retrè', 'Retrait', 'Withdraw')}</span>
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openTransactions(order)}
-                              className="text-xs flex flex-col items-center gap-1 h-auto py-2 text-purple-600 border-purple-300"
-                            >
-                              <History size={16} />
-                              <span>{getText('Istorik', 'Historique', 'History')}</span>
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedCard(order);
-                                updateControls({ lock: order.card_status !== 'locked' });
-                              }}
-                              className={`text-xs flex flex-col items-center gap-1 h-auto py-2 ${
-                                order.card_status === 'locked' 
-                                  ? 'text-amber-600 border-amber-300' 
-                                  : 'text-red-600 border-red-300'
-                              }`}
-                            >
-                              <Shield size={16} />
-                              <span>{order.card_status === 'locked' ? getText('Debloke', 'Débloquer', 'Unlock') : getText('Freeze', 'Geler', 'Freeze')}</span>
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                setSelectedCard(order);
-                                setShowChangePinModal(true);
-                              }}
-                              className="text-xs flex flex-col items-center gap-1 h-auto py-2 text-stone-600 border-stone-300"
-                            >
-                              <Shield size={16} />
-                              <span>PIN</span>
-                            </Button>
+                        {/* Card Info & Actions */}
+                        <div className="p-4 space-y-4">
+                          {/* Status Row */}
+                          <div className="flex items-center justify-between">
+                            {getStatusBadge(order.status)}
+                            <span className="text-xs text-stone-500">{new Date(order.created_at).toLocaleDateString()}</span>
                           </div>
-                        )}
+                          
+                          {/* Action Buttons */}
+                          {order.status === 'approved' && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <Button
+                                onClick={() => openCardDetails(order)}
+                                className="bg-[#0d6efd] hover:bg-[#0b5ed7] text-white text-sm"
+                              >
+                                <Eye size={16} className="mr-2" />
+                                {getText('Wè Detay', 'Voir Détails', 'View Details')}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedCard(order);
+                                  updateControls({ lock: order.card_status !== 'locked' });
+                                }}
+                                className={`text-sm ${
+                                  order.card_status === 'locked' 
+                                    ? 'text-emerald-600 border-emerald-300 hover:bg-emerald-50' 
+                                    : 'text-red-600 border-red-300 hover:bg-red-50'
+                                }`}
+                              >
+                                <Shield size={16} className="mr-2" />
+                                {order.card_status === 'locked' ? getText('Debloke', 'Débloquer', 'Unlock') : getText('Freeze', 'Geler', 'Freeze')}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedCard(order);
+                                  setShowTopUpModal(true);
+                                  setTopUpCardId(order.order_id);
+                                }}
+                                className="text-sm text-emerald-600 border-emerald-300 hover:bg-emerald-50"
+                              >
+                                <Plus size={16} className="mr-2" />
+                                {getText('Depo', 'Dépôt', 'Deposit')}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedCard(order);
+                                  setShowWithdrawModal(true);
+                                  setWithdrawCardId(order.order_id);
+                                }}
+                                className="text-sm text-amber-600 border-amber-300 hover:bg-amber-50"
+                              >
+                                <ArrowDown size={16} className="mr-2" />
+                                {getText('Retrè', 'Retrait', 'Withdraw')}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => openTransactions(order)}
+                                className="text-sm text-purple-600 border-purple-300 hover:bg-purple-50"
+                              >
+                                <History size={16} className="mr-2" />
+                                {getText('Istorik', 'Historique', 'History')}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedCard(order);
+                                  setShowChangePinModal(true);
+                                }}
+                                className="text-sm text-stone-600 border-stone-300 hover:bg-stone-50"
+                              >
+                                <Shield size={16} className="mr-2" />
+                                {getText('Chanje PIN', 'Changer PIN', 'Change PIN')}
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
