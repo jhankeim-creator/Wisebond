@@ -757,9 +757,9 @@ export default function VirtualCard() {
                   </h2>
                   <p className="text-purple-100 text-sm mb-3">
                     {getText(
-                      'Kreye yon kat vityèl pou fè acha an liy (Netflix, Amazon, elatriye). Kat la jere pa yon tyè pati.',
-                      'Créez une carte virtuelle pour faire des achats en ligne (Netflix, Amazon, etc.). La carte est gérée par un tiers.',
-                      'Create a virtual card for online purchases (Netflix, Amazon, etc.). The card is managed by a third party.'
+                      'Kreye yon kat vityèl pou fè acha an liy (Netflix, Amazon, Spotify, elatriye).',
+                      'Créez une carte virtuelle pour faire des achats en ligne (Netflix, Amazon, Spotify, etc.).',
+                      'Create a virtual card for online purchases (Netflix, Amazon, Spotify, etc.).'
                     )}
                   </p>
                   <div className="bg-red-500/20 border border-red-300/30 rounded-lg p-3">
@@ -1107,18 +1107,18 @@ export default function VirtualCard() {
             </DialogHeader>
             
             <div className="space-y-6 py-4">
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
                 <div className="flex items-start gap-3">
-                  <AlertCircle className="text-amber-500 mt-0.5" size={20} />
+                  <CreditCard className="text-blue-500 mt-0.5" size={20} />
                   <div>
-                    <p className="font-medium text-amber-800 dark:text-amber-400">
-                      {getText('Kat Tyè Pati', 'Carte Tiers', 'Third Party Card')}
+                    <p className="font-medium text-blue-800 dark:text-blue-400">
+                      {getText('Kat Vityèl KAYICOM', 'Carte Virtuelle KAYICOM', 'KAYICOM Virtual Card')}
                     </p>
-                    <p className="text-sm text-amber-700 dark:text-amber-500 mt-1">
+                    <p className="text-sm text-blue-700 dark:text-blue-500 mt-1">
                       {getText(
-                        'Kat vityèl la jere pa yon konpayi tyè. Nou ap voye email konfirmasyon lè kat la pare.',
-                        'La carte virtuelle est gérée par une société tierce. Nous vous enverrons un email de confirmation quand la carte sera prête.',
-                        'The virtual card is managed by a third party company. We will send you a confirmation email when the card is ready.'
+                        'Nou ap voye email konfirmasyon lè kat la pare. Tout acha ou fè ap parèt nan istorik tranzaksyon.',
+                        'Nous vous enverrons un email de confirmation quand la carte sera prête. Tous vos achats apparaîtront dans l\'historique.',
+                        'We will send you a confirmation email when the card is ready. All your purchases will appear in the transaction history.'
                       )}
                     </p>
                   </div>
