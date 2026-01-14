@@ -2890,6 +2890,43 @@ async def admin_update_team_member(user_id: str, payload: TeamMemberUpdate, admi
     await log_action(admin["user_id"], "team_update", {"user_id": user_id, "changes": update_doc})
     return {"message": "Team member updated"}
 
+
+@api_router.delete("/admin/team/{user_id}")
+async def admin_delete_team_member(user_id: str, admin: dict = Depends(get_admin_user)):
+    """Delete a team member (remove admin status or delete entirely)."""
+    db = get_db()
+    target = await db.users.find_one({"user_id": user_id, "is_admin": True}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    
+    # Don't allow deleting yourself
+    if target.get("user_id") == admin.get("user_id"):
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    
+    # Delete the user entirely
+    await db.users.delete_one({"user_id": user_id})
+    await log_action(admin["user_id"], "team_delete", {"deleted_user_id": user_id, "email": target.get("email")})
+    return {"message": "Team member deleted"}
+
+
+@api_router.delete("/admin/team/by-email/{email}")
+async def admin_delete_team_member_by_email(email: str, admin: dict = Depends(get_admin_user)):
+    """Delete a team member by email."""
+    db = get_db()
+    target = await db.users.find_one({"email": email.lower(), "is_admin": True}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    
+    # Don't allow deleting yourself
+    if target.get("user_id") == admin.get("user_id"):
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    
+    # Delete the user entirely
+    await db.users.delete_one({"email": email.lower()})
+    await log_action(admin["user_id"], "team_delete", {"deleted_email": email.lower()})
+    return {"message": "Team member deleted"}
+
+
 # ==================== RBAC PERMISSIONS ROUTES ====================
 
 @api_router.get("/admin/rbac-permissions")

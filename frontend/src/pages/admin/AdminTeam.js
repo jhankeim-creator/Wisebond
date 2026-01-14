@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
-import { Plus, RefreshCw, UserX, CheckCircle } from 'lucide-react';
+import { Plus, RefreshCw, UserX, CheckCircle, Trash2 } from 'lucide-react';
 
 export default function AdminTeam() {
   const { language } = useLanguage();
@@ -95,6 +95,23 @@ export default function AdminTeam() {
     }
   };
 
+  const deleteMember = async (member) => {
+    if (!window.confirm(getText(
+      `Ou sèten ou vle retire ${member.email}?`,
+      `Êtes-vous sûr de vouloir supprimer ${member.email}?`,
+      `Are you sure you want to delete ${member.email}?`
+    ))) {
+      return;
+    }
+    try {
+      await axios.delete(`${API}/admin/team/${member.user_id}`);
+      toast.success(getText('Manm retire!', 'Membre supprimé!', 'Member deleted!'));
+      fetchTeam();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    }
+  };
+
   return (
     <AdminLayout title={getText('Ekip / Admin', 'Équipe / Admin', 'Team / Admin')}>
       <div className="space-y-6" data-testid="admin-team">
@@ -152,14 +169,25 @@ export default function AdminTeam() {
                             </span>
                           </div>
                         </div>
-                        <Button
-                          size="sm"
-                          variant={m.is_active ? 'destructive' : 'default'}
-                          onClick={() => toggleActive(m)}
-                          title={m.is_active ? getText('Dezaktive', 'Désactiver', 'Disable') : getText('Aktive', 'Activer', 'Enable')}
-                        >
-                          {m.is_active ? <UserX size={16} /> : <CheckCircle size={16} />}
-                        </Button>
+                        <div className="flex flex-col gap-2">
+                          <Button
+                            size="sm"
+                            variant={m.is_active ? 'destructive' : 'default'}
+                            onClick={() => toggleActive(m)}
+                            title={m.is_active ? getText('Dezaktive', 'Désactiver', 'Disable') : getText('Aktive', 'Activer', 'Enable')}
+                          >
+                            {m.is_active ? <UserX size={16} /> : <CheckCircle size={16} />}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                            onClick={() => deleteMember(m)}
+                            title={getText('Retire', 'Supprimer', 'Delete')}
+                          >
+                            <Trash2 size={16} />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -205,14 +233,25 @@ export default function AdminTeam() {
                             </span>
                           </td>
                           <td>
-                            <Button
-                              size="sm"
-                              variant={m.is_active ? 'destructive' : 'default'}
-                              onClick={() => toggleActive(m)}
-                              title={m.is_active ? getText('Dezaktive', 'Désactiver', 'Disable') : getText('Aktive', 'Activer', 'Enable')}
-                            >
-                              {m.is_active ? <UserX size={16} /> : <CheckCircle size={16} />}
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant={m.is_active ? 'destructive' : 'default'}
+                                onClick={() => toggleActive(m)}
+                                title={m.is_active ? getText('Dezaktive', 'Désactiver', 'Disable') : getText('Aktive', 'Activer', 'Enable')}
+                              >
+                                {m.is_active ? <UserX size={16} /> : <CheckCircle size={16} />}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                                onClick={() => deleteMember(m)}
+                                title={getText('Retire', 'Supprimer', 'Delete')}
+                              >
+                                <Trash2 size={16} />
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}
