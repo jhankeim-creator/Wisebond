@@ -276,10 +276,10 @@ export default function AdminRBAC() {
                           />
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-stone-900 dark:text-white truncate">
-                              {method.name}
+                              {method.payment_method_name || method.name}
                             </p>
                             <p className="text-xs text-stone-500">
-                              {method.currency} • {method.is_enabled ? getText('Aktif', 'Actif', 'Active') : getText('Inaktif', 'Inactif', 'Inactive')}
+                              {(method.supported_currencies || []).join(', ') || method.currency} • {(method.status === 'active' || method.is_enabled) ? getText('Aktif', 'Actif', 'Active') : getText('Inaktif', 'Inactif', 'Inactive')}
                             </p>
                           </div>
                         </label>
@@ -348,10 +348,10 @@ export default function AdminRBAC() {
                           />
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-stone-900 dark:text-white truncate">
-                              {method.name}
+                              {method.payment_method_name || method.name}
                             </p>
                             <p className="text-xs text-stone-500">
-                              {method.currency} • {method.is_enabled ? getText('Aktif', 'Actif', 'Active') : getText('Inaktif', 'Inactif', 'Inactive')}
+                              {(method.supported_currencies || []).join(', ') || method.currency} • {(method.status === 'active' || method.is_enabled) ? getText('Aktif', 'Actif', 'Active') : getText('Inaktif', 'Inactif', 'Inactive')}
                             </p>
                           </div>
                         </label>
