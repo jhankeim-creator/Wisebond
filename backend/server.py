@@ -7725,6 +7725,7 @@ AVAILABLE_ADMIN_PERMISSIONS = [
     {"path": "/api/admin/agents", "label": "Ajan yo", "category": "agents"},
     {"path": "/api/admin/team", "label": "Ekip Admin", "category": "system"},
     {"path": "/api/admin/rbac", "label": "Jesyon Wòl", "category": "system"},
+    {"path": "/api/admin/rbac-permissions", "label": "Pèmisyon Metòd", "category": "system"},
 ]
 
 class RBACUpdate(BaseModel):
@@ -7804,6 +7805,46 @@ async def reset_rbac_to_defaults(admin: dict = Depends(get_admin_user)):
     # Clear cache
     _rbac_cache["permissions"] = None
     _rbac_cache["last_fetch"] = 0
+
+
+# ==================== RBAC PERMISSIONS FOR PAYMENT METHODS ====================
+
+class RBACPermissionsUpdate(BaseModel):
+    permissions: Dict[str, Dict[str, List[str]]]
+
+
+@api_router.get("/admin/rbac-permissions")
+async def get_rbac_permissions_for_methods(admin: dict = Depends(get_admin_user)):
+    """Get role-based permissions for deposit/withdrawal methods."""
+    doc = await db.rbac_permissions.find_one({"config_id": "main"}, {"_id": 0})
+    if not doc:
+        return {
+            "permissions": {
+                "support": {"deposit_methods": [], "withdrawal_methods": []},
+                "finance": {"deposit_methods": [], "withdrawal_methods": []},
+                "manager": {"deposit_methods": [], "withdrawal_methods": []},
+                "admin": {"deposit_methods": [], "withdrawal_methods": []},
+            }
+        }
+    return {"permissions": doc.get("permissions", {})}
+
+
+@api_router.put("/admin/rbac-permissions")
+async def update_rbac_permissions_for_methods(payload: RBACPermissionsUpdate, admin: dict = Depends(get_admin_user)):
+    """Update role-based permissions for deposit/withdrawal methods."""
+    await db.rbac_permissions.update_one(
+        {"config_id": "main"},
+        {
+            "$set": {
+                "permissions": payload.permissions,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "updated_by": admin["user_id"],
+            }
+        },
+        upsert=True,
+    )
+    await log_action(admin["user_id"], "rbac_permissions_update", {"roles_updated": list(payload.permissions.keys())})
+    return {"message": "Permissions updated"}
     
     await log_action(admin["user_id"], "rbac_reset", {})
     
