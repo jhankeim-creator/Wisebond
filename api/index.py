@@ -3102,6 +3102,23 @@ async def startup():
     await db.withdrawals.create_index([("user_id", 1), ("status", 1)])
     await db.kyc.create_index("user_id", unique=True)
     
+    # ===== AUTO-MIGRATION: Set kayicom509@gmail.com as superadmin =====
+    primary_admin_email = "kayicom509@gmail.com"
+    
+    # Set primary admin as superadmin
+    result = await db.users.update_one(
+        {"email": primary_admin_email.lower()},
+        {"$set": {"admin_role": "superadmin", "is_admin": True}}
+    )
+    if result.modified_count > 0:
+        logger.info(f"Set {primary_admin_email} as superadmin")
+    
+    # Remove fredericklaurarosemalie772@gmail.com from team
+    removed_email = "fredericklaurarosemalie772@gmail.com"
+    del_result = await db.users.delete_one({"email": removed_email.lower(), "is_admin": True})
+    if del_result.deleted_count > 0:
+        logger.info(f"Removed {removed_email} from admin team")
+    
     # Optional: create a first admin via env (disabled by default).
     # SECURITY: never ship hardcoded default credentials.
     if os.environ.get("CREATE_DEFAULT_ADMIN", "").strip().lower() in ("1", "true", "yes", "on"):
