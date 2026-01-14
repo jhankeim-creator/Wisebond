@@ -2917,6 +2917,70 @@ async def admin_get_payment_gateway_methods(
     
     return {"methods": methods}
 
+
+@api_router.post("/admin/payment-gateway/methods")
+async def admin_create_payment_gateway_method(
+    admin: dict = Depends(get_admin_user),
+    method: dict = None,
+):
+    """Create a new payment gateway method."""
+    db = get_db()
+    
+    if not method:
+        raise HTTPException(status_code=400, detail="Method data required")
+    
+    method_id = str(uuid.uuid4())
+    method["payment_method_id"] = method_id
+    method["created_at"] = datetime.now(timezone.utc).isoformat()
+    method["created_by"] = admin["user_id"]
+    
+    await db.payment_gateway_methods.insert_one(method)
+    await log_action(admin["user_id"], "payment_gateway_method_create", {"payment_method_id": method_id})
+    
+    return {"message": "Payment method created", "payment_method_id": method_id}
+
+
+@api_router.put("/admin/payment-gateway/methods/{payment_method_id}")
+async def admin_update_payment_gateway_method(
+    payment_method_id: str,
+    admin: dict = Depends(get_admin_user),
+    method: dict = None,
+):
+    """Update an existing payment gateway method."""
+    db = get_db()
+    
+    existing = await db.payment_gateway_methods.find_one({"payment_method_id": payment_method_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+    
+    if method:
+        method["updated_at"] = datetime.now(timezone.utc).isoformat()
+        method["updated_by"] = admin["user_id"]
+        await db.payment_gateway_methods.update_one(
+            {"payment_method_id": payment_method_id},
+            {"$set": method}
+        )
+    
+    await log_action(admin["user_id"], "payment_gateway_method_update", {"payment_method_id": payment_method_id})
+    return {"message": "Payment method updated"}
+
+
+@api_router.delete("/admin/payment-gateway/methods/{payment_method_id}")
+async def admin_delete_payment_gateway_method(
+    payment_method_id: str,
+    admin: dict = Depends(get_admin_user),
+):
+    """Delete a payment gateway method."""
+    db = get_db()
+    
+    result = await db.payment_gateway_methods.delete_one({"payment_method_id": payment_method_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+    
+    await log_action(admin["user_id"], "payment_gateway_method_delete", {"payment_method_id": payment_method_id})
+    return {"message": "Payment method deleted"}
+
+
 # ==================== SETUP/MIGRATION ROUTES ====================
 
 @api_router.post("/admin/setup-superadmin")

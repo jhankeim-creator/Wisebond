@@ -55,10 +55,22 @@ export default function AdminRBAC() {
     setLoading(true);
     try {
       const [depositRes, withdrawalRes, permRes] = await Promise.all([
-        axios.get(`${API}/admin/payment-gateway/methods?payment_type=deposit`).catch(() => ({ data: { methods: [] } })),
-        axios.get(`${API}/admin/payment-gateway/methods?payment_type=withdrawal`).catch(() => ({ data: { methods: [] } })),
-        axios.get(`${API}/admin/rbac-permissions`).catch(() => ({ data: { permissions: DEFAULT_PERMISSIONS } })),
+        axios.get(`${API}/admin/payment-gateway/methods?payment_type=deposit`).catch((e) => {
+          console.error('Error fetching deposit methods:', e);
+          return { data: { methods: [] } };
+        }),
+        axios.get(`${API}/admin/payment-gateway/methods?payment_type=withdrawal`).catch((e) => {
+          console.error('Error fetching withdrawal methods:', e);
+          return { data: { methods: [] } };
+        }),
+        axios.get(`${API}/admin/rbac-permissions`).catch((e) => {
+          console.error('Error fetching RBAC permissions:', e);
+          return { data: { permissions: DEFAULT_PERMISSIONS } };
+        }),
       ]);
+      
+      console.log('Deposit methods:', depositRes.data?.methods);
+      console.log('Withdrawal methods:', withdrawalRes.data?.methods);
       
       setDepositMethods(depositRes.data?.methods || []);
       setWithdrawalMethods(withdrawalRes.data?.methods || []);
@@ -70,6 +82,7 @@ export default function AdminRBAC() {
         ...fetchedPerms,
       });
     } catch (e) {
+      console.error('Error in fetchData:', e);
       toast.error(getText('Erè pandan chajman', 'Erreur lors du chargement', 'Error loading'));
     } finally {
       setLoading(false);
