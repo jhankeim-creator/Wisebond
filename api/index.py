@@ -578,6 +578,7 @@ def _rbac_is_allowed(*, role: str, path: str) -> bool:
             "/api/admin/strowallet",
             "/api/admin/team",
             "/api/admin/rbac-permissions",
+            "/api/admin/setup-superadmin",
         ],
     }
 
@@ -3009,6 +3010,61 @@ async def admin_get_payment_gateway_methods(
             methods = filtered
     
     return {"methods": methods}
+
+# ==================== SETUP/MIGRATION ROUTES ====================
+
+@api_router.post("/admin/setup-superadmin")
+async def setup_superadmin(admin: dict = Depends(get_admin_user)):
+    """Set kayicom509@gmail.com as the only superadmin."""
+    db = get_db()
+    
+    # Only allow if caller is already an admin
+    if not admin.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    target_email = "kayicom509@gmail.com"
+    
+    # Find the target user
+    target = await db.users.find_one({"email": target_email.lower()}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail=f"User {target_email} not found")
+    
+    # Set target as superadmin
+    await db.users.update_one(
+        {"email": target_email.lower()},
+        {"$set": {"admin_role": "superadmin", "is_admin": True}}
+    )
+    
+    # Demote all other admins to regular admin (except target)
+    await db.users.update_many(
+        {"is_admin": True, "email": {"$ne": target_email.lower()}},
+        {"$set": {"admin_role": "admin"}}
+    )
+    
+    await log_action(admin["user_id"], "setup_superadmin", {"target_email": target_email})
+    return {"message": f"{target_email} is now the only superadmin"}
+
+
+@api_router.delete("/admin/team/cleanup-other-admins")
+async def cleanup_other_admins(admin: dict = Depends(get_admin_user)):
+    """Remove all admin users except kayicom509@gmail.com."""
+    db = get_db()
+    
+    protected_email = "kayicom509@gmail.com"
+    
+    # Only superadmin can do this
+    if _normalize_admin_role(admin) != "superadmin":
+        raise HTTPException(status_code=403, detail="Only superadmin can perform this action")
+    
+    # Delete all other admin users
+    result = await db.users.delete_many({
+        "is_admin": True,
+        "email": {"$ne": protected_email.lower()}
+    })
+    
+    await log_action(admin["user_id"], "cleanup_other_admins", {"deleted_count": result.deleted_count})
+    return {"message": f"Deleted {result.deleted_count} other admin users"}
+
 
 # ==================== MAIN ROUTES ====================
 
