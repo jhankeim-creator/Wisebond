@@ -189,12 +189,22 @@ export const AdminLayout = ({ children, title }) => {
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <ThemeToggle />
               <LanguageSwitcher />
               
-              <button className="relative p-2 rounded-xl hover:bg-orange-50 dark:hover:bg-stone-700 transition-colors">
+              <button className="relative p-2 rounded-xl hover:bg-orange-50 dark:hover:bg-stone-700 transition-colors hidden sm:block">
                 <Bell size={20} className="text-stone-600 dark:text-stone-300" />
+              </button>
+              
+              {/* Logout Button - Always visible */}
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                title={getText('Dekonekte', 'Déconnexion', 'Logout')}
+              >
+                <LogOut size={18} />
+                <span className="hidden sm:inline text-sm font-medium">{getText('Sòti', 'Sortir', 'Logout')}</span>
               </button>
             </div>
           </div>
