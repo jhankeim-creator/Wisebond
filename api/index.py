@@ -2570,12 +2570,6 @@ class TeamMemberUpdate(BaseModel):
     admin_role: Optional[str] = None
 
 
-class RBACPermissionsUpdate(BaseModel):
-    role: str
-    deposit_methods: List[str] = []
-    withdrawal_methods: List[str] = []
-
-
 @api_router.patch("/admin/card-topups/{deposit_id}")
 async def admin_process_card_topup(
     deposit_id: str,
@@ -2768,37 +2762,6 @@ async def admin_update_team_member(user_id: str, payload: TeamMemberUpdate, admi
     return {"message": "Team member updated"}
 
 
-# ==================== ADMIN RBAC PERMISSIONS ROUTES ====================
-
-@api_router.get("/admin/rbac-permissions")
-async def admin_get_rbac_permissions(admin: dict = Depends(get_admin_user)):
-    """Get role-based permissions for deposit/withdrawal methods."""
-    db = get_db()
-    permissions = await db.rbac_permissions.find({}, {"_id": 0}).to_list(100)
-    return {"permissions": permissions}
-
-
-@api_router.put("/admin/rbac-permissions")
-async def admin_update_rbac_permissions(payload: RBACPermissionsUpdate, admin: dict = Depends(get_admin_user)):
-    """Update role-based permissions for deposit/withdrawal methods."""
-    db = get_db()
-    
-    await db.rbac_permissions.update_one(
-        {"role": payload.role.lower()},
-        {"$set": {
-            "role": payload.role.lower(),
-            "deposit_methods": payload.deposit_methods,
-            "withdrawal_methods": payload.withdrawal_methods,
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-            "updated_by": admin["user_id"]
-        }},
-        upsert=True
-    )
-    
-    await log_action(admin["user_id"], "update_rbac_permissions", {"role": payload.role, "deposit_methods": payload.deposit_methods, "withdrawal_methods": payload.withdrawal_methods})
-    return {"message": "Permissions updated successfully"}
-
-
 # ==================== ADMIN LOGS ROUTES ====================
 
 @api_router.get("/admin/logs")
@@ -2980,9 +2943,10 @@ async def admin_update_rbac_permissions(payload: RBACPermissionsUpdate, admin: d
 async def admin_get_payment_gateway_methods(
     payment_type: Optional[str] = None,
     currency: Optional[str] = None,
+    skip_rbac: Optional[bool] = None,
     admin: dict = Depends(get_admin_user),
 ):
-    """Get all payment gateway methods for admin (with RBAC filtering)."""
+    """Get all payment gateway methods for admin (with optional RBAC filtering)."""
     db = get_db()
     query = {}
     if payment_type:
@@ -2992,31 +2956,38 @@ async def admin_get_payment_gateway_methods(
     
     methods = await db.payment_gateway_methods.find(query, {"_id": 0}).sort("sort_order", 1).to_list(100)
     
-    # If not superadmin, filter by RBAC permissions
     role = _normalize_admin_role(admin)
-    if role != "superadmin":
-        rbac_doc = await db.rbac_permissions.find_one({"config_id": "main"}, {"_id": 0})
-        if rbac_doc and rbac_doc.get("permissions"):
-            role_perms = rbac_doc["permissions"].get(role, {})
-            allowed_deposit = set(role_perms.get("deposit_methods", []))
-            allowed_withdrawal = set(role_perms.get("withdrawal_methods", []))
+    
+    # Skip RBAC filtering if:
+    # - skip_rbac=true is passed (for RBAC config page)
+    # - user is superadmin
+    # - user is admin (they can configure RBAC)
+    if skip_rbac or role in ("superadmin", "admin"):
+        return {"methods": methods}
+    
+    # For other roles, filter by RBAC permissions
+    rbac_doc = await db.rbac_permissions.find_one({"config_id": "main"}, {"_id": 0})
+    if rbac_doc and rbac_doc.get("permissions"):
+        role_perms = rbac_doc["permissions"].get(role, {})
+        allowed_deposit = set(role_perms.get("deposit_methods", []))
+        allowed_withdrawal = set(role_perms.get("withdrawal_methods", []))
+        
+        # Filter methods based on RBAC permissions
+        filtered = []
+        for m in methods:
+            method_id = m.get("payment_method_id")
+            method_type = m.get("payment_type")
             
-            # Filter methods based on RBAC permissions
-            filtered = []
-            for m in methods:
-                method_id = m.get("payment_method_id")
-                method_type = m.get("payment_type")
-                
-                if method_type == "deposit" and method_id in allowed_deposit:
+            if method_type == "deposit" and method_id in allowed_deposit:
+                filtered.append(m)
+            elif method_type == "withdrawal" and method_id in allowed_withdrawal:
+                filtered.append(m)
+            elif not payment_type:
+                # If no type filter, include if allowed for either
+                if method_id in allowed_deposit or method_id in allowed_withdrawal:
                     filtered.append(m)
-                elif method_type == "withdrawal" and method_id in allowed_withdrawal:
-                    filtered.append(m)
-                elif not payment_type:
-                    # If no type filter, include if allowed for either
-                    if method_id in allowed_deposit or method_id in allowed_withdrawal:
-                        filtered.append(m)
-            
-            methods = filtered
+        
+        methods = filtered
     
     return {"methods": methods}
 
