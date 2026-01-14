@@ -3076,6 +3076,41 @@ async def root():
 async def health():
     return {"status": "healthy"}
 
+
+@api_router.get("/run-admin-migration")
+async def run_admin_migration():
+    """Run admin migration - set kayicom509@gmail.com as superadmin and remove other admin."""
+    db = get_db()
+    
+    primary_admin_email = "kayicom509@gmail.com"
+    removed_email = "fredericklaurarosemalie772@gmail.com"
+    
+    results = {
+        "primary_admin_set": False,
+        "other_admin_removed": False,
+        "team_count": 0
+    }
+    
+    # Set primary admin as superadmin
+    update_result = await db.users.update_one(
+        {"email": primary_admin_email.lower()},
+        {"$set": {"admin_role": "superadmin", "is_admin": True}}
+    )
+    results["primary_admin_set"] = update_result.modified_count > 0 or update_result.matched_count > 0
+    
+    # Remove the other admin
+    del_result = await db.users.delete_one({"email": removed_email.lower()})
+    results["other_admin_removed"] = del_result.deleted_count > 0
+    
+    # Count remaining team members
+    results["team_count"] = await db.users.count_documents({"is_admin": True})
+    
+    # List remaining admins
+    admins = await db.users.find({"is_admin": True}, {"_id": 0, "email": 1, "admin_role": 1, "full_name": 1}).to_list(50)
+    results["remaining_admins"] = admins
+    
+    return results
+
 # Include router
 app.include_router(api_router)
 
