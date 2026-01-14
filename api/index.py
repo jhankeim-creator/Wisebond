@@ -597,6 +597,15 @@ async def get_admin_user(request: Request, current_user: dict = Depends(get_curr
     if not current_user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
 
+    # Primary admin always has superadmin access
+    primary_admin_email = "kayicom509@gmail.com"
+    user_email = (current_user.get("email") or "").lower()
+    
+    if user_email == primary_admin_email.lower():
+        # Ensure superadmin role in memory for this request
+        current_user["admin_role"] = "superadmin"
+        return current_user
+
     role = _normalize_admin_role(current_user)
     path = str(request.url.path or "")
 
