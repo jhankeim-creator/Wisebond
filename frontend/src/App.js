@@ -143,7 +143,7 @@ function AppRoutes() {
       <Route path="/admin/topup" element={<ProtectedRoute adminOnly requiredRoles={['support','finance','manager','admin','superadmin']}><AdminTopUp /></ProtectedRoute>} />
       <Route path="/admin/logs" element={<ProtectedRoute adminOnly requiredRoles={['manager','admin','superadmin']}><AdminLogs /></ProtectedRoute>} />
       <Route path="/admin/webhook-events" element={<ProtectedRoute adminOnly requiredRoles={['manager','admin','superadmin']}><AdminWebhookEvents /></ProtectedRoute>} />
-      <Route path="/admin/team" element={<ProtectedRoute adminOnly requiredRoles={['superadmin']}><AdminTeam /></ProtectedRoute>} />
+      <Route path="/admin/team" element={<ProtectedRoute adminOnly requiredRoles={['admin','superadmin']}><AdminTeam /></ProtectedRoute>} />
       <Route path="/admin/agent-settings" element={<ProtectedRoute adminOnly requiredRoles={['manager','finance','admin','superadmin']}><AdminAgentSettings /></ProtectedRoute>} />
       <Route path="/admin/agent-deposits" element={<ProtectedRoute adminOnly requiredRoles={['manager','finance','admin','superadmin']}><AdminAgentDeposits /></ProtectedRoute>} />
       <Route path="/admin/agent-commission-withdrawals" element={<ProtectedRoute adminOnly requiredRoles={['manager','finance','admin','superadmin']}><AdminAgentCommissionWithdrawals /></ProtectedRoute>} />
