@@ -3747,16 +3747,16 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
         raise HTTPException(status_code=404, detail="Card not found or not approved")
     # Allow top-ups even if the card is locked/frozen, so users can fix insufficient funds.
     
-    if request.amount < 5:
-        raise HTTPException(status_code=400, detail="Minimum amount is $5")
+    if request.amount < 10:
+        raise HTTPException(status_code=400, detail="Minimum amount is $10")
     
-    # Calculate fee for card top-up: $2 fixed + 6% of amount
-    fixed_fee = 2.0
+    # Calculate fee for card top-up: $3 fixed + 6% of amount
+    fixed_fee = 3.0
     percentage_fee = float(request.amount) * 0.06
-    fee = round(fixed_fee + percentage_fee, 2)
+    fee = round(fixed_fee + percentage_fee, 3)
     
     # Fee is added on top: client receives `amount` on card, wallet is charged (amount + fee)
-    total_deduction = round(float(request.amount) + float(fee or 0), 2)
+    total_deduction = round(float(request.amount) + float(fee or 0), 3)
     
     if current_user.get("wallet_usd", 0) < total_deduction:
         raise HTTPException(status_code=400, detail="Insufficient USD balance")
