@@ -45,6 +45,7 @@ export default function VirtualCard() {
   const [cardWithdrawals, setCardWithdrawals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
+  const [loadingTooLong, setLoadingTooLong] = useState(false);
   const [virtualCardsEnabled, setVirtualCardsEnabled] = useState(null);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
@@ -162,6 +163,13 @@ export default function VirtualCard() {
     fetchData();
     fetchConfig();
     checkPinStatus();
+    
+    // Show message if loading takes more than 5 seconds
+    const timer = setTimeout(() => {
+      setLoadingTooLong(true);
+    }, 5000);
+    
+    return () => clearTimeout(timer);
   }, [fetchData, fetchConfig, checkPinStatus]);
 
   // Live refresh transactions every 10 seconds when modal is open
@@ -815,10 +823,22 @@ export default function VirtualCard() {
 
             {/* Virtual Cards Display */}
             {loading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {[1, 2].map(i => (
-                  <div key={i} className="skeleton h-64 rounded-2xl" />
-                ))}
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {[1, 2].map(i => (
+                    <div key={i} className="skeleton h-64 rounded-2xl" />
+                  ))}
+                </div>
+                {loadingTooLong && (
+                  <div className="text-center py-4 text-stone-500 animate-pulse">
+                    <RefreshCw className="animate-spin mx-auto mb-2" size={20} />
+                    <p className="text-sm">{getText(
+                      'Sèvè a ap leve... Tann yon ti moman.',
+                      'Le serveur démarre... Veuillez patienter.',
+                      'Server is waking up... Please wait.'
+                    )}</p>
+                  </div>
+                )}
               </div>
             ) : cardOrders.length === 0 ? (
               <div className="text-center py-12 text-stone-500">
