@@ -369,15 +369,12 @@ export default function VirtualCard() {
 
   const calculateTopUpFee = () => {
     const amt = parseFloat(topUpAmount);
-    if (!amt || cardFees.length === 0) return 0;
+    if (!amt || amt <= 0) return 0;
     
-    const range = cardFees.find(f => amt >= f.min_amount && amt <= f.max_amount);
-    if (!range) return 0;
-    
-    if (range.is_percentage) {
-      return amt * (range.fee / 100);
-    }
-    return Number(range.fee || 0);
+    // Card top-up fee: $2 fixed + 6% of amount
+    const fixedFee = 2;
+    const percentageFee = amt * 0.06;
+    return Math.round((fixedFee + percentageFee) * 100) / 100; // Round to 2 decimals
   };
 
   const submitTopUp = async () => {

@@ -3750,9 +3750,10 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
     if request.amount < 5:
         raise HTTPException(status_code=400, detail="Minimum amount is $5")
     
-    # Calculate fee based on card fees
-    card_fees = await db.card_fees.find({}, {"_id": 0}).sort("min_amount", 1).to_list(100)
-    fee = _calculate_card_fee_usd(float(request.amount), card_fees)
+    # Calculate fee for card top-up: $2 fixed + 6% of amount
+    fixed_fee = 2.0
+    percentage_fee = float(request.amount) * 0.06
+    fee = round(fixed_fee + percentage_fee, 2)
     
     # Fee is added on top: client receives `amount` on card, wallet is charged (amount + fee)
     total_deduction = round(float(request.amount) + float(fee or 0), 2)
