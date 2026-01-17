@@ -1100,6 +1100,8 @@ class AdminSettingsUpdate(BaseModel):
 
     # Fees & Affiliate (optional, UI-configurable)
     card_order_fee_htg: Optional[int] = None
+    card_topup_fee_fixed_usd: Optional[float] = None
+    card_topup_fee_percent: Optional[float] = None
     affiliate_reward_htg: Optional[int] = None
     affiliate_cards_required: Optional[int] = None
     card_background_image: Optional[str] = None
@@ -3148,6 +3150,8 @@ async def withdraw_affiliate_earnings(current_user: dict = Depends(get_current_u
 # ==================== VIRTUAL CARD ROUTES (Manual Third-Party System) ====================
 
 CARD_FEE_HTG = 500  # Card order fee in HTG
+CARD_TOPUP_FEE_FIXED_USD = 3.0
+CARD_TOPUP_FEE_PERCENT = 6.0
 CARD_BONUS_USD = 0  # Bonus removed (kept for backward compatibility)
 
 def _calculate_card_fee_usd(amount: float, card_fees: List[Dict[str, Any]]) -> float:
@@ -3750,10 +3754,12 @@ async def top_up_virtual_card(request: CardTopUpRequest, current_user: dict = De
     if request.amount < 10:
         raise HTTPException(status_code=400, detail="Minimum amount is $10")
     
-    # Calculate fee for card top-up: $3 fixed + 6% of amount
-    fixed_fee = 3.0
-    percentage_fee = float(request.amount) * 0.06
-    fee = round(fixed_fee + percentage_fee, 3)
+    # Calculate fee for card top-up: fixed + percentage of amount
+    settings_doc = settings or {}
+    fixed_fee = float(settings_doc.get("card_topup_fee_fixed_usd", CARD_TOPUP_FEE_FIXED_USD) or 0)
+    percent_fee = float(settings_doc.get("card_topup_fee_percent", CARD_TOPUP_FEE_PERCENT) or 0)
+    percentage_fee = float(request.amount) * (percent_fee / 100.0)
+    fee = round(max(0.0, fixed_fee + percentage_fee), 3)
     
     # Fee is added on top: client receives `amount` on card, wallet is charged (amount + fee)
     total_deduction = round(float(request.amount) + float(fee or 0), 3)
@@ -7911,6 +7917,8 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
         "telegram_bot_token": "",
         "telegram_chat_id": "",
         "card_order_fee_htg": 500,
+        "card_topup_fee_fixed_usd": CARD_TOPUP_FEE_FIXED_USD,
+        "card_topup_fee_percent": CARD_TOPUP_FEE_PERCENT,
         "affiliate_reward_htg": 2000,
         "affiliate_cards_required": 5,
         "card_background_image": None,
@@ -8157,6 +8165,8 @@ async def get_public_app_config():
         return {
             "virtual_cards_enabled": False,
             "card_order_fee_htg": 500,
+            "card_topup_fee_fixed_usd": CARD_TOPUP_FEE_FIXED_USD,
+            "card_topup_fee_percent": CARD_TOPUP_FEE_PERCENT,
             "card_background_image": None,
             "topup_fee_tiers": [],
             "announcement_enabled": False,
@@ -8170,6 +8180,8 @@ async def get_public_app_config():
     return {
         "virtual_cards_enabled": _virtual_cards_enabled(settings),
         "card_order_fee_htg": settings.get("card_order_fee_htg", 500),
+        "card_topup_fee_fixed_usd": settings.get("card_topup_fee_fixed_usd", CARD_TOPUP_FEE_FIXED_USD),
+        "card_topup_fee_percent": settings.get("card_topup_fee_percent", CARD_TOPUP_FEE_PERCENT),
         "card_background_image": settings.get("card_background_image"),
         "topup_fee_tiers": settings.get("topup_fee_tiers", []),
         "announcement_enabled": settings.get("announcement_enabled", False),

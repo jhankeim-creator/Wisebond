@@ -162,7 +162,10 @@ export const AdminLayout = ({ children, title }) => {
       </aside>
 
       {/* Main Content */}
-      <main className="lg:ml-64 min-h-screen">
+      <main
+        className="lg:ml-64 flex flex-col overflow-hidden"
+        style={{ height: 'calc(100vh - var(--announcement-bar-h, 0px))' }}
+      >
         {/* Header with Logo */}
         <header
           className="sticky top-0 z-20 bg-white/90 dark:bg-stone-800/90 backdrop-blur-xl border-b border-stone-200 dark:border-stone-700"
@@ -216,8 +219,10 @@ export const AdminLayout = ({ children, title }) => {
         </div>
         
         {/* Page Content */}
-        <div className="p-4 lg:p-8">
-          {children}
+        <div className="flex-1 min-h-0 overflow-y-auto" data-scroll-container="admin">
+          <div className="p-4 lg:p-8">
+            {children}
+          </div>
         </div>
       </main>
     </div>

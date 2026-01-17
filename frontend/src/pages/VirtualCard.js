@@ -59,6 +59,8 @@ export default function VirtualCard() {
   const [refreshingDetails, setRefreshingDetails] = useState(false);
   const [ordering, setOrdering] = useState(false);
   const [cardFee, setCardFee] = useState(500);
+  const [cardTopupFeeFixedUsd, setCardTopupFeeFixedUsd] = useState(3);
+  const [cardTopupFeePercent, setCardTopupFeePercent] = useState(6);
   const [defaultCardBg, setDefaultCardBg] = useState(null);
   
   // Top up state
@@ -112,6 +114,12 @@ export default function VirtualCard() {
       }
       if (configResp.data?.card_order_fee_htg) {
         setCardFee(configResp.data.card_order_fee_htg);
+      }
+      if (typeof configResp.data?.card_topup_fee_fixed_usd === 'number') {
+        setCardTopupFeeFixedUsd(configResp.data.card_topup_fee_fixed_usd);
+      }
+      if (typeof configResp.data?.card_topup_fee_percent === 'number') {
+        setCardTopupFeePercent(configResp.data.card_topup_fee_percent);
       }
       if (configResp.data?.card_background_image) {
         setDefaultCardBg(configResp.data.card_background_image);
@@ -371,9 +379,9 @@ export default function VirtualCard() {
     const amt = parseFloat(topUpAmount);
     if (!amt || amt <= 0) return 0;
     
-    // Card top-up fee: $2 fixed + 6% of amount
-    const fixedFee = 2;
-    const percentageFee = amt * 0.06;
+    // Card top-up fee: fixed + percentage of amount
+    const fixedFee = Number(cardTopupFeeFixedUsd || 0);
+    const percentageFee = amt * (Number(cardTopupFeePercent || 0) / 100);
     return Math.round((fixedFee + percentageFee) * 100) / 100; // Round to 2 decimals
   };
 
