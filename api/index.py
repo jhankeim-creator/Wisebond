@@ -395,6 +395,11 @@ class AdminSettingsUpdate(BaseModel):
     cloudinary_folder: Optional[str] = None
     kyc_max_image_bytes: Optional[int] = None
 
+class AdminProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+
 class HelpArticleCreate(BaseModel):
     title_ht: Optional[str] = None
     title_fr: Optional[str] = None
@@ -2360,6 +2365,33 @@ async def admin_update_settings(settings: AdminSettingsUpdate, admin: dict = Dep
     await log_action(admin["user_id"], "settings_update", {"fields_updated": list(update_doc.keys())})
     
     return {"message": "Settings updated"}
+
+@api_router.patch("/admin/profile")
+async def admin_update_profile(payload: AdminProfileUpdate, admin: dict = Depends(get_admin_user)):
+    db = get_db()
+    role = str((admin.get("admin_role") or "admin")).lower()
+    if role != "superadmin":
+        raise HTTPException(status_code=403, detail="Only superadmin can update admin profile")
+
+    update_doc = {}
+    if payload.full_name is not None:
+        update_doc["full_name"] = str(payload.full_name).strip()
+    if payload.phone is not None:
+        update_doc["phone"] = str(payload.phone).strip()
+    if payload.email is not None:
+        email = str(payload.email).strip().lower()
+        existing = await db.users.find_one({"email": email}, {"_id": 0, "user_id": 1})
+        if existing and existing.get("user_id") != admin.get("user_id"):
+            raise HTTPException(status_code=400, detail="Email already in use")
+        update_doc["email"] = email
+
+    if not update_doc:
+        raise HTTPException(status_code=400, detail="No changes provided")
+
+    await db.users.update_one({"user_id": admin["user_id"]}, {"$set": update_doc})
+    await log_action(admin["user_id"], "admin_profile_update", update_doc)
+    updated_user = await db.users.find_one({"user_id": admin["user_id"]}, {"_id": 0, "password_hash": 0})
+    return {"user": updated_user, "message": "Admin profile updated"}
 
 @api_router.get("/admin/help-center")
 async def admin_get_help_center(admin: dict = Depends(get_admin_user)):

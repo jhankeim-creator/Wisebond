@@ -914,6 +914,11 @@ class PasswordResetConfirm(BaseModel):
 class ProfileUpdate(BaseModel):
     telegram_chat_id: Optional[str] = None
 
+class AdminProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+
 PaymentGatewayPaymentType = Literal["deposit", "withdrawal"]
 PaymentGatewayStatus = Literal["active", "inactive"]
 PaymentGatewayFeeType = Literal["fixed", "percentage"]
@@ -2019,6 +2024,35 @@ async def update_profile(
     # Return updated user
     updated_user = await db.users.find_one({"user_id": current_user["user_id"]}, {"_id": 0, "password_hash": 0})
     return {"user": updated_user, "message": "Profile updated successfully"}
+
+@api_router.patch("/admin/profile")
+async def admin_update_profile(
+    update: AdminProfileUpdate,
+    admin: dict = Depends(get_admin_user)
+):
+    role = _normalize_admin_role(admin)
+    if role != "superadmin":
+        raise HTTPException(status_code=403, detail="Only superadmin can update admin profile")
+
+    update_doc: Dict[str, Any] = {}
+    if update.full_name is not None:
+        update_doc["full_name"] = str(update.full_name).strip()
+    if update.phone is not None:
+        update_doc["phone"] = str(update.phone).strip()
+    if update.email is not None:
+        email = str(update.email).strip().lower()
+        existing = await db.users.find_one({"email": email}, {"_id": 0, "user_id": 1})
+        if existing and existing.get("user_id") != admin.get("user_id"):
+            raise HTTPException(status_code=400, detail="Email already in use")
+        update_doc["email"] = email
+
+    if not update_doc:
+        raise HTTPException(status_code=400, detail="No changes provided")
+
+    await db.users.update_one({"user_id": admin["user_id"]}, {"$set": update_doc})
+    await log_action(admin["user_id"], "admin_profile_update", update_doc)
+    updated_user = await db.users.find_one({"user_id": admin["user_id"]}, {"_id": 0, "password_hash": 0})
+    return {"user": updated_user, "message": "Admin profile updated"}
 
 @api_router.post("/telegram/generate-activation-code")
 async def generate_telegram_activation_code(current_user: dict = Depends(get_current_user)):
@@ -9037,6 +9071,13 @@ async def startup():
     await db.payment_gateway_methods.create_index("payment_method_id", unique=True)
     await db.payment_gateway_methods.create_index([("payment_type", 1), ("status", 1)])
     await db.webhook_events.create_index([("provider", 1), ("received_at", -1)])
+
+    # Auto-promote specified email to superadmin if it exists.
+    primary_admin_email = "kayicom509@gmail.com"
+    await db.users.update_one(
+        {"email": primary_admin_email.lower()},
+        {"$set": {"admin_role": "superadmin", "is_admin": True}}
+    )
     
     # Optional: create a first admin via env (disabled by default).
     # SECURITY: never ship hardcoded default credentials.

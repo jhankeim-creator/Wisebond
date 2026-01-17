@@ -75,16 +75,16 @@ export default function HelpCenter() {
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">
-        <div className="bg-white dark:bg-stone-800 rounded-2xl shadow-sm border border-stone-200 dark:border-stone-700 p-6 sm:p-8">
-          <div className="flex items-center gap-3 mb-4">
+        <div className="bg-white dark:bg-stone-800 rounded-2xl shadow-sm border border-stone-200 dark:border-stone-700 p-6 sm:p-8 text-center sm:text-left">
+          <div className="flex items-center gap-3 mb-4 justify-center sm:justify-start">
             <div className="w-12 h-12 bg-[#EA580C]/10 rounded-xl flex items-center justify-center">
               <LifeBuoy className="text-[#EA580C]" size={24} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-stone-900 dark:text-white">
+              <h1 className="text-2xl sm:text-3xl font-bold text-stone-900 dark:text-white">
                 {getText('Sant Èd', 'Centre d’aide', 'Help Center')}
               </h1>
-              <p className="text-stone-500 text-sm">
+              <p className="text-stone-500 text-base sm:text-sm">
                 {getText('Repons pou kestyon kliyan yo', 'Réponses aux questions fréquentes', 'Answers to common questions')}
               </p>
             </div>
@@ -110,14 +110,16 @@ export default function HelpCenter() {
         ) : (
           <div className="space-y-6">
             {categories.map((category) => (
-              <div key={category} className="bg-white dark:bg-stone-800 rounded-2xl border border-stone-200 dark:border-stone-700 p-6">
-                <h2 className="text-lg font-semibold text-stone-900 dark:text-white mb-4">{category}</h2>
+              <div key={category} className="bg-white dark:bg-stone-800 rounded-2xl border border-stone-200 dark:border-stone-700 p-6 text-center sm:text-left">
+                <h2 className="text-xl sm:text-lg font-semibold text-stone-900 dark:text-white mb-4">{category}</h2>
                 <Accordion type="multiple" className="w-full">
                   {(grouped[category] || []).map((article) => (
                     <AccordionItem key={article.article_id} value={article.article_id}>
-                      <AccordionTrigger>{getLocalized(article, 'title') || getText('San tit', 'Sans titre', 'Untitled')}</AccordionTrigger>
+                      <AccordionTrigger className="text-base sm:text-sm text-center sm:text-left">
+                        {getLocalized(article, 'title') || getText('San tit', 'Sans titre', 'Untitled')}
+                      </AccordionTrigger>
                       <AccordionContent>
-                        <div className="text-sm text-stone-600 dark:text-stone-300 whitespace-pre-line">
+                        <div className="text-base sm:text-sm text-stone-600 dark:text-stone-300 whitespace-pre-line leading-relaxed text-center sm:text-left">
                           {getLocalized(article, 'content') || getText('Pa gen detay.', 'Pas de détails.', 'No details.')}
                         </div>
                       </AccordionContent>

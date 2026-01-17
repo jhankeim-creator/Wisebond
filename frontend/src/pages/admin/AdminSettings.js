@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLayout } from '@/components/AdminLayout';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +36,7 @@ import {
 
 export default function AdminSettings() {
   const { language } = useLanguage();
+  const { user, adminRole, refreshUser } = useAuth();
   const [settings, setSettings] = useState({
     // Email (Resend)
     resend_enabled: false,
@@ -107,6 +109,8 @@ export default function AdminSettings() {
   const [saving, setSaving] = useState(false);
   const [diagnostics, setDiagnostics] = useState(null);
   const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
+  const [adminProfile, setAdminProfile] = useState({ full_name: '', phone: '', email: '' });
+  const [savingProfile, setSavingProfile] = useState(false);
   const [whatsappTest, setWhatsappTest] = useState({ phone: '', message: '' });
   const [testingWhatsapp, setTestingWhatsapp] = useState(false);
   const [whatsappNotifications, setWhatsappNotifications] = useState([]);
@@ -123,6 +127,15 @@ export default function AdminSettings() {
     fetchSettings();
     fetchWhatsappNotifications();
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    setAdminProfile({
+      full_name: user.full_name || '',
+      phone: user.phone || '',
+      email: user.email || '',
+    });
+  }, [user]);
 
   const fetchSettings = async () => {
     try {
@@ -269,6 +282,24 @@ export default function AdminSettings() {
       ));
     } catch (e) {
       toast.error(getText('Erè pandan netwayaj', 'Erreur nettoyage', 'Cleanup error'));
+    }
+  };
+
+  const saveAdminProfile = async () => {
+    if (adminRole !== 'superadmin') return;
+    setSavingProfile(true);
+    try {
+      await axios.patch(`${API}/admin/profile`, {
+        full_name: adminProfile.full_name,
+        phone: adminProfile.phone,
+        email: adminProfile.email,
+      });
+      toast.success(getText('Pwofil mete ajou!', 'Profil mis à jour!', 'Profile updated!'));
+      refreshUser();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || getText('Erè', 'Erreur', 'Error'));
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -1073,6 +1104,57 @@ export default function AdminSettings() {
 
   const SystemTab = () => (
     <div className="space-y-4">
+      {adminRole === 'superadmin' && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-900/30 flex items-center justify-center">
+                <Users size={20} className="text-slate-600" />
+              </div>
+              <div>
+                <CardTitle className="text-base">{getText('Pwofil SuperAdmin', 'Profil SuperAdmin', 'SuperAdmin Profile')}</CardTitle>
+                <CardDescription className="text-sm">
+                  {getText('Mete ajou non, imel, oswa telefòn ou', 'Mettez à jour vos infos', 'Update your name, email, or phone')}
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>{getText('Non konplè', 'Nom complet', 'Full name')}</Label>
+                <Input
+                  value={adminProfile.full_name}
+                  onChange={(e) => setAdminProfile({ ...adminProfile, full_name: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>{getText('Telefòn', 'Téléphone', 'Phone')}</Label>
+                <Input
+                  value={adminProfile.phone}
+                  onChange={(e) => setAdminProfile({ ...adminProfile, phone: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={adminProfile.email}
+                  onChange={(e) => setAdminProfile({ ...adminProfile, email: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            <Button onClick={saveAdminProfile} disabled={savingProfile} className="w-full btn-primary">
+              <Save size={18} className="mr-2" />
+              {savingProfile ? getText('Anrejistreman...', 'Enregistrement...', 'Saving...') : getText('Anrejistre', 'Enregistrer', 'Save')}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Diagnostics */}
       <Card>
         <CardHeader className="pb-3">
