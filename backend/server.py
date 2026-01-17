@@ -1148,6 +1148,147 @@ class HelpArticleUpdate(BaseModel):
     order: Optional[int] = None
     is_active: Optional[bool] = None
 
+async def _seed_help_articles_if_empty() -> None:
+    count = await db.help_articles.count_documents({})
+    if count > 0:
+        return
+
+    now = datetime.now(timezone.utc).isoformat()
+    defaults = [
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Kijan pou kreye yon kont",
+            "content_ht": "Ale sou paj Enskripsyon an, ranpli enfòmasyon yo, epi valide. Apre sa, konekte ak imel ou ak modpas ou.",
+            "category": "Kòmanse",
+            "order": 1,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Kijan pou verifye KYC",
+            "content_ht": "Ale nan KYC, mete foto pyès idantite w ak selfie. Apre w soumèt, tann apwobasyon admin.",
+            "category": "Kont & Sekirite",
+            "order": 2,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Kijan pou fè depo lajan",
+            "content_ht": "Ale nan Depo, chwazi metòd la, suiv enstriksyon yo, epi voye prèv si li mande. Admin ap valide depo a.",
+            "category": "Depo & Retrè",
+            "order": 3,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Kijan pou fè retrè lajan",
+            "content_ht": "Ale nan Retrè, chwazi metòd la, mete montan an, epi soumèt. Admin ap trete demann lan selon règleman yo.",
+            "category": "Depo & Retrè",
+            "order": 4,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Kijan pou fè transfè lajan",
+            "content_ht": "Ale nan Transfè, mete ID kliyan oswa nimewo moun nan, antre montan an, epi konfime.",
+            "category": "Transfè & Swap",
+            "order": 5,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Kijan pou fè swap HTG/USD",
+            "content_ht": "Ale nan Swap, chwazi deviz ou bay ak deviz ou vle resevwa, epi konfime.",
+            "category": "Transfè & Swap",
+            "order": 6,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Kat Vityèl: kòmande kat la",
+            "content_ht": "Ale nan Kat Vityèl, klike Kòmande. Ou dwe gen KYC apwouve. Frè kòmand lan ap parèt avan ou konfime.",
+            "category": "Kat Vityèl",
+            "order": 7,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Kat Vityèl: ajoute kòb (top-up)",
+            "content_ht": "Sou paj Kat Vityèl, chwazi kat la, antre montan an, epi konfime. Frè ak minimòm yo ap parèt sou ekran an.",
+            "category": "Kat Vityèl",
+            "order": 8,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Kat Vityèl: fè retrè sou bous",
+            "content_ht": "Chwazi kat la, antre montan an, epi soumèt. Retrè a ap voye lajan sou bous USD ou si kat la sipòte li.",
+            "category": "Kat Vityèl",
+            "order": 9,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Kijan pou achte minit (TopUp)",
+            "content_ht": "Ale nan TopUp, chwazi peyi a, antre nimewo telefòn, mete montan an, epi konfime.",
+            "category": "Lòt sèvis",
+            "order": 10,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Mwen bliye modpas mwen",
+            "content_ht": "Sou paj Koneksyon, klike “Mwen bliye modpas”. Antre imel ou, epi swiv etap yo nan imel la.",
+            "category": "Kont & Sekirite",
+            "order": 11,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Kijan pou kontakte sipò",
+            "content_ht": "Si bouton chat oswa WhatsApp aktif, itilize li sou sit la. Sinon, kontakte admin dirèkteman.",
+            "category": "Sipò",
+            "order": 12,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+        {
+            "article_id": str(uuid.uuid4()),
+            "title_ht": "Kijan pou enstale app la sou telefòn",
+            "content_ht": "Sou Android (Chrome), klike “Enstale App KAYICOM” oswa Menu (⋮) → Add to Home screen. Sou iPhone, itilize Share → Add to Home Screen.",
+            "category": "Kòmanse",
+            "order": 13,
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+    ]
+
+    await db.help_articles.insert_many(defaults)
+
 class TeamMemberCreate(BaseModel):
     email: str
     password: str
@@ -8232,11 +8373,13 @@ async def get_public_app_config():
 
 @api_router.get("/public/help-center")
 async def get_public_help_center():
+    await _seed_help_articles_if_empty()
     articles = await db.help_articles.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(500)
     return {"articles": articles}
 
 @api_router.get("/admin/help-center")
 async def admin_get_help_center(admin: dict = Depends(get_admin_user)):
+    await _seed_help_articles_if_empty()
     articles = await db.help_articles.find({}, {"_id": 0}).sort("order", 1).to_list(500)
     return {"articles": articles}
 
