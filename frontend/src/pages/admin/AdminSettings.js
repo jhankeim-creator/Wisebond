@@ -75,6 +75,8 @@ export default function AdminSettings() {
     
     // Fees & Affiliate
     card_order_fee_htg: 500,
+    card_topup_fee_fixed_usd: 3,
+    card_topup_fee_percent: 6,
     affiliate_reward_htg: 2000,
     affiliate_cards_required: 5,
 
@@ -184,7 +186,7 @@ export default function AdminSettings() {
         'strowallet_create_user_path', 'strowallet_create_card_path', 'strowallet_fund_card_path', 'strowallet_withdraw_card_path',
         'strowallet_fetch_card_detail_path', 'strowallet_card_transactions_path',
         'strowallet_brand_name',
-        'card_order_fee_htg', 'affiliate_reward_htg', 'affiliate_cards_required',
+        'card_order_fee_htg', 'card_topup_fee_fixed_usd', 'card_topup_fee_percent', 'affiliate_reward_htg', 'affiliate_cards_required',
         'card_background_image',
         'topup_fee_tiers',
         'announcement_enabled', 'announcement_text_ht', 'announcement_text_fr', 'announcement_text_en', 'announcement_link',
@@ -797,6 +799,53 @@ export default function AdminSettings() {
                 `Referrer earns G ${settings.affiliate_reward_htg || 2000} for every ${settings.affiliate_cards_required || 5} cards ordered.`
               )}
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+              <DollarSign size={20} className="text-emerald-600" />
+            </div>
+            <div>
+              <CardTitle className="text-base">{getText('Frè depo kat', 'Frais recharge carte', 'Card top-up fees')}</CardTitle>
+              <CardDescription className="text-sm">
+                {getText('Frè pou ajoute kòb sou kat yo (USD)', 'Frais pour recharger les cartes (USD)', 'Fees to add funds to cards (USD)')}
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <Label>{getText('Frè fiks (USD)', 'Frais fixe (USD)', 'Fixed fee (USD)')}</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={settings.card_topup_fee_fixed_usd ?? 3}
+                onChange={(e) => setSettings({ ...settings, card_topup_fee_fixed_usd: parseFloat(e.target.value || '0') })}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>{getText('Pousantaj (%)', 'Pourcentage (%)', 'Percentage (%)')}</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={settings.card_topup_fee_percent ?? 6}
+                onChange={(e) => setSettings({ ...settings, card_topup_fee_percent: parseFloat(e.target.value || '0') })}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3 text-xs text-stone-600 dark:text-stone-300">
+            {getText(
+              'Frè total = frè fiks + (montan × pousantaj / 100).',
+              'Frais total = frais fixe + (montant × pourcentage / 100).',
+              'Total fee = fixed fee + (amount × percentage / 100).'
+            )}
           </div>
         </CardContent>
       </Card>

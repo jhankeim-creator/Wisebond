@@ -371,6 +371,8 @@ class AdminSettingsUpdate(BaseModel):
 
     # Fees & Affiliate
     card_order_fee_htg: Optional[int] = None
+    card_topup_fee_fixed_usd: Optional[float] = None
+    card_topup_fee_percent: Optional[float] = None
     affiliate_reward_htg: Optional[int] = None
     affiliate_cards_required: Optional[int] = None
     card_background_image: Optional[str] = None
@@ -2137,6 +2139,8 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
 
         # Fees & Affiliate
         "card_order_fee_htg": 500,
+        "card_topup_fee_fixed_usd": 3.0,
+        "card_topup_fee_percent": 6.0,
         "affiliate_reward_htg": 2000,
         "affiliate_cards_required": 5,
         "card_background_image": None,
