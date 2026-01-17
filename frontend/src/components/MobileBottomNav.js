@@ -29,7 +29,7 @@ export const MobileBottomNav = () => {
 
   // Don't show on certain pages
   const hiddenPaths = ['/', '/login', '/register', '/forgot-password', '/reset-password'];
-  if (hiddenPaths.includes(location.pathname)) {
+  if (hiddenPaths.includes(location.pathname) || location.pathname.startsWith('/admin')) {
     return null;
   }
 

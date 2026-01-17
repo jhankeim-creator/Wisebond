@@ -21,6 +21,7 @@ export default function AdminFees() {
   const [loading, setLoading] = useState(true);
   const [cardTopupFeeFixedUsd, setCardTopupFeeFixedUsd] = useState(3);
   const [cardTopupFeePercent, setCardTopupFeePercent] = useState(6);
+  const [cardTopupMinUsd, setCardTopupMinUsd] = useState(10);
   const [savingCardTopupFees, setSavingCardTopupFees] = useState(false);
   const [showFeeModal, setShowFeeModal] = useState(false);
   const [showCardFeeModal, setShowCardFeeModal] = useState(false);
@@ -75,6 +76,9 @@ export default function AdminFees() {
       );
       setCardTopupFeePercent(
         typeof settings.card_topup_fee_percent === 'number' ? settings.card_topup_fee_percent : 6
+      );
+      setCardTopupMinUsd(
+        typeof settings.card_topup_min_usd === 'number' ? settings.card_topup_min_usd : 10
       );
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -166,6 +170,7 @@ export default function AdminFees() {
       await axios.put(`${API}/admin/settings`, {
         card_topup_fee_fixed_usd: Number(cardTopupFeeFixedUsd || 0),
         card_topup_fee_percent: Number(cardTopupFeePercent || 0),
+        card_topup_min_usd: Number(cardTopupMinUsd || 0),
       });
       toast.success(getText('Frè depo kat mete ajou!', 'Frais recharge mis à jour!', 'Card top-up fees updated!'));
       fetchData();
@@ -228,20 +233,33 @@ export default function AdminFees() {
         {/* Card Top-up Fees */}
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
-                <CreditCard className="text-emerald-600" size={20} />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                  <CreditCard className="text-emerald-600" size={20} />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">{getText('Frè depo kat', 'Frais recharge carte', 'Card top-up fees')}</CardTitle>
+                  <CardDescription>
+                    {getText('Fikse frè depo kat yo (USD)', 'Définir les frais de recharge (USD)', 'Set card top-up fees (USD)')}
+                  </CardDescription>
+                </div>
               </div>
-              <div>
-                <CardTitle className="text-lg">{getText('Frè depo kat', 'Frais recharge carte', 'Card top-up fees')}</CardTitle>
-                <CardDescription>
-                  {getText('Fikse frè depo kat yo (USD)', 'Définir les frais de recharge (USD)', 'Set card top-up fees (USD)')}
-                </CardDescription>
-              </div>
+              <Button
+                size="sm"
+                onClick={saveCardTopupFees}
+                disabled={savingCardTopupFees}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Save size={16} className="mr-2" />
+                {savingCardTopupFees
+                  ? getText('Anrejistreman...', 'Enregistrement...', 'Saving...')
+                  : getText('Anrejistre', 'Enregistrer', 'Save')}
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <Label>{getText('Frè fiks (USD)', 'Frais fixe (USD)', 'Fixed fee (USD)')}</Label>
                 <Input
@@ -262,6 +280,16 @@ export default function AdminFees() {
                   className="mt-1"
                 />
               </div>
+              <div>
+                <Label>{getText('Minimòm (USD)', 'Minimum (USD)', 'Minimum (USD)')}</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={cardTopupMinUsd}
+                  onChange={(e) => setCardTopupMinUsd(parseFloat(e.target.value || '0'))}
+                  className="mt-1"
+                />
+              </div>
             </div>
             <div className="bg-stone-50 dark:bg-stone-800 rounded-lg p-3 text-xs text-stone-600 dark:text-stone-300">
               {getText(
@@ -270,18 +298,12 @@ export default function AdminFees() {
                 'Total fee = fixed fee + (amount × percentage / 100).'
               )}
             </div>
-            <div className="flex justify-end">
-              <Button
-                size="sm"
-                onClick={saveCardTopupFees}
-                disabled={savingCardTopupFees}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                <Save size={16} className="mr-2" />
-                {savingCardTopupFees
-                  ? getText('Anrejistreman...', 'Enregistrement...', 'Saving...')
-                  : getText('Anrejistre', 'Enregistrer', 'Save')}
-              </Button>
+            <div className="text-xs text-stone-500">
+              {getText(
+                'Klik sou bouton “Anrejistre” pou sove chanjman yo.',
+                'Cliquez sur “Enregistrer” pour sauvegarder.',
+                'Click “Save” to store changes.'
+              )}
             </div>
           </CardContent>
         </Card>

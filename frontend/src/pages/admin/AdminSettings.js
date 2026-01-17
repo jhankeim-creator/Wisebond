@@ -77,6 +77,7 @@ export default function AdminSettings() {
     card_order_fee_htg: 500,
     card_topup_fee_fixed_usd: 3,
     card_topup_fee_percent: 6,
+    card_topup_min_usd: 10,
     affiliate_reward_htg: 2000,
     affiliate_cards_required: 5,
 
@@ -186,7 +187,7 @@ export default function AdminSettings() {
         'strowallet_create_user_path', 'strowallet_create_card_path', 'strowallet_fund_card_path', 'strowallet_withdraw_card_path',
         'strowallet_fetch_card_detail_path', 'strowallet_card_transactions_path',
         'strowallet_brand_name',
-        'card_order_fee_htg', 'card_topup_fee_fixed_usd', 'card_topup_fee_percent', 'affiliate_reward_htg', 'affiliate_cards_required',
+        'card_order_fee_htg', 'card_topup_fee_fixed_usd', 'card_topup_fee_percent', 'card_topup_min_usd', 'affiliate_reward_htg', 'affiliate_cards_required',
         'card_background_image',
         'topup_fee_tiers',
         'announcement_enabled', 'announcement_text_ht', 'announcement_text_fr', 'announcement_text_en', 'announcement_link',
@@ -818,7 +819,7 @@ export default function AdminSettings() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <Label>{getText('Frè fiks (USD)', 'Frais fixe (USD)', 'Fixed fee (USD)')}</Label>
               <Input
@@ -836,6 +837,16 @@ export default function AdminSettings() {
                 step="0.01"
                 value={settings.card_topup_fee_percent ?? 6}
                 onChange={(e) => setSettings({ ...settings, card_topup_fee_percent: parseFloat(e.target.value || '0') })}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>{getText('Minimòm (USD)', 'Minimum (USD)', 'Minimum (USD)')}</Label>
+              <Input
+                type="number"
+                step="0.01"
+                value={settings.card_topup_min_usd ?? 10}
+                onChange={(e) => setSettings({ ...settings, card_topup_min_usd: parseFloat(e.target.value || '0') })}
                 className="mt-1"
               />
             </div>

@@ -61,6 +61,7 @@ export default function VirtualCard() {
   const [cardFee, setCardFee] = useState(500);
   const [cardTopupFeeFixedUsd, setCardTopupFeeFixedUsd] = useState(3);
   const [cardTopupFeePercent, setCardTopupFeePercent] = useState(6);
+  const [cardTopupMinUsd, setCardTopupMinUsd] = useState(10);
   const [defaultCardBg, setDefaultCardBg] = useState(null);
   
   // Top up state
@@ -120,6 +121,9 @@ export default function VirtualCard() {
       }
       if (typeof configResp.data?.card_topup_fee_percent === 'number') {
         setCardTopupFeePercent(configResp.data.card_topup_fee_percent);
+      }
+      if (typeof configResp.data?.card_topup_min_usd === 'number') {
+        setCardTopupMinUsd(configResp.data.card_topup_min_usd);
       }
       if (configResp.data?.card_background_image) {
         setDefaultCardBg(configResp.data.card_background_image);
@@ -395,8 +399,12 @@ export default function VirtualCard() {
       return;
     }
     
-    if (!amt || amt < 5) {
-      toast.error(getText('Montan minimòm: $5', 'Montant minimum: $5', 'Minimum amount: $5'));
+    if (!amt || amt < cardTopupMinUsd) {
+      toast.error(getText(
+        `Montan minimòm: $${cardTopupMinUsd}`,
+        `Montant minimum: $${cardTopupMinUsd}`,
+        `Minimum amount: $${cardTopupMinUsd}`
+      ));
       return;
     }
     
@@ -1249,10 +1257,16 @@ export default function VirtualCard() {
                     value={topUpAmount}
                     onChange={(e) => setTopUpAmount(e.target.value)}
                     className="pl-10 text-xl font-bold"
-                    min="5"
+                    min={cardTopupMinUsd}
                   />
                 </div>
-                <p className="text-xs text-stone-500 mt-1">{getText('Minimòm: $5', 'Minimum: $5', 'Minimum: $5')}</p>
+                <p className="text-xs text-stone-500 mt-1">
+                  {getText(
+                    `Minimòm: $${cardTopupMinUsd}`,
+                    `Minimum: $${cardTopupMinUsd}`,
+                    `Minimum: $${cardTopupMinUsd}`
+                  )}
+                </p>
               </div>
 
               {/* Fee breakdown */}
@@ -1282,7 +1296,7 @@ export default function VirtualCard() {
 
               <Button 
                 onClick={submitTopUp}
-                disabled={submittingTopUp || !topUpAmount || parseFloat(topUpAmount) < 5 || !topUpCardId}
+                disabled={submittingTopUp || !topUpAmount || parseFloat(topUpAmount) < cardTopupMinUsd || !topUpCardId}
                 className="w-full bg-emerald-500 hover:bg-emerald-600"
               >
                 {submittingTopUp 
