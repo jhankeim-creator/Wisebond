@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import { ExternalLink, Megaphone } from 'lucide-react';
 import { useLanguage } from '@/context/LanguageContext';
+import { useAuth } from '@/context/AuthContext';
 import { API_BASE } from '@/lib/utils';
 
 export default function AnnouncementBar() {
   const { language } = useLanguage();
+  const { isAuthenticated } = useAuth();
   const [cfg, setCfg] = useState(null);
   const barRef = useRef(null);
 
@@ -22,6 +24,10 @@ export default function AnnouncementBar() {
   }, [cfg, localizedText]);
 
   useEffect(() => {
+    if (!isAuthenticated) {
+      setCfg(null);
+      return;
+    }
     let mounted = true;
     (async () => {
       try {
@@ -38,12 +44,12 @@ export default function AnnouncementBar() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [isAuthenticated]);
 
   // Ensure the bar is always visible (fixed) and layouts offset correctly
   useEffect(() => {
     const applyHeight = () => {
-      const enabled = Boolean(cfg?.announcement_enabled) && Boolean(effectiveText);
+      const enabled = Boolean(isAuthenticated) && Boolean(cfg?.announcement_enabled) && Boolean(effectiveText);
       const h = enabled ? (barRef.current?.getBoundingClientRect?.().height || 0) : 0;
       document.documentElement.style.setProperty('--announcement-bar-h', `${Math.round(h)}px`);
     };
@@ -66,8 +72,9 @@ export default function AnnouncementBar() {
       window.cancelAnimationFrame(raf);
       document.documentElement.style.setProperty('--announcement-bar-h', '0px');
     };
-  }, [cfg?.announcement_enabled, effectiveText]);
+  }, [cfg?.announcement_enabled, effectiveText, isAuthenticated]);
 
+  if (!isAuthenticated) return null;
   if (!cfg?.announcement_enabled) return null;
   if (!effectiveText) return null;
 
