@@ -31,6 +31,7 @@ import TopUp from "@/pages/TopUp";
 import AgentDeposit from "@/pages/AgentDeposit";
 import Terms from "@/pages/Terms";
 import Privacy from "@/pages/Privacy";
+import HelpCenter from "@/pages/HelpCenter";
 
 // Admin Pages
 import AdminDashboard from "@/pages/admin/AdminDashboard";
@@ -52,6 +53,7 @@ import AdminAgentCommissionWithdrawals from "@/pages/admin/AdminAgentCommissionW
 import AdminPaymentGateway from "@/pages/admin/AdminPaymentGateway";
 import AdminWebhookEvents from "@/pages/admin/AdminWebhookEvents";
 import AdminRBAC from "@/pages/admin/AdminRBAC";
+import AdminHelpCenter from "@/pages/admin/AdminHelpCenter";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { isRoleAllowed } from "@/lib/adminRbac";
 
@@ -114,6 +116,7 @@ function AppRoutes() {
       <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/privacy" element={<Privacy />} />
+      <Route path="/help" element={<HelpCenter />} />
       
       {/* Protected Routes */}
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
@@ -148,6 +151,7 @@ function AppRoutes() {
       <Route path="/admin/agent-deposits" element={<ProtectedRoute adminOnly requiredRoles={['manager','finance','admin','superadmin']}><AdminAgentDeposits /></ProtectedRoute>} />
       <Route path="/admin/agent-commission-withdrawals" element={<ProtectedRoute adminOnly requiredRoles={['manager','finance','admin','superadmin']}><AdminAgentCommissionWithdrawals /></ProtectedRoute>} />
       <Route path="/admin/payment-gateway" element={<ProtectedRoute adminOnly requiredRoles={['finance','manager','admin','superadmin']}><AdminPaymentGateway /></ProtectedRoute>} />
+      <Route path="/admin/help-center" element={<ProtectedRoute adminOnly requiredRoles={['support','manager','admin','superadmin']}><AdminHelpCenter /></ProtectedRoute>} />
       <Route path="/admin/rbac" element={<ProtectedRoute adminOnly requiredRoles={['admin','superadmin']}><AdminRBAC /></ProtectedRoute>} />
       
       {/* Fallback */}

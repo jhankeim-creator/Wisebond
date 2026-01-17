@@ -5,6 +5,8 @@ import { useAuth } from '@/context/AuthContext';
 import { Logo } from '@/components/Logo';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
+import { API_BASE as API } from '@/lib/utils';
+import axios from 'axios';
 import { 
   Shield, 
   Zap, 
@@ -91,7 +93,7 @@ function InstallAppButton({ getText }) {
 }
 
 // Install App Section Component
-function InstallAppSection({ getText }) {
+function InstallAppSection({ getText, androidAppUrl, androidAppVersion }) {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
@@ -215,23 +217,44 @@ function InstallAppSection({ getText }) {
               </div>
               
               {/* Install Button */}
-              {isInstalled ? (
-                <div className="flex items-center justify-center lg:justify-start gap-3 text-emerald-400 bg-emerald-500/10 px-4 sm:px-6 py-3 sm:py-4 rounded-xl sm:rounded-2xl border border-emerald-500/30">
-                  <CheckCircle size={20} />
-                  <span className="font-semibold text-base sm:text-lg">
-                    {getText('App enstale!', 'App installée!', 'App installed!')}
-                  </span>
-                </div>
-              ) : (
-                <Button
-                  onClick={handleInstall}
-                  disabled={!deferredPrompt && !isAndroid}
-                  className="bg-gradient-to-r from-[#EA580C] to-amber-500 hover:from-[#C2410C] hover:to-amber-600 text-white font-bold text-sm sm:text-lg px-6 sm:px-8 py-4 sm:py-6 h-auto rounded-xl sm:rounded-2xl shadow-lg shadow-orange-500/20 disabled:opacity-50"
-                >
-                  <Download size={20} className="mr-2 sm:mr-3" />
-                  {getText('Enstale App KAYICOM', 'Installer App KAYICOM', 'Install KAYICOM App')}
-                </Button>
-              )}
+              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-center lg:items-start">
+                {isInstalled ? (
+                  <div className="flex items-center justify-center lg:justify-start gap-3 text-emerald-400 bg-emerald-500/10 px-4 sm:px-6 py-3 sm:py-4 rounded-xl sm:rounded-2xl border border-emerald-500/30">
+                    <CheckCircle size={20} />
+                    <span className="font-semibold text-base sm:text-lg">
+                      {getText('App enstale!', 'App installée!', 'App installed!')}
+                    </span>
+                  </div>
+                ) : (
+                  <Button
+                    onClick={handleInstall}
+                    disabled={!deferredPrompt && !isAndroid}
+                    className="bg-gradient-to-r from-[#EA580C] to-amber-500 hover:from-[#C2410C] hover:to-amber-600 text-white font-bold text-sm sm:text-lg px-6 sm:px-8 py-4 sm:py-6 h-auto rounded-xl sm:rounded-2xl shadow-lg shadow-orange-500/20 disabled:opacity-50"
+                  >
+                    <Download size={20} className="mr-2 sm:mr-3" />
+                    {getText('Enstale App KAYICOM', 'Installer App KAYICOM', 'Install KAYICOM App')}
+                  </Button>
+                )}
+
+                {androidAppUrl ? (
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="border-amber-300 text-amber-300 hover:bg-amber-500/10 hover:text-amber-200"
+                  >
+                    <a href={androidAppUrl} target="_blank" rel="noreferrer">
+                      <Download size={18} />
+                      {getText('Telechaje APK', 'Télécharger APK', 'Download APK')}
+                    </a>
+                  </Button>
+                ) : null}
+              </div>
+
+              {androidAppUrl && androidAppVersion ? (
+                <p className="text-xs text-stone-400 mt-2">
+                  {getText('Vèsyon', 'Version', 'Version')}: {androidAppVersion}
+                </p>
+              ) : null}
               
               {!deferredPrompt && !isInstalled && (
                 <p className="text-stone-500 text-xs sm:text-sm mt-3 sm:mt-4">
@@ -320,6 +343,8 @@ export default function Landing() {
   const { t, language } = useLanguage();
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
+  const [androidAppUrl, setAndroidAppUrl] = useState('');
+  const [androidAppVersion, setAndroidAppVersion] = useState('');
 
   // Helper for trilingual text
   const getText = (ht, fr, en) => {
@@ -327,6 +352,20 @@ export default function Landing() {
     if (language === 'fr') return fr;
     return en;
   };
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await axios.get(`${API}/public/app-config`);
+        setAndroidAppUrl(res.data?.android_app_download_url || '');
+        setAndroidAppVersion(res.data?.android_app_version || '');
+      } catch (error) {
+        setAndroidAppUrl('');
+        setAndroidAppVersion('');
+      }
+    };
+    fetchConfig();
+  }, []);
 
   const features = [
     {
@@ -753,7 +792,7 @@ export default function Landing() {
       </section>
 
       {/* Install App Section */}
-      <InstallAppSection getText={getText} />
+      <InstallAppSection getText={getText} androidAppUrl={androidAppUrl} androidAppVersion={androidAppVersion} />
 
       {/* CTA Section */}
       <section className="py-12 sm:py-20 px-4 sm:px-6 bg-gradient-to-r from-[#EA580C] to-[#C2410C]">
@@ -793,6 +832,10 @@ export default function Landing() {
               <span className="text-stone-700">|</span>
               <Link to="/privacy" className="text-stone-400 hover:text-white transition-colors text-sm">
                 {getText('Konfidansyalite', 'Confidentialité', 'Privacy')}
+              </Link>
+              <span className="text-stone-700">|</span>
+              <Link to="/help" className="text-stone-400 hover:text-white transition-colors text-sm">
+                {getText('Sant Èd', 'Centre d’aide', 'Help Center')}
               </Link>
             </div>
             

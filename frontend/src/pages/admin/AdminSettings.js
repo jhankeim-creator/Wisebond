@@ -78,6 +78,8 @@ export default function AdminSettings() {
     card_topup_fee_fixed_usd: 3,
     card_topup_fee_percent: 6,
     card_topup_min_usd: 10,
+    android_app_download_url: '',
+    android_app_version: '',
     affiliate_reward_htg: 2000,
     affiliate_cards_required: 5,
 
@@ -187,7 +189,9 @@ export default function AdminSettings() {
         'strowallet_create_user_path', 'strowallet_create_card_path', 'strowallet_fund_card_path', 'strowallet_withdraw_card_path',
         'strowallet_fetch_card_detail_path', 'strowallet_card_transactions_path',
         'strowallet_brand_name',
-        'card_order_fee_htg', 'card_topup_fee_fixed_usd', 'card_topup_fee_percent', 'card_topup_min_usd', 'affiliate_reward_htg', 'affiliate_cards_required',
+        'card_order_fee_htg', 'card_topup_fee_fixed_usd', 'card_topup_fee_percent', 'card_topup_min_usd',
+        'android_app_download_url', 'android_app_version',
+        'affiliate_reward_htg', 'affiliate_cards_required',
         'card_background_image',
         'topup_fee_tiers',
         'announcement_enabled', 'announcement_text_ht', 'announcement_text_fr', 'announcement_text_en', 'announcement_link',
@@ -1119,6 +1123,50 @@ export default function AdminSettings() {
               )}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Android App */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+              <Smartphone size={20} className="text-amber-600" />
+            </div>
+            <div>
+              <CardTitle className="text-base">{getText('Aplikasyon Android', 'Application Android', 'Android App')}</CardTitle>
+              <CardDescription className="text-sm">
+                {getText('Lyens telechajman pou APK', 'Lien de téléchargement APK', 'APK download link')}
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Label>{getText('Lyen telechajman', 'Lien de téléchargement', 'Download URL')}</Label>
+            <Input
+              value={settings.android_app_download_url || ''}
+              onChange={(e) => setSettings({ ...settings, android_app_download_url: e.target.value })}
+              className="mt-1"
+              placeholder="https://wallet.kayicom.com/app/kayicom.apk"
+            />
+            <p className="text-xs text-stone-500 mt-1">
+              {getText(
+                'Si li vid, bouton telechajman an pap parèt sou akèy la.',
+                'Si vide, le bouton de téléchargement sera caché sur l’accueil.',
+                'If empty, the download button is hidden on the homepage.'
+              )}
+            </p>
+          </div>
+          <div>
+            <Label>{getText('Vèsyon (opsyonèl)', 'Version (optionnel)', 'Version (optional)')}</Label>
+            <Input
+              value={settings.android_app_version || ''}
+              onChange={(e) => setSettings({ ...settings, android_app_version: e.target.value })}
+              className="mt-1"
+              placeholder="v1.0.0"
+            />
+          </div>
         </CardContent>
       </Card>
 

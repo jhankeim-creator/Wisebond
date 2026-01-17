@@ -28,7 +28,8 @@ import {
   Webhook,
   Shield,
   UserPlus,
-  Wallet
+  Wallet,
+  LifeBuoy
 } from 'lucide-react';
 
 export const AdminLayout = ({ children, title }) => {
@@ -64,6 +65,7 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/rates', icon: RefreshCw, label: getText('To chanj', 'Taux de change', 'Exchange Rates'), roles: ['finance','admin','superadmin'] },
     { path: '/admin/fees', icon: DollarSign, label: getText('Frè', 'Frais', 'Fees'), roles: ['finance','admin','superadmin'] },
     { path: '/admin/payment-gateway', icon: Wallet, label: getText('Payment Gateway', 'Payment Gateway', 'Payment Gateway'), roles: ['finance','manager','admin','superadmin'] },
+    { path: '/admin/help-center', icon: LifeBuoy, label: getText('Sant Èd', 'Centre d’aide', 'Help Center'), roles: ['support','manager','admin','superadmin'] },
     { path: '/admin/bulk-email', icon: Mail, label: getText('Imèl', 'Emails', 'Emails'), roles: ['manager','admin','superadmin'] },
     { path: '/admin/team', icon: Shield, label: getText('Ekip', 'Équipe', 'Team'), roles: ['admin', 'superadmin'] },
     { path: '/admin/rbac', icon: Shield, label: getText('Pèmisyon Wòl', 'Permissions', 'Permissions'), roles: ['admin', 'superadmin'] },

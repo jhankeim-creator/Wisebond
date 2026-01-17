@@ -1103,6 +1103,8 @@ class AdminSettingsUpdate(BaseModel):
     card_topup_fee_fixed_usd: Optional[float] = None
     card_topup_fee_percent: Optional[float] = None
     card_topup_min_usd: Optional[float] = None
+    android_app_download_url: Optional[str] = None
+    android_app_version: Optional[str] = None
     affiliate_reward_htg: Optional[int] = None
     affiliate_cards_required: Optional[int] = None
     card_background_image: Optional[str] = None
@@ -1121,6 +1123,30 @@ class AdminSettingsUpdate(BaseModel):
     cloudinary_api_secret: Optional[str] = None
     cloudinary_folder: Optional[str] = None
     kyc_max_image_bytes: Optional[int] = None
+
+class HelpArticleCreate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    title_ht: Optional[str] = None
+    title_fr: Optional[str] = None
+    title_en: Optional[str] = None
+    content_ht: Optional[str] = None
+    content_fr: Optional[str] = None
+    content_en: Optional[str] = None
+    category: Optional[str] = None
+    order: Optional[int] = None
+    is_active: Optional[bool] = True
+
+class HelpArticleUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    title_ht: Optional[str] = None
+    title_fr: Optional[str] = None
+    title_en: Optional[str] = None
+    content_ht: Optional[str] = None
+    content_fr: Optional[str] = None
+    content_en: Optional[str] = None
+    category: Optional[str] = None
+    order: Optional[int] = None
+    is_active: Optional[bool] = None
 
 class TeamMemberCreate(BaseModel):
     email: str
@@ -7923,6 +7949,8 @@ async def admin_get_settings(admin: dict = Depends(get_admin_user)):
         "card_topup_fee_fixed_usd": CARD_TOPUP_FEE_FIXED_USD,
         "card_topup_fee_percent": CARD_TOPUP_FEE_PERCENT,
         "card_topup_min_usd": CARD_TOPUP_MIN_USD,
+        "android_app_download_url": None,
+        "android_app_version": None,
         "affiliate_reward_htg": 2000,
         "affiliate_cards_required": 5,
         "card_background_image": None,
@@ -8172,6 +8200,8 @@ async def get_public_app_config():
             "card_topup_fee_fixed_usd": CARD_TOPUP_FEE_FIXED_USD,
             "card_topup_fee_percent": CARD_TOPUP_FEE_PERCENT,
             "card_topup_min_usd": CARD_TOPUP_MIN_USD,
+            "android_app_download_url": None,
+            "android_app_version": None,
             "card_background_image": None,
             "topup_fee_tiers": [],
             "announcement_enabled": False,
@@ -8188,6 +8218,8 @@ async def get_public_app_config():
         "card_topup_fee_fixed_usd": settings.get("card_topup_fee_fixed_usd", CARD_TOPUP_FEE_FIXED_USD),
         "card_topup_fee_percent": settings.get("card_topup_fee_percent", CARD_TOPUP_FEE_PERCENT),
         "card_topup_min_usd": settings.get("card_topup_min_usd", CARD_TOPUP_MIN_USD),
+        "android_app_download_url": settings.get("android_app_download_url"),
+        "android_app_version": settings.get("android_app_version"),
         "card_background_image": settings.get("card_background_image"),
         "topup_fee_tiers": settings.get("topup_fee_tiers", []),
         "announcement_enabled": settings.get("announcement_enabled", False),
@@ -8197,6 +8229,69 @@ async def get_public_app_config():
         "announcement_link": settings.get("announcement_link"),
         "updated_at": settings.get("updated_at"),
     }
+
+@api_router.get("/public/help-center")
+async def get_public_help_center():
+    articles = await db.help_articles.find({"is_active": True}, {"_id": 0}).sort("order", 1).to_list(500)
+    return {"articles": articles}
+
+@api_router.get("/admin/help-center")
+async def admin_get_help_center(admin: dict = Depends(get_admin_user)):
+    articles = await db.help_articles.find({}, {"_id": 0}).sort("order", 1).to_list(500)
+    return {"articles": articles}
+
+@api_router.post("/admin/help-center")
+async def admin_create_help_article(payload: HelpArticleCreate, admin: dict = Depends(get_admin_user)):
+    title_values = [payload.title_ht, payload.title_fr, payload.title_en]
+    if not any(t and str(t).strip() for t in title_values):
+        raise HTTPException(status_code=400, detail="At least one title is required")
+
+    now = datetime.now(timezone.utc).isoformat()
+    article = {
+        "article_id": str(uuid.uuid4()),
+        "title_ht": payload.title_ht,
+        "title_fr": payload.title_fr,
+        "title_en": payload.title_en,
+        "content_ht": payload.content_ht,
+        "content_fr": payload.content_fr,
+        "content_en": payload.content_en,
+        "category": (payload.category or "General").strip(),
+        "order": int(payload.order or 0),
+        "is_active": bool(payload.is_active if payload.is_active is not None else True),
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.help_articles.insert_one(article)
+    await log_action(admin["user_id"], "help_article_create", {"article_id": article["article_id"]})
+    return {"article": article}
+
+@api_router.put("/admin/help-center/{article_id}")
+async def admin_update_help_article(article_id: str, payload: HelpArticleUpdate, admin: dict = Depends(get_admin_user)):
+    update_doc = {}
+    for k, v in payload.model_dump().items():
+        if v is not None:
+            update_doc[k] = v
+    if "category" in update_doc:
+        update_doc["category"] = (update_doc["category"] or "General").strip()
+    if "order" in update_doc:
+        update_doc["order"] = int(update_doc["order"] or 0)
+    update_doc["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    result = await db.help_articles.update_one({"article_id": article_id}, {"$set": update_doc})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    article = await db.help_articles.find_one({"article_id": article_id}, {"_id": 0})
+    await log_action(admin["user_id"], "help_article_update", {"article_id": article_id})
+    return {"article": article}
+
+@api_router.delete("/admin/help-center/{article_id}")
+async def admin_delete_help_article(article_id: str, admin: dict = Depends(get_admin_user)):
+    result = await db.help_articles.delete_one({"article_id": article_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Article not found")
+    await log_action(admin["user_id"], "help_article_delete", {"article_id": article_id})
+    return {"success": True}
 
 @api_router.put("/admin/settings")
 async def admin_update_settings(settings: AdminSettingsUpdate, admin: dict = Depends(get_admin_user)):

@@ -18,6 +18,7 @@ export const ADMIN_ROUTE_ROLES = {
   '/admin/rates': ['admin', 'superadmin'],
   '/admin/fees': ['admin', 'superadmin'],
   '/admin/payment-gateway': ['manager', 'admin', 'superadmin'],
+  '/admin/help-center': ['support', 'manager', 'admin', 'superadmin'],
   '/admin/bulk-email': ['manager', 'admin', 'superadmin'],
   '/admin/virtual-cards': ['support', 'manager', 'admin', 'superadmin'],
   '/admin/topup': ['support', 'manager', 'admin', 'superadmin'],
