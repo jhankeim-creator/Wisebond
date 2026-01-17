@@ -69,7 +69,7 @@ export const AdminLayout = ({ children, title }) => {
     { path: '/admin/rbac', icon: Shield, label: getText('Pèmisyon Wòl', 'Permissions', 'Permissions'), roles: ['admin', 'superadmin'] },
     { path: '/admin/logs', icon: MessageSquare, label: getText('Mesaj', 'Journaux', 'Logs'), roles: ['manager','admin','superadmin'] },
     { path: '/admin/webhook-events', icon: Webhook, label: getText('Webhook', 'Webhook', 'Webhook'), roles: ['manager','admin','superadmin'] },
-    { path: '/admin/settings', icon: Settings, label: getText('Paramèt', 'Paramètres', 'Settings'), roles: ['admin', 'superadmin'] },
+    { path: '/admin/settings', icon: Settings, label: getText('Paramèt', 'Paramètres', 'Settings'), roles: ['finance','manager','admin','superadmin'] },
   ];
 
   const isActive = (path, exact = false) => {
@@ -110,7 +110,7 @@ export const AdminLayout = ({ children, title }) => {
         </div>
 
         {/* Scrollable Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto min-h-0 scrollbar-thin scrollbar-thumb-stone-700 scrollbar-track-transparent">
+        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto min-h-0 overscroll-contain touch-pan-y scrollbar-thin scrollbar-thumb-stone-700 scrollbar-track-transparent">
           {menuItems.filter((item) => isRoleAllowed(adminRole, item.roles || [])).map((item) => {
             const Icon = item.icon;
             const active = isActive(item.path, item.exact);
