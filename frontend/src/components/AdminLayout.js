@@ -6,6 +6,7 @@ import { isRoleAllowed } from '@/lib/adminRbac';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Logo } from '@/components/Logo';
+import { SensitiveScreenGuard } from '@/components/SensitiveScreenGuard';
 import { 
   LayoutDashboard, 
   Users,
@@ -164,69 +165,71 @@ export const AdminLayout = ({ children, title }) => {
       </aside>
 
       {/* Main Content */}
-      <main
-        className="lg:ml-64 flex flex-col overflow-hidden"
-        style={{ height: 'calc(100vh - var(--announcement-bar-h, 0px))' }}
-      >
-        {/* Header with Logo */}
-        <header
-          className="sticky top-0 z-20 bg-white/90 dark:bg-stone-800/90 backdrop-blur-xl border-b border-stone-200 dark:border-stone-700"
-          style={{ top: 'var(--announcement-bar-h, 0px)' }}
+      <SensitiveScreenGuard>
+        <main
+          className="lg:ml-64 flex flex-col overflow-hidden"
+          style={{ height: 'calc(100vh - var(--announcement-bar-h, 0px))' }}
         >
-          <div className="flex items-center justify-between px-4 lg:px-8 py-4">
-            <div className="flex items-center gap-4">
-              {/* Mobile Menu Button */}
-              <button 
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg"
-              >
-                <Menu size={24} className="text-stone-700 dark:text-stone-300" />
-              </button>
+          {/* Header with Logo */}
+          <header
+            className="sticky top-0 z-20 bg-white/90 dark:bg-stone-800/90 backdrop-blur-xl border-b border-stone-200 dark:border-stone-700"
+            style={{ top: 'var(--announcement-bar-h, 0px)' }}
+          >
+            <div className="flex items-center justify-between px-4 lg:px-8 py-4">
+              <div className="flex items-center gap-4">
+                {/* Mobile Menu Button */}
+                <button 
+                  onClick={() => setSidebarOpen(true)}
+                  className="lg:hidden p-2 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-lg"
+                >
+                  <Menu size={24} className="text-stone-700 dark:text-stone-300" />
+                </button>
+                
+                {/* Logo */}
+                <Link to="/" className="hover:opacity-80 transition-opacity">
+                  <Logo size="small" />
+                </Link>
+                
+                {/* Title - Desktop */}
+                <div className="hidden lg:block">
+                  <h1 className="text-xl font-bold text-stone-900 dark:text-white">{title}</h1>
+                </div>
+              </div>
               
-              {/* Logo */}
-              <Link to="/" className="hover:opacity-80 transition-opacity">
-                <Logo size="small" />
-              </Link>
-              
-              {/* Title - Desktop */}
-              <div className="hidden lg:block">
-                <h1 className="text-xl font-bold text-stone-900 dark:text-white">{title}</h1>
+              <div className="flex items-center gap-2 sm:gap-3">
+                <ThemeToggle />
+                <LanguageSwitcher />
+                
+                <button className="relative p-2 rounded-xl hover:bg-orange-50 dark:hover:bg-stone-700 transition-colors hidden sm:block">
+                  <Bell size={20} className="text-stone-600 dark:text-stone-300" />
+                </button>
+                
+                {/* Logout Button - Always visible */}
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                  title={getText('Dekonekte', 'Déconnexion', 'Logout')}
+                >
+                  <LogOut size={18} />
+                  <span className="hidden sm:inline text-sm font-medium">{getText('Sòti', 'Sortir', 'Logout')}</span>
+                </button>
               </div>
             </div>
-            
-            <div className="flex items-center gap-2 sm:gap-3">
-              <ThemeToggle />
-              <LanguageSwitcher />
-              
-              <button className="relative p-2 rounded-xl hover:bg-orange-50 dark:hover:bg-stone-700 transition-colors hidden sm:block">
-                <Bell size={20} className="text-stone-600 dark:text-stone-300" />
-              </button>
-              
-              {/* Logout Button - Always visible */}
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                title={getText('Dekonekte', 'Déconnexion', 'Logout')}
-              >
-                <LogOut size={18} />
-                <span className="hidden sm:inline text-sm font-medium">{getText('Sòti', 'Sortir', 'Logout')}</span>
-              </button>
+          </header>
+          
+          {/* Mobile Title */}
+          <div className="lg:hidden px-4 py-4 bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700">
+            <h1 className="text-lg font-bold text-stone-900 dark:text-white">{title}</h1>
+          </div>
+          
+          {/* Page Content */}
+          <div className="flex-1 min-h-0 overflow-y-auto" data-scroll-container="admin">
+            <div className="p-4 lg:p-8">
+              {children}
             </div>
           </div>
-        </header>
-        
-        {/* Mobile Title */}
-        <div className="lg:hidden px-4 py-4 bg-white dark:bg-stone-800 border-b border-stone-200 dark:border-stone-700">
-          <h1 className="text-lg font-bold text-stone-900 dark:text-white">{title}</h1>
-        </div>
-        
-        {/* Page Content */}
-        <div className="flex-1 min-h-0 overflow-y-auto" data-scroll-container="admin">
-          <div className="p-4 lg:p-8">
-            {children}
-          </div>
-        </div>
-      </main>
+        </main>
+      </SensitiveScreenGuard>
     </div>
   );
 };
