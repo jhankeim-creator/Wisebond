@@ -427,7 +427,7 @@ async def seed_help_articles_if_empty(db):
         {
             "article_id": str(uuid.uuid4()),
             "title_ht": "Kijan pou kreye yon kont",
-            "content_ht": "Ale sou paj Enskripsyon an, ranpli enfòmasyon yo, epi valide. Apre sa, konekte ak imel ou ak modpas ou.",
+            "content_ht": "Sou paj Enskripsyon, ranpli non konplè, imel ak nimewo telefòn. Valide, epi konekte ak imel ou ak modpas ou.",
             "category": "Kòmanse",
             "order": 1,
             "is_active": True,
@@ -437,7 +437,7 @@ async def seed_help_articles_if_empty(db):
         {
             "article_id": str(uuid.uuid4()),
             "title_ht": "Kijan pou verifye KYC",
-            "content_ht": "Ale nan KYC, mete foto pyès idantite w ak selfie. Apre w soumèt, tann apwobasyon admin.",
+            "content_ht": "Nan meni KYC, telechaje yon pyès idantite ki klè ansanm ak selfie a. Asire non yo matche. Admin ap revize dosye a.",
             "category": "Kont & Sekirite",
             "order": 2,
             "is_active": True,
@@ -447,7 +447,7 @@ async def seed_help_articles_if_empty(db):
         {
             "article_id": str(uuid.uuid4()),
             "title_ht": "Kijan pou fè depo lajan",
-            "content_ht": "Ale nan Depo, chwazi metòd la, suiv enstriksyon yo, epi voye prèv si li mande. Admin ap valide depo a.",
+            "content_ht": "Nan Depo, chwazi metòd la, suiv enstriksyon yo, epi soumèt prèv la si li mande. Admin ap valide depo a.",
             "category": "Depo & Retrè",
             "order": 3,
             "is_active": True,
@@ -457,7 +457,7 @@ async def seed_help_articles_if_empty(db):
         {
             "article_id": str(uuid.uuid4()),
             "title_ht": "Kijan pou fè retrè lajan",
-            "content_ht": "Ale nan Retrè, chwazi metòd la, mete montan an, epi soumèt. Admin ap trete demann lan selon règleman yo.",
+            "content_ht": "Nan Retrè, chwazi metòd la, antre montan an, verifye frè yo, epi soumèt. Admin ap trete demann lan.",
             "category": "Depo & Retrè",
             "order": 4,
             "is_active": True,
@@ -467,7 +467,7 @@ async def seed_help_articles_if_empty(db):
         {
             "article_id": str(uuid.uuid4()),
             "title_ht": "Kijan pou fè transfè lajan",
-            "content_ht": "Ale nan Transfè, mete ID kliyan oswa nimewo moun nan, antre montan an, epi konfime.",
+            "content_ht": "Nan Transfè, antre ID kliyan an oswa nimewo telefòn li, antre montan an, epi konfime.",
             "category": "Transfè & Swap",
             "order": 5,
             "is_active": True,
@@ -477,7 +477,7 @@ async def seed_help_articles_if_empty(db):
         {
             "article_id": str(uuid.uuid4()),
             "title_ht": "Kijan pou fè swap HTG/USD",
-            "content_ht": "Ale nan Swap, chwazi deviz ou bay ak deviz ou vle resevwa, epi konfime.",
+            "content_ht": "Nan Swap, chwazi deviz ou bay ak deviz ou vle resevwa, verifye to chanj lan, epi konfime.",
             "category": "Transfè & Swap",
             "order": 6,
             "is_active": True,
@@ -487,7 +487,7 @@ async def seed_help_articles_if_empty(db):
         {
             "article_id": str(uuid.uuid4()),
             "title_ht": "Kat Vityèl: kòmande kat la",
-            "content_ht": "Ale nan Kat Vityèl, klike Kòmande. Ou dwe gen KYC apwouve. Frè kòmand lan ap parèt avan ou konfime.",
+            "content_ht": "Nan Kat Vityèl, klike Kòmande. KYC dwe apwouve. Frè kòmand lan ap parèt avan ou konfime.",
             "category": "Kat Vityèl",
             "order": 7,
             "is_active": True,
@@ -497,7 +497,7 @@ async def seed_help_articles_if_empty(db):
         {
             "article_id": str(uuid.uuid4()),
             "title_ht": "Kat Vityèl: ajoute kòb (top-up)",
-            "content_ht": "Sou paj Kat Vityèl, chwazi kat la, antre montan an, epi konfime. Frè ak minimòm yo ap parèt sou ekran an.",
+            "content_ht": "Chwazi kat la, antre montan an, verifye frè ak minimòm yo, epi konfime top-up la.",
             "category": "Kat Vityèl",
             "order": 8,
             "is_active": True,
@@ -507,7 +507,7 @@ async def seed_help_articles_if_empty(db):
         {
             "article_id": str(uuid.uuid4()),
             "title_ht": "Kat Vityèl: fè retrè sou bous",
-            "content_ht": "Chwazi kat la, antre montan an, epi soumèt. Retrè a ap voye lajan sou bous USD ou si kat la sipòte li.",
+            "content_ht": "Chwazi kat la, antre montan an, epi soumèt. Lajan an retounen nan bous USD ou si kat la sipòte li.",
             "category": "Kat Vityèl",
             "order": 9,
             "is_active": True,
@@ -517,7 +517,7 @@ async def seed_help_articles_if_empty(db):
         {
             "article_id": str(uuid.uuid4()),
             "title_ht": "Kijan pou achte minit (TopUp)",
-            "content_ht": "Ale nan TopUp, chwazi peyi a, antre nimewo telefòn, mete montan an, epi konfime.",
+            "content_ht": "Nan TopUp, chwazi peyi a, antre nimewo telefòn nan, mete montan an, epi konfime.",
             "category": "Lòt sèvis",
             "order": 10,
             "is_active": True,
@@ -527,7 +527,7 @@ async def seed_help_articles_if_empty(db):
         {
             "article_id": str(uuid.uuid4()),
             "title_ht": "Mwen bliye modpas mwen",
-            "content_ht": "Sou paj Koneksyon, klike “Mwen bliye modpas”. Antre imel ou, epi swiv etap yo nan imel la.",
+            "content_ht": "Sou paj Koneksyon, klike “Mwen bliye modpas”, antre imel ou, epi swiv etap yo nan imel la.",
             "category": "Kont & Sekirite",
             "order": 11,
             "is_active": True,
@@ -537,7 +537,7 @@ async def seed_help_articles_if_empty(db):
         {
             "article_id": str(uuid.uuid4()),
             "title_ht": "Kijan pou kontakte sipò",
-            "content_ht": "Si bouton chat oswa WhatsApp aktif, itilize li sou sit la. Sinon, kontakte admin dirèkteman.",
+            "content_ht": "Sèvi ak bouton chat oswa WhatsApp si li aktif. Sinon, kontakte sipò a dirèkteman.",
             "category": "Sipò",
             "order": 12,
             "is_active": True,

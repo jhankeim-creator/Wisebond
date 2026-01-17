@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Logo } from '@/components/Logo';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { API_BASE as API } from '@/lib/utils';
 import axios from 'axios';
 import { 
@@ -31,12 +32,17 @@ import { motion } from 'framer-motion';
 function InstallAppButton({ getText }) {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsInstalled(true);
       return;
     }
+
+    const userAgent = navigator.userAgent.toLowerCase();
+    setIsAndroid(/android/i.test(userAgent));
 
     const handleBeforeInstall = (e) => {
       e.preventDefault();
@@ -59,11 +65,7 @@ function InstallAppButton({ getText }) {
 
   const handleInstall = async () => {
     if (!deferredPrompt) {
-      alert(getText(
-        'Pou enstale: Klike sou Menu (⋮) nan Chrome epi chwazi "Add to Home screen"',
-        'Pour installer: Cliquez sur Menu (⋮) dans Chrome et choisissez "Ajouter à l\'écran d\'accueil"',
-        'To install: Click Menu (⋮) in Chrome and select "Add to Home screen"'
-      ));
+      setShowGuide(true);
       return;
     }
 
@@ -88,6 +90,39 @@ function InstallAppButton({ getText }) {
           {getText('Enstale Aplikasyon an', 'Installer l\'Application', 'Install Application')}
         </Button>
       </div>
+      <Dialog open={showGuide} onOpenChange={setShowGuide}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{getText('Kijan pou enstale', 'Comment installer', 'How to install')}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm text-stone-600">
+            <div>
+              <p className="font-semibold text-stone-800">{getText('Android (Chrome)', 'Android (Chrome)', 'Android (Chrome)')}</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>{getText('Louvri sit la nan Chrome.', 'Ouvrez le site dans Chrome.', 'Open the site in Chrome.')}</li>
+                <li>{getText('Klike Menu (⋮).', 'Cliquez sur Menu (⋮).', 'Tap Menu (⋮).')}</li>
+                <li>{getText('Chwazi “Add to Home screen”.', 'Choisissez “Ajouter à l\'écran d\'accueil”.', 'Choose “Add to Home screen”.')}</li>
+              </ul>
+            </div>
+            {!isAndroid ? (
+              <p className="text-xs text-stone-500">
+                {getText('Si w sou iPhone, itilize etap iOS yo anba a.', 'Si vous êtes sur iPhone, utilisez les étapes iOS ci-dessous.', 'If you are on iPhone, use the iOS steps below.')}
+              </p>
+            ) : null}
+            <div>
+              <p className="font-semibold text-stone-800">{getText('iPhone (Safari)', 'iPhone (Safari)', 'iPhone (Safari)')}</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>{getText('Louvri sit la nan Safari.', 'Ouvrez le site dans Safari.', 'Open the site in Safari.')}</li>
+                <li>{getText('Klike Share (ikon kare a).', 'Cliquez sur Partager (icône).', 'Tap Share (square icon).')}</li>
+                <li>{getText('Chwazi “Add to Home Screen”.', 'Choisissez “Ajouter à l\'écran d\'accueil”.', 'Choose “Add to Home Screen”.')}</li>
+              </ul>
+            </div>
+            <Button onClick={() => setShowGuide(false)} className="w-full btn-primary">
+              {getText('Mwen konprann', 'J\'ai compris', 'Got it')}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
@@ -97,6 +132,7 @@ function InstallAppSection({ getText, androidAppUrl, androidAppVersion }) {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
 
   useEffect(() => {
     // Check platform
@@ -129,7 +165,10 @@ function InstallAppSection({ getText, androidAppUrl, androidAppVersion }) {
   }, []);
 
   const handleInstall = async () => {
-    if (!deferredPrompt) return;
+    if (!deferredPrompt) {
+      setShowGuide(true);
+      return;
+    }
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') {
@@ -265,6 +304,34 @@ function InstallAppSection({ getText, androidAppUrl, androidAppVersion }) {
                   )}
                 </p>
               )}
+              <Dialog open={showGuide} onOpenChange={setShowGuide}>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>{getText('Kijan pou enstale', 'Comment installer', 'How to install')}</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 text-sm text-stone-600">
+                    <div>
+                      <p className="font-semibold text-stone-800">{getText('Android (Chrome)', 'Android (Chrome)', 'Android (Chrome)')}</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        <li>{getText('Louvri sit la nan Chrome.', 'Ouvrez le site dans Chrome.', 'Open the site in Chrome.')}</li>
+                        <li>{getText('Klike Menu (⋮).', 'Cliquez sur Menu (⋮).', 'Tap Menu (⋮).')}</li>
+                        <li>{getText('Chwazi “Add to Home screen”.', 'Choisissez “Ajouter à l\'écran d\'accueil”.', 'Choose “Add to Home screen”.')}</li>
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-stone-800">{getText('iPhone (Safari)', 'iPhone (Safari)', 'iPhone (Safari)')}</p>
+                      <ul className="list-disc pl-5 space-y-1">
+                        <li>{getText('Louvri sit la nan Safari.', 'Ouvrez le site dans Safari.', 'Open the site in Safari.')}</li>
+                        <li>{getText('Klike Share (ikon kare a).', 'Cliquez sur Partager (icône).', 'Tap Share (square icon).')}</li>
+                        <li>{getText('Chwazi “Add to Home Screen”.', 'Choisissez “Ajouter à l\'écran d\'accueil”.', 'Choose “Add to Home Screen”.')}</li>
+                      </ul>
+                    </div>
+                    <Button onClick={() => setShowGuide(false)} className="w-full btn-primary">
+                      {getText('Mwen konprann', 'J\'ai compris', 'Got it')}
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </motion.div>
           </div>
           
