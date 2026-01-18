@@ -1,0 +1,56 @@
+<svg width="640" height="480" viewBox="0 0 640 480" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title">
+  <title id="title">KYC selfie example good</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="640" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFF7ED"/>
+      <stop offset="1" stop-color="#FED7AA"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="140" y1="90" x2="320" y2="250" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7C8A4"/>
+      <stop offset="1" stop-color="#E6A77E"/>
+    </linearGradient>
+    <linearGradient id="hair" x1="150" y1="80" x2="310" y2="210" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5C3322"/>
+      <stop offset="1" stop-color="#3E1F14"/>
+    </linearGradient>
+    <linearGradient id="shirt" x1="120" y1="250" x2="360" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F97316"/>
+      <stop offset="1" stop-color="#EA580C"/>
+    </linearGradient>
+    <linearGradient id="card" x1="330" y1="160" x2="530" y2="290" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E7E5E4"/>
+    </linearGradient>
+    <linearGradient id="cardAccent" x1="350" y1="180" x2="410" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FDBA74"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+    <filter id="shadowSoft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#C2410C" flood-opacity="0.25"/>
+    </filter>
+    <filter id="shadowCard" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#9A3412" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <rect width="640" height="480" rx="28" fill="url(#bg)"/>
+  <rect x="48" y="40" width="544" height="400" rx="32" fill="#FFFFFF" opacity="0.6"/>
+  <circle cx="230" cy="170" r="78" fill="url(#skin)" filter="url(#shadowSoft)"/>
+  <path d="M154 162C154 118 189 84 233 84C277 84 312 118 312 162C312 170 310 178 306 186C292 152 265 134 233 134C201 134 174 152 160 186C156 178 154 170 154 162Z" fill="url(#hair)"/>
+  <rect x="198" y="232" width="64" height="48" rx="24" fill="#E6A77E"/>
+  <rect x="132" y="266" width="196" height="154" rx="48" fill="url(#shirt)"/>
+  <rect x="180" y="300" width="100" height="22" rx="11" fill="#FDBA74" opacity="0.7"/>
+  <g filter="url(#shadowCard)" transform="rotate(-8 430 225)">
+    <rect x="330" y="160" width="200" height="130" rx="16" fill="url(#card)" stroke="#E7E5E4" stroke-width="2"/>
+    <rect x="344" y="172" width="70" height="86" rx="12" fill="url(#cardAccent)"/>
+    <circle cx="378" cy="207" r="18" fill="#FFF7ED" opacity="0.9"/>
+    <rect x="424" y="180" width="88" height="12" rx="6" fill="#D6D3D1"/>
+    <rect x="424" y="200" width="96" height="10" rx="5" fill="#E7E5E4"/>
+    <rect x="424" y="218" width="70" height="10" rx="5" fill="#E7E5E4"/>
+    <rect x="424" y="240" width="90" height="12" rx="6" fill="#D6D3D1"/>
+  </g>
+  <rect x="300" y="246" width="68" height="36" rx="18" fill="url(#skin)"/>
+  <rect x="314" y="252" width="40" height="8" rx="4" fill="#E6A77E"/>
+  <circle cx="214" cy="166" r="6" fill="#2F1B12"/>
+  <circle cx="250" cy="166" r="6" fill="#2F1B12"/>
+  <path d="M208 190C214 198 226 202 238 202C250 202 262 198 268 190" stroke="#7C2D12" stroke-width="6" stroke-linecap="round"/>
+</svg>
