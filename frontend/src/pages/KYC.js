@@ -28,6 +28,8 @@ import {
   FileText,
   AlertTriangle
 } from 'lucide-react';
+import selfieGoodExample from '@/assets/kyc-selfie-good.svg';
+import selfieBadExample from '@/assets/kyc-selfie-bad.svg';
 
 export default function KYC() {
   const { language } = useLanguage();
@@ -275,7 +277,7 @@ export default function KYC() {
       statusIcon: Check,
       borderClass: 'border-emerald-300',
       bgClass: 'bg-emerald-50 dark:bg-emerald-900/20',
-      imageSrc: 'https://images.unsplash.com/photo-1634849112476-88cb7e60392b?auto=format&fit=crop&w=800&q=85',
+      imageSrc: selfieGoodExample,
       imageAlt: getText(
         'Egzanp selfie klè ak ID bò vizaj la',
         'Exemple de selfie clair avec ID près du visage',
@@ -290,13 +292,13 @@ export default function KYC() {
       statusIcon: X,
       borderClass: 'border-red-300',
       bgClass: 'bg-red-50 dark:bg-red-900/20',
-      imageSrc: 'https://images.unsplash.com/photo-1589395937920-07cce323acba?auto=format&fit=crop&w=800&q=85',
+      imageSrc: selfieBadExample,
       imageAlt: getText(
         'Egzanp selfie flou ak ID bò vizaj la',
         'Exemple de selfie flou avec ID près du visage',
         'Blurry selfie with ID next to the face'
       ),
-      imageClassName: 'blur-[2px] brightness-90 scale-[1.02]',
+      imageClassName: '',
       label: getText('Move egzanp', 'Mauvais exemple', 'Bad example'),
       note: getText('ID pa klè', 'ID pas clair', 'ID not clear')
     }
