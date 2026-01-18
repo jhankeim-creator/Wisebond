@@ -275,14 +275,13 @@ export default function KYC() {
       statusIcon: Check,
       borderClass: 'border-emerald-300',
       bgClass: 'bg-emerald-50 dark:bg-emerald-900/20',
-      imageSrc: 'https://images.unsplash.com/photo-1548025991-cb332f419f05?crop=entropy&cs=srgb&fm=jpg&q=85&w=640',
+      imageSrc: 'https://images.unsplash.com/photo-1634849112476-88cb7e60392b?auto=format&fit=crop&w=800&q=85',
       imageAlt: getText(
         'Egzanp selfie klè ak ID bò vizaj la',
         'Exemple de selfie clair avec ID près du visage',
         'Clear selfie with ID next to the face'
       ),
       imageClassName: '',
-      idCardClassName: 'bg-white/90 border-emerald-200 text-emerald-700',
       label: getText('Bon egzanp', 'Bon exemple', 'Good example'),
       note: getText('Figi ak ID klè', 'Visage et ID clairs', 'Face and ID clear')
     },
@@ -291,16 +290,15 @@ export default function KYC() {
       statusIcon: X,
       borderClass: 'border-red-300',
       bgClass: 'bg-red-50 dark:bg-red-900/20',
-      imageSrc: 'https://images.unsplash.com/photo-1696992443065-64eadfc2ded1?crop=entropy&cs=srgb&fm=jpg&q=85&w=640',
+      imageSrc: 'https://images.unsplash.com/photo-1589395937920-07cce323acba?auto=format&fit=crop&w=800&q=85',
       imageAlt: getText(
         'Egzanp selfie flou ak ID bò vizaj la',
         'Exemple de selfie flou avec ID près du visage',
         'Blurry selfie with ID next to the face'
       ),
-      imageClassName: 'blur-[1.5px] brightness-90 scale-[1.02]',
-      idCardClassName: 'bg-white/70 border-stone-300 text-stone-600',
+      imageClassName: 'blur-[2px] brightness-90 scale-[1.02]',
       label: getText('Move egzanp', 'Mauvais exemple', 'Bad example'),
-      note: getText('Twò floute', 'Trop floue', 'Too blurry')
+      note: getText('ID pa klè', 'ID pas clair', 'ID not clear')
     }
   ];
 
@@ -653,17 +651,9 @@ export default function KYC() {
                           <img
                             src={example.imageSrc}
                             alt={example.imageAlt}
-                            className={`h-full w-full object-cover object-top ${example.imageClassName}`}
+                            className={`h-full w-full object-cover object-center ${example.imageClassName}`}
                             loading="lazy"
                           />
-                          <div
-                            className={`absolute bottom-3 right-3 w-14 h-9 rounded-md border shadow-sm ${example.idCardClassName}`}
-                            aria-hidden="true"
-                          >
-                            <div className="text-[10px] font-semibold leading-none pt-1">ID</div>
-                            <div className="h-[2px] bg-stone-300/70 mx-1 mt-1" />
-                            <div className="h-[2px] bg-stone-300/70 mx-1 mt-1 w-4/5" />
-                          </div>
                         </div>
                         <div className="p-3">
                           <StatusIcon className={`mx-auto mb-1 ${example.key === 'good' ? 'text-emerald-500' : 'text-red-500'}`} size={20} />
