@@ -269,6 +269,41 @@ export default function KYC() {
     );
   }
 
+  const selfieExampleCards = [
+    {
+      key: 'good',
+      statusIcon: Check,
+      borderClass: 'border-emerald-300',
+      bgClass: 'bg-emerald-50 dark:bg-emerald-900/20',
+      imageSrc: 'https://images.unsplash.com/photo-1548025991-cb332f419f05?crop=entropy&cs=srgb&fm=jpg&q=85&w=640',
+      imageAlt: getText(
+        'Egzanp selfie klè ak ID bò vizaj la',
+        'Exemple de selfie clair avec ID près du visage',
+        'Clear selfie with ID next to the face'
+      ),
+      imageClassName: '',
+      idCardClassName: 'bg-white/90 border-emerald-200 text-emerald-700',
+      label: getText('Bon egzanp', 'Bon exemple', 'Good example'),
+      note: getText('Figi ak ID klè', 'Visage et ID clairs', 'Face and ID clear')
+    },
+    {
+      key: 'bad',
+      statusIcon: X,
+      borderClass: 'border-red-300',
+      bgClass: 'bg-red-50 dark:bg-red-900/20',
+      imageSrc: 'https://images.unsplash.com/photo-1696992443065-64eadfc2ded1?crop=entropy&cs=srgb&fm=jpg&q=85&w=640',
+      imageAlt: getText(
+        'Egzanp selfie flou ak ID bò vizaj la',
+        'Exemple de selfie flou avec ID près du visage',
+        'Blurry selfie with ID next to the face'
+      ),
+      imageClassName: 'blur-[1.5px] brightness-90 scale-[1.02]',
+      idCardClassName: 'bg-white/70 border-stone-300 text-stone-600',
+      label: getText('Move egzanp', 'Mauvais exemple', 'Bad example'),
+      note: getText('Twò floute', 'Trop floue', 'Too blurry')
+    }
+  ];
+
   return (
     <DashboardLayout title={getText('Verifikasyon KYC', 'Vérification KYC', 'KYC Verification')}>
       <div className="max-w-2xl mx-auto space-y-6" data-testid="kyc-page">
@@ -608,42 +643,41 @@ export default function KYC() {
               </div>
 
               {/* Example Images */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="text-center">
-                  <div className="border-2 border-emerald-300 rounded-xl p-4 bg-emerald-50 dark:bg-emerald-900/20">
-                    <div className="relative mx-auto w-24 h-24 mb-2">
-                      <div className="absolute inset-0 bg-gradient-to-br from-stone-300 to-stone-400 rounded-full flex items-center justify-center">
-                        <User size={32} className="text-white" />
-                      </div>
-                      <div className="absolute -right-2 bottom-0 w-8 h-10 bg-blue-100 border border-blue-300 rounded flex items-center justify-center text-xs">
-                        ID
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                {selfieExampleCards.map((example) => {
+                  const StatusIcon = example.statusIcon;
+                  return (
+                    <div key={example.key} className="text-center">
+                      <div className={`border-2 ${example.borderClass} rounded-xl overflow-hidden ${example.bgClass}`}>
+                        <div className="relative aspect-[4/3]">
+                          <img
+                            src={example.imageSrc}
+                            alt={example.imageAlt}
+                            className={`h-full w-full object-cover object-top ${example.imageClassName}`}
+                            loading="lazy"
+                          />
+                          <div
+                            className={`absolute bottom-3 right-3 w-14 h-9 rounded-md border shadow-sm ${example.idCardClassName}`}
+                            aria-hidden="true"
+                          >
+                            <div className="text-[10px] font-semibold leading-none pt-1">ID</div>
+                            <div className="h-[2px] bg-stone-300/70 mx-1 mt-1" />
+                            <div className="h-[2px] bg-stone-300/70 mx-1 mt-1 w-4/5" />
+                          </div>
+                        </div>
+                        <div className="p-3">
+                          <StatusIcon className={`mx-auto mb-1 ${example.key === 'good' ? 'text-emerald-500' : 'text-red-500'}`} size={20} />
+                          <p className={`text-xs font-medium ${example.key === 'good' ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                            {example.label}
+                          </p>
+                          <p className={`text-xs ${example.key === 'good' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                            {example.note}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                    <Check className="mx-auto text-emerald-500 mb-1" size={20} />
-                    <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium">
-                      {getText('Bon egzanp', 'Bon exemple', 'Good example')}
-                    </p>
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400">
-                      {getText('Figi ak ID klè', 'Visage et ID clairs', 'Face and ID clear')}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="border-2 border-red-300 rounded-xl p-4 bg-red-50 dark:bg-red-900/20">
-                    <div className="relative mx-auto w-24 h-24 mb-2 opacity-50 blur-[1px]">
-                      <div className="absolute inset-0 bg-gradient-to-br from-stone-300 to-stone-400 rounded-full flex items-center justify-center">
-                        <User size={32} className="text-white" />
-                      </div>
-                    </div>
-                    <X className="mx-auto text-red-500 mb-1" size={20} />
-                    <p className="text-xs text-red-700 dark:text-red-300 font-medium">
-                      {getText('Move egzanp', 'Mauvais exemple', 'Bad example')}
-                    </p>
-                    <p className="text-xs text-red-600 dark:text-red-400">
-                      {getText('Twò floute oswa san ID', 'Trop floue ou sans ID', 'Too blurry or no ID')}
-                    </p>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
 
               <div 
