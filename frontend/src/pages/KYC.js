@@ -643,13 +643,13 @@ export default function KYC() {
               </div>
 
               {/* Example Images */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6 justify-items-center">
                 {selfieExampleCards.map((example) => {
                   const StatusIcon = example.statusIcon;
                   return (
-                    <div key={example.key} className="text-center">
+                    <div key={example.key} className="text-center w-full max-w-[180px] sm:max-w-none">
                       <div className={`border-2 ${example.borderClass} rounded-xl overflow-hidden ${example.bgClass}`}>
-                        <div className="relative aspect-[4/3]">
+                        <div className="relative aspect-[1/1] sm:aspect-[4/3]">
                           <img
                             src={example.imageSrc}
                             alt={example.imageAlt}
@@ -657,12 +657,12 @@ export default function KYC() {
                             loading="lazy"
                           />
                         </div>
-                        <div className="p-3">
+                        <div className="p-2 sm:p-3">
                           <StatusIcon className={`mx-auto mb-1 ${example.key === 'good' ? 'text-emerald-500' : 'text-red-500'}`} size={20} />
-                          <p className={`text-xs font-medium ${example.key === 'good' ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
+                          <p className={`text-[11px] sm:text-xs font-medium ${example.key === 'good' ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300'}`}>
                             {example.label}
                           </p>
-                          <p className={`text-xs ${example.key === 'good' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                          <p className={`text-[11px] sm:text-xs ${example.key === 'good' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                             {example.note}
                           </p>
                         </div>
