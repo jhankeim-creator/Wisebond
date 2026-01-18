@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { UserQRCode } from '@/components/QRCode';
+import { SensitiveScreenGuard } from '@/components/SensitiveScreenGuard';
 import axios from 'axios';
 import { 
   ArrowDownCircle, 
@@ -137,7 +138,8 @@ export default function Dashboard() {
 
   return (
     <DashboardLayout title={`${getGreeting}, ${user?.full_name?.split(' ')[0]}`}>
-      <div className="space-y-6 animate-fade-in" data-testid="dashboard">
+      <SensitiveScreenGuard>
+        <div className="space-y-6 animate-fade-in" data-testid="dashboard">
         {/* KYC Alert - Dark mode compatible */}
         {user?.kyc_status !== 'approved' && (
           <div className="bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -461,25 +463,26 @@ export default function Dashboard() {
             </Link>
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* QR Code Modal for Receiving Money */}
-      <Dialog open={showQRModal} onOpenChange={setShowQRModal}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-center">
-              {getText('Resevwa Lajan', 'Recevoir de l\'Argent', 'Receive Money')}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col items-center py-6">
-            <UserQRCode 
-              clientId={user?.client_id} 
-              userName={user?.full_name}
-              size={180}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
+        {/* QR Code Modal for Receiving Money */}
+        <Dialog open={showQRModal} onOpenChange={setShowQRModal}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-center">
+                {getText('Resevwa Lajan', 'Recevoir de l\'Argent', 'Receive Money')}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col items-center py-6">
+              <UserQRCode 
+                clientId={user?.client_id} 
+                userName={user?.full_name}
+                size={180}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      </SensitiveScreenGuard>
     </DashboardLayout>
   );
 }

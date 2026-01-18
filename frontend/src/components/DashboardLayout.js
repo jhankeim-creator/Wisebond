@@ -7,7 +7,6 @@ import { Logo } from '@/components/Logo';
 import { Menu, Bell, LogOut } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useLanguage } from '@/context/LanguageContext';
-import { SensitiveScreenGuard } from '@/components/SensitiveScreenGuard';
 
 export const DashboardLayout = ({ children, title }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -40,8 +39,7 @@ export const DashboardLayout = ({ children, title }) => {
         <Menu size={24} className="text-stone-700 dark:text-stone-300" />
       </button>
       
-      <SensitiveScreenGuard>
-        <main className="main-content">
+      <main className="main-content">
           {/* Header */}
           <header
             className="sticky top-0 z-20 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-700"
@@ -93,8 +91,7 @@ export const DashboardLayout = ({ children, title }) => {
             <h1 className="text-2xl font-bold text-stone-900 dark:text-white mb-6 lg:hidden text-center sm:text-left">{title}</h1>
             {children}
           </div>
-        </main>
-      </SensitiveScreenGuard>
+      </main>
     </div>
   );
 };

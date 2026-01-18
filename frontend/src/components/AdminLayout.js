@@ -6,7 +6,6 @@ import { isRoleAllowed } from '@/lib/adminRbac';
 import { LanguageSwitcher } from '@/components/LanguageSwitcher';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { Logo } from '@/components/Logo';
-import { SensitiveScreenGuard } from '@/components/SensitiveScreenGuard';
 import { 
   LayoutDashboard, 
   Users,
@@ -165,11 +164,10 @@ export const AdminLayout = ({ children, title }) => {
       </aside>
 
       {/* Main Content */}
-      <SensitiveScreenGuard>
-        <main
-          className="lg:ml-64 flex flex-col overflow-hidden"
-          style={{ height: 'calc(100vh - var(--announcement-bar-h, 0px))' }}
-        >
+      <main
+        className="lg:ml-64 flex flex-col overflow-hidden"
+        style={{ height: 'calc(100vh - var(--announcement-bar-h, 0px))' }}
+      >
           {/* Header with Logo */}
           <header
             className="sticky top-0 z-20 bg-white/90 dark:bg-stone-800/90 backdrop-blur-xl border-b border-stone-200 dark:border-stone-700"
@@ -228,8 +226,7 @@ export const AdminLayout = ({ children, title }) => {
               {children}
             </div>
           </div>
-        </main>
-      </SensitiveScreenGuard>
+      </main>
     </div>
   );
 };

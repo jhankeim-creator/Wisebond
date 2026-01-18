@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SensitiveScreenGuard } from '@/components/SensitiveScreenGuard';
 import { API_BASE as API } from '@/lib/utils';
 import { toast } from 'sonner';
 import axios from 'axios';
@@ -699,7 +700,8 @@ export default function VirtualCard() {
 
   return (
     <DashboardLayout title={getText('Kat Vityèl', 'Carte Virtuelle', 'Virtual Card')}>
-      <div className="space-y-6" data-testid="virtual-card-page">
+      <SensitiveScreenGuard>
+        <div className="space-y-6" data-testid="virtual-card-page">
         {loadError ? (
           <Card className="border-red-200 bg-red-50 dark:bg-red-900/10">
             <CardContent className="p-4">
@@ -2057,7 +2059,8 @@ export default function VirtualCard() {
           </DialogContent>
         </Dialog>
 
-      </div>
+        </div>
+      </SensitiveScreenGuard>
     </DashboardLayout>
   );
 }
